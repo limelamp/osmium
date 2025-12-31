@@ -27,7 +27,7 @@ func (m model) Init() tea.Cmd {
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "osmium",
-	Short: "A full-screen TUI app for managing",
+	Short: "A full-screen TUI app for managing minecraft servers.",
 	Run: func(cmd *cobra.Command, args []string) {
 		// 1. Initialize your data (the Model)
 		m := initialModel()
