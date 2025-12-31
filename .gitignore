@@ -1,5 +1,10 @@
+# IDE folders
 .vscode
 .idea
 
+# Execs
 osmium
 osmium.exe
+
+# Used for testing
+server.jar
