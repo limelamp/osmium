@@ -20,7 +20,7 @@ Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("Welcome to Osmium!\nA powerful CLI application for server management in Minecraft.\nA straightforward tool for straightforward work.")
+		fmt.Println("Welcome to Osmium!\nA powerful CLI application for server creation and management in Minecraft.\nA straightforward tool for straightforward work.")
 	},
 }
 
