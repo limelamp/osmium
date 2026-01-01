@@ -16,12 +16,14 @@ type sessionState int
 const (
 	stateSetup sessionState = iota
 	stateDashboard
+	stateRunScript
 )
 
 type rootModel struct {
 	state     sessionState
-	setup     tea.Model // The setup "scene"
-	dashboard tea.Model // The main dashboard "scene"
+	setup     pages.SetupModel     // The setup "page"
+	dashboard pages.DashboardModel // The main dashboard "page"
+	runscript pages.RunScriptModel // Page to create a run_script
 }
 
 // Bubble Tea States ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -37,7 +39,7 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case stateSetup:
 		// Pass the message to the setup model
 		newSetup, newCmd := m.setup.Update(msg)
-		m.setup = newSetup
+		m.setup = newSetup.(pages.SetupModel)
 		cmd = newCmd
 
 		//Check for the `server.jar` file's existance in the background
@@ -47,7 +49,20 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case stateDashboard:
 		newDash, newCmd := m.dashboard.Update(msg)
-		m.dashboard = newDash
+		m.dashboard = newDash.(pages.DashboardModel)
+
+		// All of the states accessed through the Dashboard here
+		switch m.dashboard.CurrentAction {
+		case 1:
+			m.state = stateRunScript
+		}
+
+		cmd = newCmd
+
+	case stateRunScript:
+		newRS, newCmd := m.runscript.Update(msg)
+		m.runscript = newRS.(pages.RunScriptModel)
+
 		cmd = newCmd
 	}
 
@@ -55,8 +70,11 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m rootModel) View() string {
-	if m.state == stateSetup {
+	switch m.state {
+	case stateSetup:
 		return m.setup.View()
+	case stateRunScript:
+		return m.runscript.View()
 	}
 	return m.dashboard.View()
 }
@@ -80,6 +98,7 @@ var rootCmd = &cobra.Command{
 			state:     initialState,
 			setup:     pages.InitializedSetupModel(),     // Setup page for setting up the server if it isn't already
 			dashboard: pages.InitializedDashboardModel(), // Main dashboard page
+			runscript: pages.InitializedRunScriptModel(), // Page for creating a run script
 		}
 
 		mainProcess := tea.NewProgram(mainModel, tea.WithAltScreen())
