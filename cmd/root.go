@@ -11,48 +11,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Root data --------------------------------------------------------
-type sessionState int
-
-const (
-	stateSetup sessionState = iota
-	stateDashboard
-)
-
-type rootModel struct {
-	state     sessionState
-	setup     tea.Model // The setup "scene"
-	dashboard tea.Model // The main dashboard "scene"
-}
-
-// Dashboard data --------------------------------------------------------------------
-// Dashboard dashboardModel datatype to store all the dashboard state/data.
-type dashboardModel struct {
-	cursor int
-}
-
-// initialized dashboard model
-func initializedDashboardModel() dashboardModel {
-	return dashboardModel{cursor: 0}
-}
-
-// Setup data -------------------------------------------------------------------------S
-type setupModel struct {
-	cursor     int
-	step       int
-	jarType    string
-	jarVersion string
-	options    []string
-}
-
-// initialized dashboard model
-func initializedSetupModel() setupModel {
-	return setupModel{
-		cursor:  0,
-		options: []string{"Vanilla", "Bukkit", "Spigot", "Paper", "Purpur"},
-	}
-}
-
+// General functions ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 func downloadFile(url string, filename string) {
 	resp, err := http.Get(url)
 	if err != nil {
@@ -101,7 +60,54 @@ func downloadJar(jarType string, jarVersion string) {
 	fmt.Println("Download finished: ", output)
 }
 
-// States ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+// Bubble tea state data ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+// Root data --------------------------------------------------------
+type sessionState int
+
+const (
+	stateSetup sessionState = iota
+	stateDashboard
+)
+
+type rootModel struct {
+	state     sessionState
+	setup     tea.Model // The setup "scene"
+	dashboard tea.Model // The main dashboard "scene"
+}
+
+// Setup data -------------------------------------------------------------------------
+type setupModel struct {
+	cursor     int
+	step       int
+	jarType    string
+	jarVersion string
+	options    []string
+}
+
+// initialized dashboard model
+func initializedSetupModel() setupModel {
+	return setupModel{
+		cursor:  0,
+		options: []string{"Vanilla", "Bukkit", "Spigot", "Paper", "Purpur"},
+	}
+}
+
+// Dashboard data --------------------------------------------------------------------
+// Dashboard dashboardModel datatype to store all the dashboard state/data.
+type dashboardModel struct {
+	cursor  int
+	options []string
+}
+
+// initialized dashboard model
+func initializedDashboardModel() dashboardModel {
+	return dashboardModel{
+		cursor:  0,
+		options: []string{"Hi", "My", "Name", "Is", "Edwin", "And", "I", "Made", "The", "Mimic"},
+	}
+}
+
+// Bubble Tea States ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 // Root state -----------------------------------------------------------------------------------------------
 func (m rootModel) Init() tea.Cmd {
 	return nil
@@ -237,7 +243,7 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor--
 			}
 		case "down":
-			if m.cursor < 5 {
+			if m.cursor < len(m.options)-1 {
 				m.cursor++
 			} // assuming 5 options
 		}
@@ -258,12 +264,12 @@ func (m dashboardModel) View() string {
 	s += "Navigate using arrow keys. Press 'q' to exit.\n\n"
 
 	// Create a simple list
-	for i := 0; i < 6; i++ {
+	for i := 0; i < len(m.options); i++ {
 		cursor := "  "
 		if m.cursor == i {
 			cursor = "> "
 		}
-		s += fmt.Sprintf("%s Option %d\n", cursor, i)
+		s += fmt.Sprintf("%s %s\n", cursor, m.options[i])
 	}
 
 	return s
