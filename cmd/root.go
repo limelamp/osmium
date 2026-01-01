@@ -11,48 +11,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Root data --------------------------------------------------------
-type sessionState int
-
-const (
-	stateSetup sessionState = iota
-	stateDashboard
-)
-
-type rootModel struct {
-	state     sessionState
-	setup     tea.Model // The setup "scene"
-	dashboard tea.Model // The main dashboard "scene"
-}
-
-// Dashboard data --------------------------------------------------------------------
-// Dashboard dashboardModel datatype to store all the dashboard state/data.
-type dashboardModel struct {
-	cursor int
-}
-
-// initialized dashboard model
-func initializedDashboardModel() dashboardModel {
-	return dashboardModel{cursor: 0}
-}
-
-// Setup data -------------------------------------------------------------------------S
-type setupModel struct {
-	cursor     int
-	step       int
-	jarType    string
-	jarVersion string
-	options    []string
-}
-
-// initialized dashboard model
-func initializedSetupModel() setupModel {
-	return setupModel{
-		cursor:  0,
-		options: []string{"Vanilla", "Bukkit", "Spigot", "Paper", "Purpur"},
-	}
-}
-
+// General functions ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 func downloadFile(url string, filename string) {
 	resp, err := http.Get(url)
 	if err != nil {
@@ -101,7 +60,50 @@ func downloadJar(jarType string, jarVersion string) {
 	fmt.Println("Download finished: ", output)
 }
 
-// States ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+// Bubble tea state data ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+// Root data --------------------------------------------------------
+type sessionState int
+
+const (
+	stateSetup sessionState = iota
+	stateDashboard
+)
+
+type rootModel struct {
+	state     sessionState
+	setup     tea.Model // The setup "scene"
+	dashboard tea.Model // The main dashboard "scene"
+}
+
+// Dashboard data --------------------------------------------------------------------
+// Dashboard dashboardModel datatype to store all the dashboard state/data.
+type dashboardModel struct {
+	cursor int
+}
+
+// initialized dashboard model
+func initializedDashboardModel() dashboardModel {
+	return dashboardModel{cursor: 0}
+}
+
+// Setup data -------------------------------------------------------------------------
+type setupModel struct {
+	cursor     int
+	step       int
+	jarType    string
+	jarVersion string
+	options    []string
+}
+
+// initialized dashboard model
+func initializedSetupModel() setupModel {
+	return setupModel{
+		cursor:  0,
+		options: []string{"Vanilla", "Bukkit", "Spigot", "Paper", "Purpur"},
+	}
+}
+
+// Bubble Tea States ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 // Root state -----------------------------------------------------------------------------------------------
 func (m rootModel) Init() tea.Cmd {
 	return nil
