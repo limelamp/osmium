@@ -45,7 +45,7 @@ func (m RunScriptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			switch m.cursor {
 			case 0:
-				const globalContent = "java -jar -Xms4G .\\server.jar nogui"
+				const globalContent = "java -jar -Xms4G server.jar nogui"
 				// Create a very basic bash script
 				switch runtime.GOOS {
 				case "linux":
