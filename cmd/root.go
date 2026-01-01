@@ -2,63 +2,12 @@ package cmd
 
 import (
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"github.com/limelamp/osmium/cmd/pages"
 	"github.com/spf13/cobra"
 )
-
-// General functions ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-func downloadFile(url string, filename string) {
-	resp, err := http.Get(url)
-	if err != nil {
-		panic(err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		panic(fmt.Sprintf("bad status: %s", resp.Status))
-	}
-
-	out, err := os.Create(filename)
-	if err != nil {
-		panic(err)
-	}
-	defer out.Close()
-
-	_, err = io.Copy(out, resp.Body)
-	if err != nil {
-		panic(err)
-	}
-}
-
-func downloadJar(jarType string, jarVersion string) {
-	// Deciding which url
-	url := ""
-	switch jarType {
-	case "Vanilla":
-		url = "https://piston-data.mojang.com/v1/objects/64bb6d763bed0a9f1d632ec347938594144943ed/server.jar"
-	case "Bukkit":
-		url = ""
-	case "Spigot":
-		url = ""
-	case "Paper":
-		url = "https://api.papermc.io/v2/projects/paper/versions/" + jarVersion
-	case "Purpur":
-		url = "https://api.purpurmc.org/v2/purpur/" + jarVersion + "/latest/download"
-	}
-
-	output := "server.jar"
-
-	fmt.Println("Downloading the required files....")
-
-	downloadFile(url, "server.jar")
-
-	fmt.Println("Download finished: ", output)
-}
 
 // Bubble tea state data ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 // Root data --------------------------------------------------------
@@ -73,38 +22,6 @@ type rootModel struct {
 	state     sessionState
 	setup     tea.Model // The setup "scene"
 	dashboard tea.Model // The main dashboard "scene"
-}
-
-// Setup data -------------------------------------------------------------------------
-type setupModel struct {
-	cursor     int
-	step       int
-	jarType    string
-	jarVersion string
-	options    []string
-}
-
-// initialized dashboard model
-func initializedSetupModel() setupModel {
-	return setupModel{
-		cursor:  0,
-		options: []string{"Vanilla", "Bukkit", "Spigot", "Paper", "Purpur"},
-	}
-}
-
-// Dashboard data --------------------------------------------------------------------
-// Dashboard dashboardModel datatype to store all the dashboard state/data.
-type dashboardModel struct {
-	cursor  int
-	options []string
-}
-
-// initialized dashboard model
-func initializedDashboardModel() dashboardModel {
-	return dashboardModel{
-		cursor:  0,
-		options: []string{"Hi", "My", "Name", "Is", "Edwin", "And", "I", "Made", "The", "Mimic"},
-	}
 }
 
 // Bubble Tea States ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -292,8 +209,8 @@ var rootCmd = &cobra.Command{
 		// Initialize the container with both "scenes" set
 		mainModel := rootModel{
 			state:     initialState,
-			setup:     initializedSetupModel(),
-			dashboard: initializedDashboardModel(),
+			setup:     pages.InitializedSetupModel(),
+			dashboard: pages.InitializedDashboardModel(),
 		}
 
 		mainProcess := tea.NewProgram(mainModel, tea.WithAltScreen())
