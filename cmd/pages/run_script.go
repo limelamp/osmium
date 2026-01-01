@@ -2,6 +2,7 @@ package pages
 
 import (
 	"fmt"
+	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -39,6 +40,19 @@ func (m RunScriptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "down":
 			if m.cursor < len(m.options)-1 {
 				m.cursor++
+			}
+		case "enter":
+			switch m.cursor {
+			case 0:
+				// Create a very basic bash script
+				content := []byte("#!/bin/bash\n\njava -jar -Xms4G ./server.jar nogui")
+
+				err := os.WriteFile("run_server.sh", content, 0755)
+				if err != nil {
+					panic(err)
+				}
+
+				fmt.Println("File Created!")
 			}
 		}
 	}
