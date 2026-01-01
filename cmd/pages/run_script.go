@@ -13,12 +13,14 @@ import (
 type RunScriptModel struct {
 	cursor  int
 	options []string
+	GoBack  bool
 }
 
 func InitializedRunScriptModel() RunScriptModel {
 	return RunScriptModel{
 		cursor:  0,
 		options: []string{"Recommended settings", "Detailed"},
+		GoBack:  false,
 	}
 }
 
@@ -42,6 +44,9 @@ func (m RunScriptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.cursor < len(m.options)-1 {
 				m.cursor++
 			}
+		case "backspace":
+			m.GoBack = true
+			return m, nil
 		case "enter":
 			switch m.cursor {
 			case 0: // Recommended settings
@@ -98,6 +103,6 @@ func (m RunScriptModel) View() string {
 		s += fmt.Sprintf("%s %s\n", cursor, m.options[i])
 	}
 
-	s += "\n\n" + "Navigate using arrow keys. Press 'q' to exit.\n\n"
+	s += "\n\n" + "Navigate using arrow keys. Press 'q' to exit, 'backspace' to go back.\n\n"
 	return s
 }
