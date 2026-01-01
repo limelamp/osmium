@@ -1,6 +1,7 @@
 package pages
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,7 +11,68 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// The "Master Manifest" lists all versions
+type VanillaVersionManifest struct {
+	Latest struct {
+		Release string `json:"release"`
+	} `json:"latest"`
+	Versions []struct {
+		ID  string `json:"id"`  // e.g., "1.21.1"
+		URL string `json:"url"` // The link to this version's specific JSON
+	} `json:"versions"`
+}
+
+// The "Version Specific JSON" contains the actual jar link
+type VanillaVersionPackage struct {
+	Downloads struct {
+		Server struct {
+			URL string `json:"url"`
+		} `json:"server"`
+	} `json:"downloads"`
+}
+
 // General functions ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+func getVanillaServerURL(targetVersion string) (string, error) {
+	// Step 1: Get the Master Manifest
+	resp, err := http.Get("https://launchermeta.mojang.com/mc/game/version_manifest.json")
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	var manifest VanillaVersionManifest
+	if err := json.NewDecoder(resp.Body).Decode(&manifest); err != nil {
+		return "", err
+	}
+
+	// Step 2: Find the specific version in the list
+	var versionDetailURL string
+	for _, v := range manifest.Versions {
+		if v.ID == targetVersion {
+			versionDetailURL = v.URL
+			break
+		}
+	}
+
+	if versionDetailURL == "" {
+		return "", fmt.Errorf("version %s not found", targetVersion)
+	}
+
+	// Step 3: Get the specific version's JSON package
+	resp, err = http.Get(versionDetailURL)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	var pkg VanillaVersionPackage
+	if err := json.NewDecoder(resp.Body).Decode(&pkg); err != nil {
+		return "", err
+	}
+
+	return pkg.Downloads.Server.URL, nil
+}
+
 func downloadFile(url string, filename string) {
 	resp, err := http.Get(url)
 	if err != nil {
@@ -39,7 +101,9 @@ func downloadJar(jarType string, jarVersion string) {
 	url := ""
 	switch jarType {
 	case "Vanilla":
-		url = "https://piston-data.mojang.com/v1/objects/64bb6d763bed0a9f1d632ec347938594144943ed/server.jar"
+		// var err error
+		url, _ = getVanillaServerURL(jarVersion)
+		// fmt.Println(err)
 	case "Bukkit":
 		url = ""
 	case "Spigot":
@@ -68,7 +132,7 @@ type SetupModel struct {
 	options    []string
 }
 
-// initialized dashboard model
+// initialized setup model
 func InitializedSetupModel() SetupModel {
 	return SetupModel{
 		cursor:  0,
