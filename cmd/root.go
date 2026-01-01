@@ -54,6 +54,7 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// All of the states accessed through the Dashboard here
 		switch m.dashboard.CurrentAction {
 		case 1:
+			m.dashboard.CurrentAction = 0 // Can be safely reset now. The reset is needed for backspacing
 			m.state = stateRunScript
 		}
 
@@ -62,6 +63,12 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case stateRunScript:
 		newRS, newCmd := m.runscript.Update(msg)
 		m.runscript = newRS.(pages.RunScriptModel)
+
+		// Going back scenario
+		if m.runscript.GoBack {
+			m.runscript.GoBack = false
+			m.state = stateDashboard
+		}
 
 		cmd = newCmd
 	}
