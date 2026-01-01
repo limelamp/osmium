@@ -75,11 +75,11 @@ var rootCmd = &cobra.Command{
 			initialState = stateSetup
 		}
 
-		// Initialize the container with both "scenes" set
+		// Initialize the container with both "pages" set
 		mainModel := rootModel{
 			state:     initialState,
-			setup:     pages.InitializedSetupModel(),
-			dashboard: pages.InitializedDashboardModel(),
+			setup:     pages.InitializedSetupModel(),     // Setup page for setting up the server if it isn't already
+			dashboard: pages.InitializedDashboardModel(), // Main dashboard page
 		}
 
 		mainProcess := tea.NewProgram(mainModel, tea.WithAltScreen())
