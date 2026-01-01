@@ -53,6 +53,29 @@ func initializedSetupModel() setupModel {
 	}
 }
 
+func downloadFile(url string, filename string) {
+	resp, err := http.Get(url)
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		panic(fmt.Sprintf("bad status: %s", resp.Status))
+	}
+
+	out, err := os.Create(filename)
+	if err != nil {
+		panic(err)
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, resp.Body)
+	if err != nil {
+		panic(err)
+	}
+}
+
 func downloadJar(jarType string, jarVersion string) {
 	// Deciding which url
 	url := ""
@@ -72,26 +95,8 @@ func downloadJar(jarType string, jarVersion string) {
 	output := "server.jar"
 
 	fmt.Println("Downloading the required files....")
-	resp, err := http.Get(url)
-	if err != nil {
-		panic(err)
-	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		panic(fmt.Sprintf("bad status: %s", resp.Status))
-	}
-
-	out, err := os.Create(output)
-	if err != nil {
-		panic(err)
-	}
-	defer out.Close()
-
-	_, err = io.Copy(out, resp.Body)
-	if err != nil {
-		panic(err)
-	}
+	downloadFile(url, "server.jar")
 
 	fmt.Println("Download finished: ", output)
 }
