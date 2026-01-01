@@ -257,7 +257,7 @@ func (m SetupModel) View() string {
 		Background(lipgloss.Color("#63f456ff")).
 		Padding(0, 1)
 
-	s := headerStyle.Render(" OSMIUM SERVER INITIALIZATION ") + "\n\n"
+	s := headerStyle.Render(" OSMIUM - SERVER INITIALIZATION ") + "\n\n"
 	s += "There appears to be no server initialized in the current folder!" + "\n"
 	s += "This setup wizard will be guiding you through the creation of the server." + "\n\n"
 

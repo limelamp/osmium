@@ -7,22 +7,23 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// Dashboard data --------------------------------------------------------------------
+// Data --------------------------------------------------------------------
 // Dashboard DashboardModel datatype to store all the dashboard state/data.
 type DashboardModel struct {
-	cursor  int
-	options []string
+	cursor        int
+	options       []string
+	CurrentAction int
 }
 
-// initialized dashboard model
 func InitializedDashboardModel() DashboardModel {
 	return DashboardModel{
-		cursor:  0,
-		options: []string{"Hi", "My", "Name", "Is", "Edwin", "And", "I", "Made", "The", "Mimic"},
+		cursor:        0,
+		options:       []string{"Create a run script", "Hi", "My", "Name", "Is", "Edwin", "And", "I", "Made", "The", "Mimic"},
+		CurrentAction: 0,
 	}
 }
 
-// Dashboard State --------------------------------------------------------------------------------------------------------
+// State --------------------------------------------------------------------------------------------------------
 // Handles the dashboard model's data and all actions
 func (m DashboardModel) Init() tea.Cmd {
 	return nil
@@ -42,6 +43,8 @@ func (m DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.cursor < len(m.options)-1 {
 				m.cursor++
 			} // assuming 5 options
+		case "enter":
+			m.CurrentAction = m.cursor + 1 // +1 to compensate
 		}
 	}
 	return m, nil
@@ -56,7 +59,7 @@ func (m DashboardModel) View() string {
 		Background(lipgloss.Color("#c256f4ff")).
 		Padding(0, 1)
 
-	s := headerStyle.Render(" OSMIUM DASHBOARD ") + "\n\n"
+	s := headerStyle.Render(" OSMIUM - DASHBOARD ") + "\n\n"
 	s += "Navigate using arrow keys. Press 'q' to exit.\n\n"
 
 	// Create a simple list
