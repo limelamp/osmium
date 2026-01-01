@@ -154,11 +154,16 @@ func (m setupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "up":
 			if m.cursor > 0 {
 				m.cursor--
+			} else {
+				m.cursor = len(m.options) - 1
 			}
 		case "down":
+			// assuming 4 options
 			if m.cursor < len(m.options)-1 {
 				m.cursor++
-			} // assuming 4 options
+			} else {
+				m.cursor = 0
+			}
 		case "enter":
 			switch m.step {
 			case 0:
