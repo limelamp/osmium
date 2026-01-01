@@ -8,3 +8,5 @@ osmium.exe
 
 # Used for testing
 server.jar
+run_server.sh
+testing
