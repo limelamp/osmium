@@ -265,7 +265,7 @@ func (m SetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.step = 3
 					m.cursor = 0
 					m.options = []string{}
-					m.infoText = "Do you agree to Mojang's EULA? More info at: https://aka.ms/MinecraftEULA\nPlease type \"true\" in order to agree,"
+					m.infoText = "Do you agree to Mojang's EULA? More info at: https://aka.ms/MinecraftEULA\nPlease type \"true\" in order to agree."
 				case 1:
 					m.GoBack = true
 				}
@@ -273,7 +273,7 @@ func (m SetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case 3:
 				switch m.textInput.Value() {
 				case "true":
-					content := "#By changing the setting below to TRUE you are indicating your agreement to our EULA (https://www.minecraft.net/eula).\n"
+					content := "#By changing the setting below to TRUE you are indicating your agreement to our EULA (https://aka.ms/MinecraftEULA).\n"
 					content += "eula=true\n"
 
 					os.WriteFile("eula.txt", []byte(content), 0644)
