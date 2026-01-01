@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -187,13 +188,16 @@ type SetupModel struct {
 	jarType    string
 	jarVersion string
 	options    []string
+	infoText   string
+	GoBack     bool
 }
 
 // initialized setup model
 func InitializedSetupModel() SetupModel {
 	return SetupModel{
-		cursor:  0,
-		options: []string{"Vanilla", "Paper", "Purpur"}, //[]string{"Vanilla", "Bukkit", "Spigot", "Paper", "Purpur"},
+		cursor:   0,
+		options:  []string{"Vanilla", "Paper", "Purpur"}, //[]string{"Vanilla", "Bukkit", "Spigot", "Paper", "Purpur"},
+		infoText: "Choose the type of server you would like to create:",
 	}
 }
 
@@ -232,15 +236,43 @@ func (m SetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.step = 1
 				m.cursor = 0
 				m.options = []string{"1.21.11", "1.21", "1.20", "1.19"}
+				m.infoText = "Choose the Minecraft version:"
 
-			case 1:
+			case 1: // choose version and begin download
 				m.jarVersion = m.options[m.cursor] // Save the version
+
+				// return m, downloadServerJar(m.serverType, m.version)
+				downloadJar(m.jarType, m.jarVersion)
 
 				// Move to download state
 				m.step = 2
-				// return m, downloadServerJar(m.serverType, m.version)
-			case 2:
-				downloadJar(m.jarType, m.jarVersion)
+				m.cursor = 0
+				m.options = []string{"Yes", "No, skip to the dashboard"}
+				m.infoText = "Would you like to initiliaze the files by running the server once?"
+			case 2: // init files
+				switch m.cursor {
+				case 0:
+					cmd := exec.Command(
+						"java",
+						"-jar",
+						"-Xms4G",
+						"server.jar",
+						"nogui",
+					)
+
+					// Run in the same directory as your app
+					cmd.Dir, _ = os.Getwd()
+
+					cmd.Stdout = os.Stdout
+					cmd.Stderr = os.Stderr
+					cmd.Stdin = os.Stdin
+
+					if err := cmd.Run(); err != nil {
+						panic(err)
+					}
+				case 1:
+					m.GoBack = true
+				}
 			}
 		}
 
@@ -260,6 +292,8 @@ func (m SetupModel) View() string {
 	s := headerStyle.Render(" OSMIUM - SERVER INITIALIZATION ") + "\n\n"
 	s += "There appears to be no server initialized in the current folder!" + "\n"
 	s += "This setup wizard will be guiding you through the creation of the server." + "\n\n"
+
+	s += "\n\n" + m.infoText + "\n\n"
 
 	switch m.step {
 	case 0:

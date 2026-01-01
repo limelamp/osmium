@@ -43,7 +43,13 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmd = newCmd
 
 		//Check for the `server.jar` file's existance in the background
-		if _, err := os.Stat("server.jar"); err == nil {
+		// if _, err := os.Stat("server.jar"); err == nil {
+		// 	m.state = stateDashboard
+		// }
+
+		// Going back scenario
+		if m.setup.GoBack {
+			m.setup.GoBack = false
 			m.state = stateDashboard
 		}
 
