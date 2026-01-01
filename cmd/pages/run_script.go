@@ -3,6 +3,7 @@ package pages
 import (
 	"fmt"
 	"os"
+	"runtime"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -44,12 +45,23 @@ func (m RunScriptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			switch m.cursor {
 			case 0:
+				const globalContent = "java -jar -Xms4G .\\server.jar nogui"
 				// Create a very basic bash script
-				content := []byte("#!/bin/bash\n\njava -jar -Xms4G ./server.jar nogui")
+				switch runtime.GOOS {
+				case "linux":
+					content := []byte("#!/bin/bash\n\n" + globalContent)
 
-				err := os.WriteFile("run_server.sh", content, 0755)
-				if err != nil {
-					panic(err)
+					err := os.WriteFile("run_server.sh", content, 0755)
+					if err != nil {
+						panic(err)
+					}
+				case "windows":
+					content := []byte(globalContent)
+
+					err := os.WriteFile("run_server.bat", content, 0755)
+					if err != nil {
+						panic(err)
+					}
 				}
 
 				fmt.Println("File Created!")
