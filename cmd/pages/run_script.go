@@ -44,24 +44,33 @@ func (m RunScriptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "enter":
 			switch m.cursor {
-			case 0:
+			case 0: // Recommended settings
 				const globalContent = "java -jar -Xms4G server.jar nogui"
+				var content []byte
+				var outputFile string
 				// Create a very basic bash script
-				switch runtime.GOOS {
+				switch runtime.GOOS { // Create different files and contents for different OS
 				case "linux":
-					content := []byte("#!/bin/bash\n\n" + globalContent)
-
-					err := os.WriteFile("run_server.sh", content, 0755)
-					if err != nil {
-						panic(err)
-					}
+					content = []byte("#!/bin/bash\n\n" + globalContent)
+					outputFile = "run_server.sh"
 				case "windows":
-					content := []byte(globalContent)
+					content = []byte(globalContent)
+					outputFile = "run_server.bat"
+				case "darwin":
+					content = []byte("#!/bin/sh\n\n" + globalContent)
+					outputFile = "run_server.sh"
+				case "freebsd":
+					content = []byte("#!/bin/bash\n\n" + globalContent)
+					outputFile = "run_server.sh"
+				default:
+					fmt.Println("Unsupported OS!")
+					return m, nil
+				}
 
-					err := os.WriteFile("run_server.bat", content, 0755)
-					if err != nil {
-						panic(err)
-					}
+				// Create the file
+				err := os.WriteFile(outputFile, content, 0755)
+				if err != nil {
+					panic(err)
 				}
 
 				fmt.Println("File Created!")
