@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// Json structs ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 // The "Master Manifest" lists all versions
 type VanillaVersionManifest struct {
 	Latest struct {
@@ -28,6 +29,19 @@ type VanillaVersionPackage struct {
 		Server struct {
 			URL string `json:"url"`
 		} `json:"server"`
+	} `json:"downloads"`
+}
+
+// https://api.papermc.io/v2/projects/paper/versions/{version}/builds/{build}/downloads/{filename}
+type PaperBuilds struct {
+	Builds []int `json:"builds"` // Build numbers
+}
+
+type PaperDownloads struct {
+	Downloads struct {
+		Application struct {
+			Name string `json:"name"`
+		} `json:"application"`
 	} `json:"downloads"`
 }
 
@@ -73,6 +87,51 @@ func getVanillaServerURL(targetVersion string) (string, error) {
 	return pkg.Downloads.Server.URL, nil
 }
 
+func getPaperServerURL(version string) (string, error) {
+	// Step 1: Get the builds list to find the LATEST build number
+	buildsURL := fmt.Sprintf("https://api.papermc.io/v2/projects/paper/versions/%s", version)
+	resp, err := http.Get(buildsURL)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	var buildsData PaperBuilds
+	if err := json.NewDecoder(resp.Body).Decode(&buildsData); err != nil {
+		return "", err
+	}
+
+	if len(buildsData.Builds) == 0 {
+		return "", fmt.Errorf("no builds found for version %s", version)
+	}
+	latestBuild := buildsData.Builds[len(buildsData.Builds)-1]
+
+	// Step 2: Get the filename for that specific build
+	infoURL := fmt.Sprintf("https://api.papermc.io/v2/projects/paper/versions/%s/builds/%d", version, latestBuild)
+	resp, err = http.Get(infoURL)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	var info PaperDownloads
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		return "", err
+	}
+	filename := info.Downloads.Application.Name
+
+	// Step 3: Construct the final direct download link
+	finalURL := fmt.Sprintf("https://api.papermc.io/v2/projects/paper/versions/%s/builds/%d/downloads/%s",
+		version, latestBuild, filename)
+
+	// Potential shortcut method
+	// finalURL := "paper-" + targetVersion + "-" + strconv.Itoa(latestBuild) + ".jar"
+	// fmt.Println(finalURL)
+	// return finalURL, nil
+
+	return finalURL, nil
+}
+
 func downloadFile(url string, filename string) {
 	resp, err := http.Get(url)
 	if err != nil {
@@ -109,7 +168,7 @@ func downloadJar(jarType string, jarVersion string) {
 	case "Spigot":
 		url = ""
 	case "Paper":
-		url = "https://api.papermc.io/v2/projects/paper/versions/" + jarVersion
+		url, _ = getPaperServerURL(jarVersion)
 	case "Purpur":
 		url = "https://api.purpurmc.org/v2/purpur/" + jarVersion + "/latest/download"
 	}
