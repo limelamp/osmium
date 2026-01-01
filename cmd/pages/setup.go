@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -185,19 +186,28 @@ func downloadJar(jarType string, jarVersion string) {
 type SetupModel struct {
 	cursor     int
 	step       int
+	GoBack     bool
 	jarType    string
 	jarVersion string
 	options    []string
 	infoText   string
-	GoBack     bool
+	textInput  textinput.Model
 }
 
 // initialized setup model
 func InitializedSetupModel() SetupModel {
+	// textInput creating
+	ti := textinput.New()
+	ti.Placeholder = "Enter server name..."
+	ti.Focus() // Start with the cursor blinking inside it
+	ti.CharLimit = 20
+	ti.Width = 20
+
 	return SetupModel{
-		cursor:   0,
-		options:  []string{"Vanilla", "Paper", "Purpur"}, //[]string{"Vanilla", "Bukkit", "Spigot", "Paper", "Purpur"},
-		infoText: "Choose the type of server you would like to create:",
+		cursor:    0,
+		options:   []string{"Vanilla", "Paper", "Purpur"}, //[]string{"Vanilla", "Bukkit", "Spigot", "Paper", "Purpur"},
+		infoText:  "Choose the type of server you would like to create:",
+		textInput: ti,
 	}
 }
 
@@ -252,7 +262,24 @@ func (m SetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case 2: // init files
 				switch m.cursor {
 				case 0:
-					cmd := exec.Command(
+					m.step = 3
+					m.cursor = 0
+					m.options = []string{}
+					m.infoText = "Do you agree to Mojang's EULA? More info at: https://aka.ms/MinecraftEULA\nPlease type \"true\" in order to agree,"
+				case 1:
+					m.GoBack = true
+				}
+
+			case 3:
+				switch m.textInput.Value() {
+				case "true":
+					content := "#By changing the setting below to TRUE you are indicating your agreement to our EULA (https://www.minecraft.net/eula).\n"
+					content += "eula=true\n"
+
+					os.WriteFile("eula.txt", []byte(content), 0644)
+
+					// Run the server
+					javaCMD := exec.Command(
 						"java",
 						"-jar",
 						"-Xms4G",
@@ -260,23 +287,26 @@ func (m SetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						"nogui",
 					)
 
-					// Run in the same directory as your app
-					cmd.Dir, _ = os.Getwd()
+					// Run in the same directory
+					javaCMD.Dir, _ = os.Getwd()
 
-					cmd.Stdout = os.Stdout
-					cmd.Stderr = os.Stderr
-					cmd.Stdin = os.Stdin
+					// Output stuff
+					javaCMD.Stdout = os.Stdout
+					javaCMD.Stderr = os.Stderr
+					javaCMD.Stdin = os.Stdin
 
-					if err := cmd.Run(); err != nil {
+					if err := javaCMD.Run(); err != nil {
 						panic(err)
 					}
-				case 1:
-					m.GoBack = true
 				}
 			}
 		}
 
 	}
+
+	// IMPORTANT: Update the internal textinput model
+	// var cmd tea.Cmd
+	m.textInput, _ = m.textInput.Update(msg)
 	return m, nil
 }
 
@@ -301,12 +331,16 @@ func (m SetupModel) View() string {
 	}
 	// Create a simple list
 	// serverTypes := [length]string{"Vanilla", "Bukkit", "Spigot", "Paper", "Purpur"}
-	for i := 0; i < len(m.options); i++ {
-		cursor := "  "
-		if m.cursor == i {
-			cursor = "> "
+	if m.step != 3 {
+		for i := 0; i < len(m.options); i++ {
+			cursor := "  "
+			if m.cursor == i {
+				cursor = "> "
+			}
+			s += fmt.Sprintf("%s %s\n", cursor, m.options[i])
 		}
-		s += fmt.Sprintf("%s %s\n", cursor, m.options[i])
+	} else {
+		s += "> eula=" + m.textInput.Value()
 	}
 
 	s += "\n\n" + "Navigate using arrow keys. Press 'q' to exit.\n\n"
