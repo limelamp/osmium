@@ -160,13 +160,11 @@ func downloadJar(jarType string, jarVersion string) {
 	url := ""
 	switch jarType {
 	case "Vanilla":
-		// var err error
 		url, _ = getVanillaServerURL(jarVersion)
-		// fmt.Println(err)
-	case "Bukkit":
-		url = ""
-	case "Spigot":
-		url = ""
+	// case "Bukkit":
+	// 	url = ""
+	// case "Spigot":
+	// 	url = ""
 	case "Paper":
 		url, _ = getPaperServerURL(jarVersion)
 	case "Purpur":
@@ -195,7 +193,7 @@ type SetupModel struct {
 func InitializedSetupModel() SetupModel {
 	return SetupModel{
 		cursor:  0,
-		options: []string{"Vanilla", "Bukkit", "Spigot", "Paper", "Purpur"},
+		options: []string{"Vanilla", "Paper", "Purpur"}, //[]string{"Vanilla", "Bukkit", "Spigot", "Paper", "Purpur"},
 	}
 }
 
