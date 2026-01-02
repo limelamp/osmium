@@ -22,3 +22,4 @@ Quick guides on how to add new elements to the base.
 2. Inside `rootModel`, add `newpage: pages.NewPageModel` to add the new page's model to the model list
 3. To intitialize the new page's model when root's model is init,  inside of cobra's `rootCmd` add: `newpage: pages.InitializedNewPageModel()`
 4. Inside `Update()`, have a method to switch the new page by setting `m.state = stateNewPage`. The var is indeed from step 1
+5. Add the `View()` function of the new state to root's `View()`
