@@ -18,7 +18,7 @@ type DashboardModel struct {
 func InitializedDashboardModel() DashboardModel {
 	return DashboardModel{
 		cursor:        0,
-		options:       []string{"Create a run script", "Run the server", "Hi", "My", "Name", "Is", "Edwin", "And", "I", "Made", "The", "Mimic"},
+		options:       []string{"Create a run script", "Run the server", "Manage server properties", "Remove all server files", "Hi", "My", "Name", "Is", "Edwin", "And", "I", "Made", "The", "Mimic"},
 		CurrentAction: 0,
 	}
 }
