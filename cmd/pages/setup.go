@@ -134,35 +134,40 @@ func getPaperServerURL(version string) (string, error) {
 	return finalURL, nil
 }
 
-func downloadFile(url string, filename string) {
+func downloadFile(url string, filename string) error {
 	resp, err := http.Get(url)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		panic(fmt.Sprintf("bad status: %s", resp.Status))
+		return fmt.Errorf("bad status: %s", resp.Status)
 	}
 
 	out, err := os.Create(filename)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	defer out.Close()
 
 	_, err = io.Copy(out, resp.Body)
 	if err != nil {
-		panic(err)
+		return err
 	}
+	return nil
 }
 
-func downloadJar(jarType string, jarVersion string) {
+func downloadJar(jarType string, jarVersion string) error {
 	// Deciding which url
 	url := ""
+	var err error
 	switch jarType {
 	case "Vanilla":
-		url, _ = getVanillaServerURL(jarVersion)
+		url, err = getVanillaServerURL(jarVersion)
+		if err != nil {
+			return err
+		}
 	// case "Bukkit":
 	// 	url = ""
 	// case "Spigot":
@@ -177,9 +182,12 @@ func downloadJar(jarType string, jarVersion string) {
 
 	fmt.Println("Downloading the required files....")
 
-	downloadFile(url, "server.jar")
+	if err := downloadFile(url, "server.jar"); err != nil {
+		return err
+	}
 
 	fmt.Println("Download finished: ", output)
+	return nil
 }
 
 // Setup data -------------------------------------------------------------------------
@@ -192,6 +200,7 @@ type SetupModel struct {
 	options    []string
 	infoText   string
 	textInput  textinput.Model
+	err        error
 }
 
 // initialized setup model
@@ -252,7 +261,10 @@ func (m SetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.jarVersion = m.options[m.cursor] // Save the version
 
 				// return m, downloadServerJar(m.serverType, m.version)
-				downloadJar(m.jarType, m.jarVersion)
+				if err := downloadJar(m.jarType, m.jarVersion); err != nil {
+					m.err = err
+					return m, nil
+				}
 
 				// Move to download state
 				m.step = 2
@@ -296,7 +308,7 @@ func (m SetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					javaCMD.Stdin = os.Stdin
 
 					if err := javaCMD.Run(); err != nil {
-						panic(err)
+						m.err = err
 					}
 				}
 			}
@@ -320,6 +332,14 @@ func (m SetupModel) View() string {
 		Padding(0, 1)
 
 	s := headerStyle.Render(" OSMIUM - SERVER INITIALIZATION ") + "\n\n"
+
+	if m.err != nil {
+		errorStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FF0000")).
+			Bold(true)
+		s += errorStyle.Render("Error: "+m.err.Error()) + "\n\n"
+	}
+
 	s += "There appears to be no server initialized in the current folder!" + "\n"
 	s += "This setup wizard will be guiding you through the creation of the server." + "\n\n"
 

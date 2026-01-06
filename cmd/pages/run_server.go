@@ -16,6 +16,7 @@ type RunServerModel struct {
 	textInput textinput.Model
 	firstRun  bool
 	GoBack    bool
+	err       error
 }
 
 func InitializedRunServerModel() RunServerModel {
@@ -62,7 +63,7 @@ func (m RunServerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		javaCMD.Stdin = os.Stdin
 
 		if err := javaCMD.Run(); err != nil {
-			panic(err)
+			m.err = err
 		}
 
 		m.firstRun = false
@@ -105,6 +106,13 @@ func (m RunServerModel) View() string {
 		Padding(0, 1)
 
 	s := headerStyle.Render(" OSMIUM - RUNNING SERVER ") + " Ctrl-C to Exit" + "\n\n"
+
+	if m.err != nil {
+		errorStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FF0000")).
+			Bold(true)
+		s += errorStyle.Render("Error: "+m.err.Error()) + "\n\n"
+	}
 
 	s += "> " + m.textInput.Value()
 	// s += "\n\n" + "Navigate using arrow keys. Press 'q' to exit, 'backspace' to go back.\n\n"

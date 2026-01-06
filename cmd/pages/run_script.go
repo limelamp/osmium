@@ -14,6 +14,7 @@ type RunScriptModel struct {
 	cursor  int
 	options []string
 	GoBack  bool
+	err     error
 }
 
 func InitializedRunScriptModel() RunScriptModel {
@@ -75,7 +76,8 @@ func (m RunScriptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Create the file
 				err := os.WriteFile(outputFile, content, 0755)
 				if err != nil {
-					panic(err)
+					m.err = err
+					return m, nil
 				}
 
 				fmt.Println("File Created!")
@@ -93,6 +95,13 @@ func (m RunScriptModel) View() string {
 		Padding(0, 1)
 
 	s := headerStyle.Render(" OSMIUM - CREATING A RUN SCRIPT ") + "\n\n"
+
+	if m.err != nil {
+		errorStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FF0000")).
+			Bold(true)
+		s += errorStyle.Render("Error: "+m.err.Error()) + "\n\n"
+	}
 
 	// Create a simple list
 	for i := 0; i < len(m.options); i++ {
