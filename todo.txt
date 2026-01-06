@@ -1,6 +1,6 @@
 Toghrul's Responsibilities:
 1. Store directories in an ./mc-servers/CUSTOM_SERVER_NAME directory
-2. Prompt user to install latest Java depending on the OS, and etc (works similar to .net installation of GHelper)
-3. Installs the "osmium" command globally when the installed executable is run by a user
-4. Creates its own env variables that stores pointer to the mc-servers location, where in turn they are created
+2. (sometime) Prompt user to install latest Java depending on the OS, and etc (works similar to .net installation of GHelper)
+3. (sometime) Installs the "osmium" command globally when the installed executable is run by a user
+4. (viper) Creates its own env variables that stores pointer to the mc-servers location, where in turn they are created
 5. Asks before init, whether a server will be public or private (disables/enables whitelist)
