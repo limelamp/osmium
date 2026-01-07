@@ -3,7 +3,7 @@ package pages
 import (
 	"fmt"
 	"os"
-	"runtime"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -11,17 +11,25 @@ import (
 
 // Data --------------------------------------------------------------------
 type RemoveFilesModel struct {
-	cursor  int
-	options []string
-	GoBack  bool
-	err     error
+	cursor   int
+	options  map[int]os.DirEntry
+	selected map[int]bool
+	GoBack   bool
+	err      error
 }
 
 func InitializedRemoveFilesModel() RemoveFilesModel {
+	entries, _ := os.ReadDir(".")
+	options := make(map[int]os.DirEntry)
+	for index, value := range entries {
+		options[index] = value
+	}
+
 	return RemoveFilesModel{
-		cursor:  0,
-		options: []string{"Recommended settings", "Detailed"},
-		GoBack:  false,
+		cursor:   0,
+		options:  options,
+		selected: make(map[int]bool),
+		GoBack:   false,
 	}
 }
 
@@ -48,40 +56,25 @@ func (m RemoveFilesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "backspace":
 			m.GoBack = true
 			return m, nil
-		case "enter":
-			switch m.cursor {
-			case 0: // Recommended settings
-				const globalContent = "java -jar -Xms4G server.jar nogui"
-				var content []byte
-				var outputFile string
-				// Create a very basic bash script
-				switch runtime.GOOS { // Create different files and contents for different OS
-				case "linux":
-					content = []byte("#!/bin/bash\n\n" + globalContent)
-					outputFile = "run_server.sh"
-				case "windows":
-					content = []byte(globalContent)
-					outputFile = "run_server.bat"
-				case "darwin":
-					content = []byte("#!/bin/sh\n\n" + globalContent)
-					outputFile = "run_server.sh"
-				case "freebsd":
-					content = []byte("#!/bin/bash\n\n" + globalContent)
-					outputFile = "run_server.sh"
-				default:
-					fmt.Println("Unsupported OS!")
-					return m, nil
-				}
-
-				// Create the file
-				err := os.WriteFile(outputFile, content, 0755)
-				if err != nil {
-					m.err = err
-					return m, nil
-				}
-
-				fmt.Println("File Created!")
+		case " ":
+			m.selected[m.cursor] = !m.selected[m.cursor]
+		case "ctrl+a":
+			for i := 0; i < len(m.options); i++ {
+				m.selected[i] = !m.selected[i]
 			}
+		//! panic when deleting the second time in a single session, the cause is cursor index misalign with the m.options map
+		case "enter":
+			for key, value := range m.selected {
+				if value {
+					os.RemoveAll(m.options[key].Name())
+					delete(m.options, key)
+				}
+			}
+			time.Sleep(2 * time.Second)
+			m.selected = make(map[int]bool)
+
+			m.GoBack = true
+			m.cursor = 0
 		}
 	}
 	return m, nil
@@ -93,6 +86,9 @@ func (m RemoveFilesModel) View() string {
 		Foreground(lipgloss.Color("#FAFAFA")).
 		Background(lipgloss.Color("#ff00a6ff")).
 		Padding(0, 1)
+
+	selectedStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#FF0000"))
 
 	s := headerStyle.Render(" OSMIUM - REMOVING FILES ") + "\n\n"
 
@@ -109,9 +105,18 @@ func (m RemoveFilesModel) View() string {
 		if m.cursor == i {
 			cursor = "> "
 		}
-		s += fmt.Sprintf("%s %s\n", cursor, m.options[i])
+
+		name := m.options[i].Name()
+
+		if m.selected[i] {
+			// Selected: add asterisk and color red
+			s += fmt.Sprintf("%s%s\n", cursor, selectedStyle.Render("* "+name))
+		} else {
+			// Not selected: normal display
+			s += fmt.Sprintf("%s  %s\n", cursor, name)
+		}
 	}
 
-	s += "\n\n" + "Navigate using arrow keys. Press 'q' to exit, 'backspace' to go back.\n\n"
+	s += "\n\n" + "Navigate using arrow keys. Press ctrl + a to toggle all. Press 'q' to exit, 'backspace' to go back.\n\n"
 	return s
 }
