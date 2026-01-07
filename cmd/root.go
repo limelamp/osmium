@@ -117,8 +117,8 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		cmd = newCmd
 
-		if m.removefiles.GoBack {
-			m.removefiles.GoBack = false
+		if m.pluginmanagement.GoBack {
+			m.pluginmanagement.GoBack = false
 			m.state = stateDashboard
 		}
 	}
