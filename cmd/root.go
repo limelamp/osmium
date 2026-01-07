@@ -99,6 +99,11 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.removefiles = newRS.(pages.RemoveFilesModel)
 
 		cmd = newCmd
+
+		if m.removefiles.GoBack {
+			m.removefiles.GoBack = false
+			m.state = stateDashboard
+		}
 	}
 
 	return m, cmd
