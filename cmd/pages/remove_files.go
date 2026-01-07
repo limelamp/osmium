@@ -72,7 +72,11 @@ func (m RemoveFilesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			time.Sleep(2 * time.Second)
 			m.selected = make(map[int]bool)
-
+			entries, _ := os.ReadDir(".")
+			m.options = make(map[int]os.DirEntry)
+			for index, value := range entries {
+				m.options[index] = value
+			}
 			m.GoBack = true
 			m.cursor = 0
 		}
