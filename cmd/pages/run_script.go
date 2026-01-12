@@ -17,7 +17,7 @@ type RunScriptModel struct {
 	err     error
 }
 
-func InitializedRunScriptModel() RunScriptModel {
+func NewRunScriptModel() RunScriptModel {
 	return RunScriptModel{
 		cursor:  0,
 		options: []string{"Recommended settings", "Detailed"},

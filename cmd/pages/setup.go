@@ -204,7 +204,7 @@ type SetupModel struct {
 }
 
 // initialized setup model
-func InitializedSetupModel() SetupModel {
+func NewSetupModel() SetupModel {
 	// textInput creating
 	ti := textinput.New()
 	ti.Placeholder = "Enter server name..."

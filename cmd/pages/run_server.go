@@ -19,7 +19,7 @@ type RunServerModel struct {
 	err       error
 }
 
-func InitializedRunServerModel() RunServerModel {
+func NewRunServerModel() RunServerModel {
 	// textInput init
 	ti := textinput.New()
 	ti.Placeholder = "Enter server name..."

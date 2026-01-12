@@ -101,7 +101,7 @@ type PluginManagementModel struct {
 	err        error
 }
 
-func InitializedPluginManagementModel() PluginManagementModel {
+func NewPluginManagementModel() PluginManagementModel {
 	ti := textinput.New()
 	ti.Placeholder = "Enter plugin id..."
 	ti.Focus() // Start with the cursor blinking inside it

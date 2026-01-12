@@ -18,7 +18,7 @@ type RemoveFilesModel struct {
 	err      error
 }
 
-func InitializedRemoveFilesModel() RemoveFilesModel {
+func NewRemoveFilesModel() RemoveFilesModel {
 	entries, _ := os.ReadDir(".")
 	options := make(map[int]os.DirEntry)
 	for index, value := range entries {
