@@ -34,3 +34,34 @@ func NewSetupModel() SetupModel {
 		textInput: ti,
 	}
 }
+
+// Dashboard Model --------------------------------------------------------------------
+type DashboardModel struct {
+	cursor        int
+	options       []string
+	CurrentAction int
+}
+
+func NewDashboardModel() DashboardModel {
+	return DashboardModel{
+		cursor:        0,
+		options:       []string{"Create a run script", "Run the server", "Manage server properties", "Remove all server files", "Plugin Management", "Hi", "My", "Name", "Is", "Edwin", "And", "I", "Made", "The", "Mimic"},
+		CurrentAction: 0,
+	}
+}
+
+// RunScript Model --------------------------------------------------------------------
+type RunScriptModel struct {
+	cursor  int
+	options []string
+	GoBack  bool
+	err     error
+}
+
+func NewRunScriptModel() RunScriptModel {
+	return RunScriptModel{
+		cursor:  0,
+		options: []string{"Recommended settings", "Detailed"},
+		GoBack:  false,
+	}
+}
