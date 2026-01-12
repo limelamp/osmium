@@ -119,3 +119,27 @@ func NewRemoveFilesModel() RemoveFilesModel {
 		GoBack:   false,
 	}
 }
+
+// PluginManagement Model
+type PluginManagementModel struct {
+	cursor     int
+	options    []string
+	GoBack     bool
+	queryInput textinput.Model
+	err        error
+}
+
+func NewPluginManagementModel() PluginManagementModel {
+	ti := textinput.New()
+	ti.Placeholder = "Enter plugin id..."
+	ti.Focus() // Start with the cursor blinking inside it
+	ti.CharLimit = 20
+	ti.Width = 20
+
+	return PluginManagementModel{
+		cursor:     0,
+		options:    []string{"Recommended settings", "Detailed"},
+		GoBack:     false,
+		queryInput: ti,
+	}
+}

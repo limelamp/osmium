@@ -311,3 +311,35 @@ func (m RemoveFilesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	return m, nil
 }
+
+// PluginManagement State
+func (m PluginManagementModel) Init() tea.Cmd {
+	return nil
+}
+
+func (m PluginManagementModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c", "q":
+			return m, tea.Quit
+		case "up":
+			if m.cursor > 0 {
+				m.cursor--
+			}
+		case "down":
+			if m.cursor < len(m.options)-1 {
+				m.cursor++
+			}
+		case "shift+backspace":
+			m.GoBack = true
+			return m, nil
+		case "enter":
+			util.DownloadPluginByID(m.queryInput.Value())
+			fmt.Println("Downloaded! Good Luck lol")
+		}
+	}
+	var cmd tea.Cmd
+	m.queryInput, cmd = m.queryInput.Update(msg)
+	return m, cmd
+}
