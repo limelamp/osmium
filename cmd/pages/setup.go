@@ -211,6 +211,7 @@ func InitializedSetupModel() SetupModel {
 	ti.Focus() // Start with the cursor blinking inside it
 	ti.CharLimit = 20
 	ti.Width = 20
+	ti.SetValue("false")
 
 	return SetupModel{
 		cursor:    0,
