@@ -262,3 +262,52 @@ func (m RunServerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.textInput, _ = m.textInput.Update(msg)
 	return m, nil
 }
+
+// RemoveFiles State
+func (m RemoveFilesModel) Init() tea.Cmd {
+	return nil
+}
+
+func (m RemoveFilesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c", "q":
+			return m, tea.Quit
+		case "up":
+			if m.cursor > 0 {
+				m.cursor--
+			}
+		case "down":
+			if m.cursor < len(m.options)-1 {
+				m.cursor++
+			}
+		case "backspace":
+			m.GoBack = true
+			return m, nil
+		case " ":
+			m.selected[m.cursor] = !m.selected[m.cursor]
+		case "ctrl+a":
+			for i := 0; i < len(m.options); i++ {
+				m.selected[i] = !m.selected[i]
+			}
+		//! panic when deleting the second time in a single session, the cause is cursor index misalign with the m.options map
+		case "enter":
+			for key, value := range m.selected {
+				if value {
+					os.RemoveAll(m.options[key].Name())
+					delete(m.options, key)
+				}
+			}
+			m.selected = make(map[int]bool)
+			entries, _ := os.ReadDir(".")
+			m.options = make(map[int]os.DirEntry)
+			for index, value := range entries {
+				m.options[index] = value
+			}
+			m.GoBack = true
+			m.cursor = 0
+		}
+	}
+	return m, nil
+}

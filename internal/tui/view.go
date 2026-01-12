@@ -131,3 +131,45 @@ func (m RunServerModel) View() string {
 	// s += "\n\n" + "Navigate using arrow keys. Press 'q' to exit, 'backspace' to go back.\n\n"
 	return s
 }
+
+// RemoveFiles View
+func (m RemoveFilesModel) View() string {
+	headerStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("#FAFAFA")).
+		Background(lipgloss.Color("#ff00a6ff")).
+		Padding(0, 1)
+
+	selectedStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#FF0000"))
+
+	s := headerStyle.Render(" OSMIUM - REMOVING FILES ") + "\n\n"
+
+	if m.err != nil {
+		errorStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FF0000")).
+			Bold(true)
+		s += errorStyle.Render("Error: "+m.err.Error()) + "\n\n"
+	}
+
+	// Create a simple list
+	for i := 0; i < len(m.options); i++ {
+		cursor := "  "
+		if m.cursor == i {
+			cursor = "> "
+		}
+
+		name := m.options[i].Name()
+
+		if m.selected[i] {
+			// Selected: add asterisk and color red
+			s += fmt.Sprintf("%s%s\n", cursor, selectedStyle.Render("* "+name))
+		} else {
+			// Not selected: normal display
+			s += fmt.Sprintf("%s  %s\n", cursor, name)
+		}
+	}
+
+	s += "\n\n" + "Navigate using arrow keys. Press ctrl + a to toggle all. Press 'q' to exit, 'backspace' to go back.\n\n"
+	return s
+}

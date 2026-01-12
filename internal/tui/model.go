@@ -3,6 +3,8 @@
 package tui
 
 import (
+	"os"
+
 	"github.com/charmbracelet/bubbles/textinput"
 )
 
@@ -91,5 +93,29 @@ func NewRunServerModel() RunServerModel {
 		textInput: ti,
 		firstRun:  true,
 		GoBack:    false,
+	}
+}
+
+// RemoveFiles Model
+type RemoveFilesModel struct {
+	cursor   int
+	options  map[int]os.DirEntry
+	selected map[int]bool
+	GoBack   bool
+	err      error
+}
+
+func NewRemoveFilesModel() RemoveFilesModel {
+	entries, _ := os.ReadDir(".")
+	options := make(map[int]os.DirEntry)
+	for index, value := range entries {
+		options[index] = value
+	}
+
+	return RemoveFilesModel{
+		cursor:   0,
+		options:  options,
+		selected: make(map[int]bool),
+		GoBack:   false,
 	}
 }
