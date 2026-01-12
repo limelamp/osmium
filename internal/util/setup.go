@@ -1,4 +1,4 @@
-package pages
+package util
 
 import (
 	"encoding/json"
@@ -10,7 +10,7 @@ import (
 
 // Json structs ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 // The "Master Manifest" lists all versions
-type VanillaVersionManifest struct {
+type vanillaVersionManifest struct {
 	Latest struct {
 		Release string `json:"release"`
 	} `json:"latest"`
@@ -21,7 +21,7 @@ type VanillaVersionManifest struct {
 }
 
 // The "Version Specific JSON" contains the actual jar link
-type VanillaVersionPackage struct {
+type vanillaVersionPackage struct {
 	Downloads struct {
 		Server struct {
 			URL string `json:"url"`
@@ -30,11 +30,11 @@ type VanillaVersionPackage struct {
 }
 
 // https://api.papermc.io/v2/projects/paper/versions/{version}/builds/{build}/downloads/{filename}
-type PaperBuilds struct {
+type paperBuilds struct {
 	Builds []int `json:"builds"` // Build numbers
 }
 
-type PaperDownloads struct {
+type paperDownloads struct {
 	Downloads struct {
 		Application struct {
 			Name string `json:"name"`
@@ -51,7 +51,7 @@ func getVanillaServerURL(targetVersion string) (string, error) {
 	}
 	defer resp.Body.Close()
 
-	var manifest VanillaVersionManifest
+	var manifest vanillaVersionManifest
 	if err := json.NewDecoder(resp.Body).Decode(&manifest); err != nil {
 		return "", err
 	}
@@ -76,7 +76,7 @@ func getVanillaServerURL(targetVersion string) (string, error) {
 	}
 	defer resp.Body.Close()
 
-	var pkg VanillaVersionPackage
+	var pkg vanillaVersionPackage
 	if err := json.NewDecoder(resp.Body).Decode(&pkg); err != nil {
 		return "", err
 	}
@@ -93,7 +93,7 @@ func getPaperServerURL(version string) (string, error) {
 	}
 	defer resp.Body.Close()
 
-	var buildsData PaperBuilds
+	var buildsData paperBuilds
 	if err := json.NewDecoder(resp.Body).Decode(&buildsData); err != nil {
 		return "", err
 	}
@@ -111,7 +111,7 @@ func getPaperServerURL(version string) (string, error) {
 	}
 	defer resp.Body.Close()
 
-	var info PaperDownloads
+	var info paperDownloads
 	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
 		return "", err
 	}
@@ -153,7 +153,7 @@ func downloadFile(url string, filename string) error {
 	return nil
 }
 
-func downloadJar(jarType string, jarVersion string) error {
+func DownloadJar(jarType string, jarVersion string) error {
 	// Deciding which url
 	url := ""
 	var err error
@@ -184,4 +184,3 @@ func downloadJar(jarType string, jarVersion string) error {
 	fmt.Println("Download finished: ", output)
 	return nil
 }
-
