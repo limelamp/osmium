@@ -20,15 +20,17 @@ const (
 	stateRunServer
 	_
 	stateRemoveFiles
+	statePluginManagement
 )
 
 type rootModel struct {
-	state       sessionState
-	setup       pages.SetupModel     // The setup "page"
-	dashboard   pages.DashboardModel // The main dashboard "page"
-	runscript   pages.RunScriptModel // Page to create a run_script
-	runserver   pages.RunServerModel
-	removefiles pages.RemoveFilesModel
+	state            sessionState
+	setup            pages.SetupModel     // The setup "page"
+	dashboard        pages.DashboardModel // The main dashboard "page"
+	runscript        pages.RunScriptModel // Page to create a run_script
+	runserver        pages.RunServerModel
+	removefiles      pages.RemoveFilesModel
+	pluginmanagement pages.PluginManagementModel
 }
 
 // Bubble Tea States ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -73,6 +75,9 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case 4:
 			m.dashboard.CurrentAction = 0
 			m.state = stateRemoveFiles
+		case 5:
+			m.dashboard.CurrentAction = 0
+			m.state = statePluginManagement
 		}
 
 		cmd = newCmd
@@ -105,6 +110,17 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.removefiles.GoBack = false
 			m.state = stateDashboard
 		}
+
+	case statePluginManagement:
+		newRS, newCmd := m.pluginmanagement.Update(msg)
+		m.pluginmanagement = newRS.(pages.PluginManagementModel)
+
+		cmd = newCmd
+
+		if m.pluginmanagement.GoBack {
+			m.pluginmanagement.GoBack = false
+			m.state = stateDashboard
+		}
 	}
 
 	return m, cmd
@@ -120,6 +136,8 @@ func (m rootModel) View() string {
 		return m.runserver.View()
 	case stateRemoveFiles:
 		return m.removefiles.View()
+	case statePluginManagement:
+		return m.pluginmanagement.View()
 	}
 	return m.dashboard.View()
 }
@@ -139,12 +157,13 @@ var rootCmd = &cobra.Command{
 
 		// Initialize the container with both "pages" set
 		mainModel := rootModel{
-			state:       initialState,
-			setup:       pages.InitializedSetupModel(),     // Setup page for setting up the server if it isn't already
-			dashboard:   pages.InitializedDashboardModel(), // Main dashboard page
-			runscript:   pages.InitializedRunScriptModel(), // Page for creating a run script
-			runserver:   pages.InitializedRunServerModel(),
-			removefiles: pages.InitializedRemoveFilesModel(),
+			state:            initialState,
+			setup:            pages.InitializedSetupModel(),     // Setup page for setting up the server if it isn't already
+			dashboard:        pages.InitializedDashboardModel(), // Main dashboard page
+			runscript:        pages.InitializedRunScriptModel(), // Page for creating a run script
+			runserver:        pages.InitializedRunServerModel(),
+			removefiles:      pages.InitializedRemoveFilesModel(),
+			pluginmanagement: pages.InitializedPluginManagementModel(),
 		}
 
 		mainProcess := tea.NewProgram(mainModel, tea.WithAltScreen())
