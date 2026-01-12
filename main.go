@@ -1,5 +1,5 @@
 /*
-Copyright © 2025 NAME HERE <EMAIL ADDRESS>
+Copyright © 2026 LimeLamp <EMAIL ADDRESS>
 */
 package main
 
