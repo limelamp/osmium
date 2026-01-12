@@ -1,10 +1,12 @@
+// Models declared here
+
 package tui
 
 import (
 	"github.com/charmbracelet/bubbles/textinput"
 )
 
-// Setup Model -------------------------------------------------------------------------
+// Setup Model
 type SetupModel struct {
 	cursor     int
 	step       int
@@ -17,7 +19,6 @@ type SetupModel struct {
 	err        error
 }
 
-// initialized setup model
 func NewSetupModel() SetupModel {
 	// textInput creating
 	ti := textinput.New()
@@ -35,7 +36,7 @@ func NewSetupModel() SetupModel {
 	}
 }
 
-// Dashboard Model --------------------------------------------------------------------
+// Dashboard Model
 type DashboardModel struct {
 	cursor        int
 	options       []string
@@ -50,7 +51,7 @@ func NewDashboardModel() DashboardModel {
 	}
 }
 
-// RunScript Model --------------------------------------------------------------------
+// RunScript Model
 type RunScriptModel struct {
 	cursor  int
 	options []string
@@ -63,5 +64,32 @@ func NewRunScriptModel() RunScriptModel {
 		cursor:  0,
 		options: []string{"Recommended settings", "Detailed"},
 		GoBack:  false,
+	}
+}
+
+// RunServer Model
+type RunServerModel struct {
+	cursor    int
+	options   []string
+	textInput textinput.Model
+	firstRun  bool
+	GoBack    bool
+	err       error
+}
+
+func NewRunServerModel() RunServerModel {
+	// textInput init
+	ti := textinput.New()
+	ti.Placeholder = "Enter server name..."
+	ti.Focus() // Start with the cursor blinking inside it
+	ti.CharLimit = 500
+	ti.Width = 20
+
+	return RunServerModel{
+		cursor:    0,
+		options:   []string{"Recommended settings", "Detailed"},
+		textInput: ti,
+		firstRun:  true,
+		GoBack:    false,
 	}
 }

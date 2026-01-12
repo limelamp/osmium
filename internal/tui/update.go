@@ -15,7 +15,7 @@ import (
 //* In Go, different types can have methods with the same name, so both SetupModel.Init()
 //* and DashboardModel.Init() can coexist without conflict since they're on different receiver types.
 
-// Setup State ------------------------------------------------------------------------------------------------------------
+// Setup State
 func (m SetupModel) Init() tea.Cmd {
 	return nil
 }
@@ -115,7 +115,7 @@ func (m SetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// State Dashboard --------------------------------------------------------------------------------------------------------
+// Dashboard State
 func (m DashboardModel) Init() tea.Cmd {
 	return nil
 }
@@ -141,7 +141,7 @@ func (m DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// State RunScript --------------------------------------------------------------------------------------------------------
+// RunScript State
 func (m RunScriptModel) Init() tea.Cmd {
 	return nil
 }
@@ -199,5 +199,66 @@ func (m RunScriptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
+	return m, nil
+}
+
+// RunServer State
+func (m RunServerModel) Init() tea.Cmd {
+
+	return nil
+}
+
+func (m RunServerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.firstRun {
+		// Run the server
+		javaCMD := exec.Command(
+			"java",
+			"-jar",
+			"-Xms4G",
+			"server.jar",
+			"nogui",
+		)
+
+		// Run in the same directory
+		javaCMD.Dir, _ = os.Getwd()
+
+		// Output stuff
+		javaCMD.Stdout = os.Stdout
+		javaCMD.Stderr = os.Stderr
+		javaCMD.Stdin = os.Stdin
+
+		if err := javaCMD.Run(); err != nil {
+			m.err = err
+		}
+
+		m.firstRun = false
+	}
+
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c":
+			return m, tea.Quit
+		case "up":
+			if m.cursor > 0 {
+				m.cursor--
+			}
+		case "down":
+			if m.cursor < len(m.options)-1 {
+				m.cursor++
+			}
+		// case "backspace":
+		// 	m.GoBack = true
+		// 	return m, nil
+		case "enter":
+			switch m.textInput.Value() {
+
+			}
+		default:
+
+		}
+	}
+
+	m.textInput, _ = m.textInput.Update(msg)
 	return m, nil
 }
