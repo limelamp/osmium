@@ -44,7 +44,7 @@ func DownloadPluginByID(projectID string) error {
 
 	// 1. Get the list of versions for this specific project
 	// Filter by game_versions to make sure we get the right one
-	url := fmt.Sprintf("https://api.modrinth.com/v2/project/%s/version?game_versions=%s", projectID, mcVersion)
+	url := fmt.Sprintf("https://api.modrinth.com/v2/project/%s/version?game_versions=[%s]", projectID, mcVersion)
 	// url := fmt.Sprintf("https://api.modrinth.com/v2/project/%s", projectID)
 	//https://api.modrinth.com/v2/project/skinrestorer/version?game_versions="1.21.11"
 
