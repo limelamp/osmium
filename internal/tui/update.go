@@ -331,12 +331,15 @@ func (m PluginManagementModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.cursor < len(m.options)-1 {
 				m.cursor++
 			}
-		case "shift+backspace":
+		case "backspace":
 			m.GoBack = true
 			return m, nil
 		case "enter":
-			util.DownloadPluginByID(m.queryInput.Value())
-			fmt.Println("Downloaded! Good Luck lol")
+			if err := util.DownloadPluginByID(m.queryInput.Value()); err != nil {
+				fmt.Println(err)
+			} else {
+				fmt.Println("Downloaded, good luck lol")
+			}
 		}
 	}
 	var cmd tea.Cmd
