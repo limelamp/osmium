@@ -510,10 +510,20 @@ func IsModLoader(jarType string) bool {
 
 // GetServerRunCommand returns the command needed to run the server for a given jar type
 func GetServerRunCommand(jarType string) (string, []string) {
+	// f, err := os.Create("output.txt")
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// defer f.Close()
+
+	// // Write jarType to file
+	// fmt.Fprintln(f, jarType)
+
 	switch jarType {
 	case "NeoForge":
-		// NeoForge creates run scripts after installation
-		return "java", []string{"@user_jvm_args.txt", "@libraries/net/neoforged/neoforge/*/win_args.txt", "nogui"}
+		// NeoForge creates run.bat/run.sh after installation - use those directly
+		// On Windows, run the batch file
+		return "cmd", []string{"/c", "run.bat"}
 	case "Fabric":
 		// Fabric server jar is named fabric-server-launch.jar or server.jar
 		return "java", []string{"-jar", "-Xms4G", "server.jar", "nogui"}

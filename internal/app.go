@@ -1,10 +1,9 @@
 package internal
 
 import (
-	"os"
-
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/limelamp/osmium/internal/tui"
+	"github.com/limelamp/osmium/internal/util"
 )
 
 // Bubble tea state data ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -33,10 +32,9 @@ type RootModel struct {
 
 func NewRootModel() RootModel {
 	// Determine the starting state
-	initialState := stateDashboard
-	if _, err := os.Stat("server.jar"); os.IsNotExist(err) {
-		// fmt.Println("No server.jar found! Starting setup...")
-		initialState = stateSetup
+	initialState := stateSetup
+	if util.FindExecutable() != "" {
+		initialState = stateDashboard
 	}
 
 	// Initialize the container with both "pages" set

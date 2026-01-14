@@ -226,7 +226,6 @@ func (m RunScriptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // RunServer State
 func (m RunServerModel) Init() tea.Cmd {
-
 	return nil
 }
 
