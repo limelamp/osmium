@@ -9,6 +9,7 @@ import (
 	"runtime"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/limelamp/osmium/internal/constants"
 	"github.com/limelamp/osmium/internal/util"
 )
 
@@ -41,33 +42,57 @@ func (m SetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "enter":
 			switch m.step {
-			case 0:
-				m.jarType = m.options[m.cursor] // Save the type
+			case 0: // Choose category
+				m.category = m.options[m.cursor] // Save the category
 
-				// Now change the options to Versions
+				// Get server types for this category
+				serverTypes, ok := constants.CategoryOptions[m.category]
+				if !ok {
+					m.err = fmt.Errorf("unknown category: %s", m.category)
+					return m, nil
+				}
+
+				// Move to server type selection
 				m.step = 1
 				m.cursor = 0
-				m.options = []string{"1.21.11", "1.21", "1.20", "1.19"}
-				m.infoText = "Choose the Minecraft version:"
+				m.options = serverTypes
+				m.infoText = fmt.Sprintf("Choose your %s server software:", m.category)
 
-			case 1: // choose version and begin download
+			case 1: // Choose server type
+				m.jarType = m.options[m.cursor] // Save the type
+
+				// Get versions for this server type
+				versions, ok := constants.ServerVersions[m.jarType]
+				if !ok {
+					m.err = fmt.Errorf("no versions found for %s", m.jarType)
+					return m, nil
+				}
+
+				// Move to version selection
+				m.step = 2
+				m.cursor = 0
+				m.options = versions
+				m.infoText = fmt.Sprintf("Choose the Minecraft version for %s:", m.jarType)
+
+			case 2: // Choose version and begin download
 				m.jarVersion = m.options[m.cursor] // Save the version
 
-				// return m, downloadServerJar(m.serverType, m.version)
+				// Download the server jar (or installer)
 				if err := util.DownloadJar(m.jarType, m.jarVersion); err != nil {
 					m.err = err
 					return m, nil
 				}
 
-				// Move to download state
-				m.step = 2
+				// Move to init prompt
+				m.step = 3
 				m.cursor = 0
 				m.options = []string{"Yes", "No, skip to the dashboard"}
-				m.infoText = "Would you like to initiliaze the files by running the server once?"
-			case 2: // init files
+				m.infoText = "Would you like to initialize the files by running the server once?"
+
+			case 3: // Init files prompt
 				switch m.cursor {
 				case 0:
-					m.step = 3
+					m.step = 4
 					m.cursor = 0
 					m.options = []string{}
 					m.infoText = "Do you agree to Mojang's EULA? More info at: https://aka.ms/MinecraftEULA\nPlease type \"true\" in order to agree."
@@ -75,7 +100,7 @@ func (m SetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.GoBack = true
 				}
 
-			case 3:
+			case 4: // EULA agreement and first run
 				switch m.textInput.Value() {
 				case "true":
 					content := "#By changing the setting below to TRUE you are indicating your agreement to our EULA (https://aka.ms/MinecraftEULA).\n"
@@ -83,14 +108,11 @@ func (m SetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 					os.WriteFile("eula.txt", []byte(content), 0644)
 
+					// Get the appropriate run command for this server type
+					javaPath, args := util.GetServerRunCommand(m.jarType)
+
 					// Run the server
-					javaCMD := exec.Command(
-						"java",
-						"-jar",
-						"-Xms4G",
-						"server.jar",
-						"nogui",
-					)
+					javaCMD := exec.Command(javaPath, args...)
 
 					// Run in the same directory
 					javaCMD.Dir, _ = os.Getwd()
