@@ -20,6 +20,10 @@ func (m SetupModel) View() string {
 		Background(lipgloss.Color("#63f456ff")).
 		Padding(0, 1)
 
+	categoryStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#00AAFF")).
+		Bold(true)
+
 	s := headerStyle.Render(" OSMIUM - SERVER INITIALIZATION ") + "\n\n"
 
 	if m.err != nil {
@@ -32,15 +36,23 @@ func (m SetupModel) View() string {
 	s += "There appears to be no server initialized in the current folder!" + "\n"
 	s += "This setup wizard will be guiding you through the creation of the server." + "\n\n"
 
-	s += "\n\n" + m.infoText + "\n\n"
-
-	switch m.step {
-	case 0:
-
+	// Show current selections as breadcrumbs
+	if m.step > 0 && m.category != "" {
+		s += "Category: " + categoryStyle.Render(m.category)
+		if m.step > 1 && m.jarType != "" {
+			s += " → Software: " + categoryStyle.Render(m.jarType)
+		}
+		if m.step > 2 && m.jarVersion != "" {
+			s += " → Version: " + categoryStyle.Render(m.jarVersion)
+		}
+		s += "\n"
 	}
-	// Create a simple list
-	// serverTypes := [length]string{"Vanilla", "Bukkit", "Spigot", "Paper", "Purpur"}
-	if m.step != 3 {
+
+	s += "\n" + m.infoText + "\n\n"
+
+	// Display options based on step
+	// Step 4 is EULA input, so we show text input instead of options
+	if m.step != 4 {
 		for i := 0; i < len(m.options); i++ {
 			cursor := "  "
 			if m.cursor == i {

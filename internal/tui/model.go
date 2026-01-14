@@ -13,6 +13,7 @@ type SetupModel struct {
 	cursor     int
 	step       int
 	GoBack     bool
+	category   string // Vanilla/Simple, Plugin-Based, Mod Loaders, Hybrid
 	jarType    string
 	jarVersion string
 	options    []string
@@ -32,7 +33,7 @@ func NewSetupModel() SetupModel {
 
 	return SetupModel{
 		cursor:    0,
-		options:   []string{"Vanilla", "Paper", "Purpur"}, //[]string{"Vanilla", "Bukkit", "Spigot", "Paper", "Purpur"},
+		options:   []string{"Vanilla/Simple", "Plugin-Based", "Mod Loaders", "Hybrid"},
 		infoText:  "Choose the type of server you would like to create:",
 		textInput: ti,
 	}
