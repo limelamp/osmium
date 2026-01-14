@@ -10,9 +10,15 @@ import (
 
 // The structure of the Modrinth Version API response
 type modrinthVersion struct {
-	Files []struct {
+	ID            string   `json:"id"`
+	VersionNumber string   `json:"version_number"`
+	GameVersions  []string `json:"game_versions"`
+	Loaders       []string `json:"loaders"`
+	VersionType   string   `json:"version_type"` // "release", "beta", "alpha"
+	Files         []struct {
 		URL      string `json:"url"`
 		Filename string `json:"filename"`
+		Primary  bool   `json:"primary"`
 	} `json:"files"`
 }
 
