@@ -375,32 +375,89 @@ func (m ManageConfigsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						}
 					}
 
+					m.fileType = "properties"
 					m.configOptionKeys = keys
 					m.configOptionValues = values
 					m.step = 1
+
+				case 1: // bukkit.yml
+					file, _ := os.Open("bukkit.yml")
+					defer file.Close()
+					scanner := bufio.NewScanner(file)
+					for scanner.Scan() {
+						line := scanner.Text() // Don't TrimSpace yet!
+
+						if strings.TrimSpace(line) == "" || strings.HasPrefix(strings.TrimSpace(line), "#") {
+							continue
+						}
+
+						if strings.Contains(line, ":") {
+							parts := strings.SplitN(line, ":", 2)
+							key := parts[0] // Keep the leading spaces for the UI
+							val := strings.TrimSpace(parts[1])
+
+							if val == "" {
+								// This is a header like "settings:"
+								m.configOptionKeys = append(m.configOptionKeys, key)
+								m.configOptionValues = append(m.configOptionValues, "")
+							} else {
+								m.configOptionKeys = append(m.configOptionKeys, key)
+								m.configOptionValues = append(m.configOptionValues, val)
+							}
+							m.fileType = "yml"
+							m.step = 1
+						}
+					}
+
 				}
 			case 1:
 				if m.selected == m.cursor { // if this is true, then the same field was selected twice, meaning we can write smth
-					// 1. Update the local data with the new value from the input
-					m.configOptionValues[m.cursor] = m.textInput.Value()
+					switch m.fileType {
+					case "properties":
+						// 1. Update the local data with the new value from the input
+						m.configOptionValues[m.cursor] = m.textInput.Value()
 
-					// 2. Prepare the file content
-					var lines []string
-					for i := range m.configOptionKeys {
-						line := fmt.Sprintf("%s=%s", m.configOptionKeys[i], m.configOptionValues[i])
-						lines = append(lines, line)
+						// 2. Prepare the file content
+						var lines []string
+						for i := range m.configOptionKeys {
+							line := fmt.Sprintf("%s=%s", m.configOptionKeys[i], m.configOptionValues[i])
+							lines = append(lines, line)
+						}
+
+						// 3. Write to file (0644 is standard permissions)
+						output := strings.Join(lines, "\n")
+						err := os.WriteFile("server.properties", []byte(output), 0644)
+						if err != nil {
+							// Handle error (togril)
+						}
+
+						// 4. Reset selection mode
+						m.selected = -1
+						m.textInput.Blur() // unfocus
+
+					case "yml":
+						// 1. Update the local data with the new value from the input
+						m.configOptionValues[m.cursor] = m.textInput.Value()
+
+						// 2. Prepare the file content
+						var lines []string
+						for i := range m.configOptionKeys {
+							line := fmt.Sprintf("%s: %s", m.configOptionKeys[i], m.configOptionValues[i])
+							lines = append(lines, line)
+						}
+
+						// 3. Write to file (0644 is standard permissions)
+						output := strings.Join(lines, "\n")
+						err := os.WriteFile("bukkit.yml", []byte(output), 0644)
+						if err != nil {
+							// Handle error (togril)
+						}
+
+						// 4. Reset selection mode
+						m.selected = -1
+						m.textInput.Blur() // unfocus
 					}
 
-					// 3. Write to file (0644 is standard permissions)
-					output := strings.Join(lines, "\n")
-					err := os.WriteFile("server.properties", []byte(output), 0644)
-					if err != nil {
-						// Handle error (togril)
-					}
-
-					// 4. Reset selection mode
-					m.selected = -1
-					m.textInput.Blur() // unfocus
 				} else {
 					m.selected = m.cursor                                // set the selected variable for the view function
 					m.textInput.SetValue(m.configOptionValues[m.cursor]) // give the data of value to textInput

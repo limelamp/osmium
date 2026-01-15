@@ -109,6 +109,7 @@ func NewRunServerModel() RunServerModel {
 // ManageConfigsModel
 type ManageConfigsModel struct {
 	cursor             int
+	fileType           string
 	step               int
 	selected           int
 	options            []string
