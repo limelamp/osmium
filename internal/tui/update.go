@@ -368,7 +368,7 @@ func (m PluginManagementModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.cursor < len(m.options)-1 {
 				m.cursor++
 			}
-		case "backspace":
+		case "ctrl+h": // ctrl+backspace
 			m.GoBack = true
 			return m, nil
 		case "enter":
