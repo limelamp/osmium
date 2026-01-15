@@ -303,6 +303,38 @@ func (m RunServerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // ManageConfigs State
+func (m *ManageConfigsModel) loadYamlConfig(path string, fileType string) {
+	file, _ := os.Open(path)
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text() // Don't TrimSpace yet!
+
+		if strings.TrimSpace(line) == "" || strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
+		}
+
+		if strings.Contains(line, ":") {
+			parts := strings.SplitN(line, ":", 2)
+			key := parts[0] // Keep the leading spaces for the UI
+			val := strings.TrimSpace(parts[1])
+
+			if val == "" {
+				// This is a header like "settings:"
+				m.configOptionKeys = append(m.configOptionKeys, key)
+				m.configOptionValues = append(m.configOptionValues, "")
+			} else {
+				m.configOptionKeys = append(m.configOptionKeys, key)
+				m.configOptionValues = append(m.configOptionValues, val)
+			}
+
+		}
+	}
+	m.fileName = path
+	m.fileType = fileType
+	m.step = 1
+}
+
 func (m ManageConfigsModel) Init() tea.Cmd {
 	return nil
 }
@@ -382,34 +414,19 @@ func (m ManageConfigsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.step = 1
 
 				case 1: // bukkit.yml
-					file, _ := os.Open("bukkit.yml")
-					defer file.Close()
-					scanner := bufio.NewScanner(file)
-					for scanner.Scan() {
-						line := scanner.Text() // Don't TrimSpace yet!
+					m.loadYamlConfig("bukkit.yml", "yml")
 
-						if strings.TrimSpace(line) == "" || strings.HasPrefix(strings.TrimSpace(line), "#") {
-							continue
-						}
+				case 2: // spigot.yml
+					m.loadYamlConfig("spigot.yml", "yml")
 
-						if strings.Contains(line, ":") {
-							parts := strings.SplitN(line, ":", 2)
-							key := parts[0] // Keep the leading spaces for the UI
-							val := strings.TrimSpace(parts[1])
+				case 3: // config/paper-global.yml
+					m.loadYamlConfig("./config/paper-global.yml", "yml")
 
-							if val == "" {
-								// This is a header like "settings:"
-								m.configOptionKeys = append(m.configOptionKeys, key)
-								m.configOptionValues = append(m.configOptionValues, "")
-							} else {
-								m.configOptionKeys = append(m.configOptionKeys, key)
-								m.configOptionValues = append(m.configOptionValues, val)
-							}
-							m.fileName = "bukkit.yml"
-							m.fileType = "yml"
-							m.step = 1
-						}
-					}
+				case 4: // config/paper-world-defaults.yml
+					m.loadYamlConfig("./config/paper-world-defaults.yml", "yml")
+
+				case 5: // purpur.yml
+					m.loadYamlConfig("purpur.yml", "yml")
 
 				}
 			case 1:
@@ -448,7 +465,7 @@ func (m ManageConfigsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							val := m.configOptionValues[i]
 
 							// If it's a section header (no value)
-							if val == "" || val == "(section)" {
+							if val == "" {
 								// Ensure NO space exists after the colon
 								line := strings.TrimRight(key, " ")
 								if !strings.HasSuffix(line, ":") {
