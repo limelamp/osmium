@@ -300,6 +300,67 @@ func (m RunServerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+// ManageConfigs State
+func (m ManageConfigsModel) Init() tea.Cmd {
+	return nil
+}
+
+func (m ManageConfigsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c", "q":
+			return m, tea.Quit
+		case "up":
+			if m.cursor > 0 {
+				m.cursor--
+			}
+		case "down":
+			if m.cursor < len(m.options)-1 {
+				m.cursor++
+			}
+		case "backspace":
+			m.GoBack = true
+			return m, nil
+		case "enter":
+			switch m.cursor {
+			case 0: // Recommended settings
+				const globalContent = "java -jar -Xms4G server.jar nogui"
+				var content []byte
+				var outputFile string
+				// Create a very basic bash script
+				switch runtime.GOOS { // Create different files and contents for different OS
+				case "linux":
+					content = []byte("#!/bin/bash\n\n" + globalContent)
+					outputFile = "run_server.sh"
+				case "windows":
+					content = []byte(globalContent)
+					outputFile = "run_server.bat"
+				case "darwin":
+					content = []byte("#!/bin/sh\n\n" + globalContent)
+					outputFile = "run_server.sh"
+				case "freebsd":
+					content = []byte("#!/bin/bash\n\n" + globalContent)
+					outputFile = "run_server.sh"
+				default:
+					fmt.Println("Unsupported OS!")
+					return m, nil
+				}
+
+				// Create the file
+				err := os.WriteFile(outputFile, content, 0755)
+				if err != nil {
+					m.err = err
+					return m, nil
+				}
+
+				fmt.Println("File Created!")
+			}
+		}
+	}
+	return m, nil
+}
+
 // RemoveFiles State
 func (m RemoveFilesModel) Init() tea.Cmd {
 	return nil

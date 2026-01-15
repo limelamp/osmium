@@ -156,6 +156,36 @@ func (m RunServerModel) View() string {
 	return s
 }
 
+// ManageConfigs View
+func (m ManageConfigsModel) View() string {
+	headerStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("#FAFAFA")).
+		Background(lipgloss.Color("#c256f4ff")).
+		Padding(0, 1)
+
+	s := headerStyle.Render(" OSMIUM - CREATING A RUN SCRIPT ") + "\n\n"
+
+	if m.err != nil {
+		errorStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FF0000")).
+			Bold(true)
+		s += errorStyle.Render("Error: "+m.err.Error()) + "\n\n"
+	}
+
+	// Create a simple list
+	for i := 0; i < len(m.options); i++ {
+		cursor := "  "
+		if m.cursor == i {
+			cursor = "> "
+		}
+		s += fmt.Sprintf("%s %s\n", cursor, m.options[i])
+	}
+
+	s += "\n\n" + "Navigate using arrow keys. Press 'q' to exit, 'backspace' to go back.\n\n"
+	return s
+}
+
 // RemoveFiles View
 func (m RemoveFilesModel) View() string {
 	headerStyle := lipgloss.NewStyle().

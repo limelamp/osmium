@@ -53,7 +53,7 @@ type DashboardModel struct {
 func NewDashboardModel() DashboardModel {
 	return DashboardModel{
 		cursor:        0,
-		options:       []string{"Create a run script", "Run the server", "Manage server properties", "Remove selected server files", "Plugin Management", "Mod Managament", "Hi", "My", "Name", "Is", "Edwin", "And", "I", "Made", "The", "Mimic"},
+		options:       []string{"Create a run script", "Run the server", "Manage server configurations", "Remove selected server files", "Plugin Management", "Mod Managament", "Hi", "My", "Name", "Is", "Edwin", "And", "I", "Made", "The", "Mimic"},
 		CurrentAction: 0,
 	}
 }
@@ -103,6 +103,22 @@ func NewRunServerModel() RunServerModel {
 		firstRun:  true,
 		output:    &bytes.Buffer{},
 		GoBack:    false,
+	}
+}
+
+// ManageConfigsModel
+type ManageConfigsModel struct {
+	cursor  int
+	options []string
+	GoBack  bool
+	err     error
+}
+
+func NewManageConfigsModel() ManageConfigsModel {
+	return ManageConfigsModel{
+		cursor:  0,
+		options: []string{"server.properties", "bukkit.yml", "spigot.yml", "config/paper-global.yml", "config/paper-world-defaults.yml", "purpur.yml"},
+		GoBack:  false,
 	}
 }
 
