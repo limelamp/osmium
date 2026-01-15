@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"runtime"
 )
 
 // Json structs ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -522,8 +523,20 @@ func GetServerRunCommand(jarType string) (string, []string) {
 	switch jarType {
 	case "NeoForge":
 		// NeoForge creates run.bat/run.sh after installation - use those directly
-		// On Windows, run the batch file
-		return "cmd", []string{"/c", "run.bat"}
+		switch runtime.GOOS {
+		case "windows": // On Windows, run the batch file
+			return "cmd", []string{"/c", "run.bat", "nogui"}
+		case "linux":
+			return "bash", []string{"run.sh", "nogui"}
+		case "darwin":
+			return "sh", []string{"run.sh", "nogui"}
+		case "freebsd":
+			return "bash", []string{"run.sh", "nogui"}
+		default:
+			fmt.Println("Unsupported OS!")
+			return " ", []string{""} // Something had to be returned
+		}
+
 	// case "Fabric":
 	// 	// Fabric server jar is named fabric-server-launch.jar or server.jar
 	// 	return "java", []string{"-jar", "-Xms4G", "server.jar", "nogui"}
