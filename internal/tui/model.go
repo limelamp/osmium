@@ -25,8 +25,9 @@ type SetupModel struct {
 func NewSetupModel() SetupModel {
 	// textInput creating
 	ti := textinput.New()
-	ti.Placeholder = "Enter server name..."
-	ti.Focus() // Start with the cursor blinking inside it
+	ti.Placeholder = "Type \"true\" to accept..."
+	ti.Focus()     // Start with the cursor blinking inside it
+	ti.Prompt = "" // Remove the ">" out of the way
 	ti.CharLimit = 20
 	ti.Width = 20
 	ti.SetValue("false")
