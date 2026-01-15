@@ -308,26 +308,33 @@ func (m *ManageConfigsModel) loadYamlConfig(path string, fileType string) {
 	defer file.Close()
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		line := scanner.Text() // Don't TrimSpace yet!
+		// Inside your scanner loop
+		line := scanner.Text()
+		trimmed := strings.TrimSpace(line)
 
-		if strings.TrimSpace(line) == "" || strings.HasPrefix(strings.TrimSpace(line), "#") {
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
 		}
 
-		if strings.Contains(line, ":") {
-			parts := strings.SplitN(line, ":", 2)
-			key := parts[0] // Keep the leading spaces for the UI
-			val := strings.TrimSpace(parts[1])
+		// Check for the YAML separator ": " (colon + space)
+		if idx := strings.Index(line, ": "); idx != -1 {
+			// We found a key-value pair!
+			// Key is everything before ": ", value is everything after.
+			key := line[:idx]
+			val := strings.TrimSpace(line[idx+2:]) // +2 to skip the ": "
 
-			if val == "" {
-				// This is a header like "settings:"
-				m.configOptionKeys = append(m.configOptionKeys, key)
-				m.configOptionValues = append(m.configOptionValues, "")
-			} else {
-				m.configOptionKeys = append(m.configOptionKeys, key)
-				m.configOptionValues = append(m.configOptionValues, val)
-			}
-
+			m.configOptionKeys = append(m.configOptionKeys, key)
+			m.configOptionValues = append(m.configOptionValues, val)
+		} else if strings.HasSuffix(trimmed, ":") {
+			// This is a header/section (it ends in a colon with no value after)
+			// We keep the whole line (including leading spaces) as the key
+			m.configOptionKeys = append(m.configOptionKeys, line)
+			m.configOptionValues = append(m.configOptionValues, "")
+		} else if strings.HasPrefix(trimmed, "-") {
+			// This is a list item like "- minecraft:lodestone"
+			// We treat the whole line as the key and keep the value empty
+			m.configOptionKeys = append(m.configOptionKeys, line)
+			m.configOptionValues = append(m.configOptionValues, "")
 		}
 	}
 	m.fileName = path
@@ -464,17 +471,24 @@ func (m ManageConfigsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							key := m.configOptionKeys[i]
 							val := m.configOptionValues[i]
 
-							// If it's a section header (no value)
 							if val == "" {
-								// Ensure NO space exists after the colon
+								// 1. It's a header or list item.
+								// Trim trailing spaces first to see what we're working with
 								line := strings.TrimRight(key, " ")
-								if !strings.HasSuffix(line, ":") {
+
+								// Only add a colon if it doesn't have one AND isn't a list item
+								if !strings.HasSuffix(line, ":") && !strings.Contains(line, "- ") {
 									line += ":"
 								}
 								lines = append(lines, line)
 							} else {
-								// It's a key-value pair
-								lines = append(lines, fmt.Sprintf("%s: %s", key, val))
+								// 2. It's a key-value pair.
+								// Make sure we don't have a colon at the end of the key
+								// because we are adding ": " manually.
+								cleanKey := strings.TrimRight(key, " ")
+								cleanKey = strings.TrimSuffix(cleanKey, ":")
+
+								lines = append(lines, fmt.Sprintf("%s: %s", cleanKey, val))
 							}
 						}
 
