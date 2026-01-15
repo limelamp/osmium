@@ -53,7 +53,7 @@ type DashboardModel struct {
 func NewDashboardModel() DashboardModel {
 	return DashboardModel{
 		cursor:        0,
-		options:       []string{"Create a run script", "Run the server", "Manage server properties", "Remove selected server files", "Plugin Management", "Hi", "My", "Name", "Is", "Edwin", "And", "I", "Made", "The", "Mimic"},
+		options:       []string{"Create a run script", "Run the server", "Manage server properties", "Remove selected server files", "Plugin Management", "Mod Managament", "Hi", "My", "Name", "Is", "Edwin", "And", "I", "Made", "The", "Mimic"},
 		CurrentAction: 0,
 	}
 }
