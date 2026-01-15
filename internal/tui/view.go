@@ -228,6 +228,6 @@ func (m PluginManagementModel) View() string {
 
 	s += m.queryInput.View() + "\n\n"
 
-	s += "\n\n" + "Navigate using arrow keys. Press 'q' to exit, 'backspace' to go back.\n\n"
+	s += "\n\n" + "Navigate using arrow keys. Press 'q' to exit, 'ctrl+backspace' to go back.\n\n"
 	return s
 }
