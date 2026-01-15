@@ -194,7 +194,9 @@ func (m ManageConfigsModel) View() string {
 			s += fmt.Sprintf("%s %s\n", cursor, m.options[i])
 		}
 	case 1:
-		for i := 0; i < len(m.configOptionKeys); i++ {
+		end := m.topItem + m.viewHeight
+
+		for i := m.topItem; i < end; i++ {
 			cursor := "  "
 			if m.cursor == i {
 				cursor = "> "

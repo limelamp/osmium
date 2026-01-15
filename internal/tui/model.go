@@ -116,6 +116,8 @@ type ManageConfigsModel struct {
 	configOptionValues []string
 	textInput          textinput.Model
 	GoBack             bool
+	topItem            int // The index of the first item currently visible
+	viewHeight         int // How many items to show at once
 	err                error
 }
 
@@ -129,11 +131,12 @@ func NewManageConfigsModel() ManageConfigsModel {
 	ti.Width = 20
 
 	return ManageConfigsModel{
-		cursor:    0,
-		step:      0,
-		options:   []string{"server.properties", "bukkit.yml", "spigot.yml", "config/paper-global.yml", "config/paper-world-defaults.yml", "purpur.yml"},
-		textInput: ti,
-		GoBack:    false,
+		cursor:     0,
+		step:       0,
+		options:    []string{"server.properties", "bukkit.yml", "spigot.yml", "config/paper-global.yml", "config/paper-world-defaults.yml", "purpur.yml"},
+		textInput:  ti,
+		GoBack:     false,
+		viewHeight: 40,
 	}
 }
 
