@@ -164,6 +164,16 @@ func (m ManageConfigsModel) View() string {
 		Background(lipgloss.Color("#c256f4ff")).
 		Padding(0, 1)
 
+	keyStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("#2ae012ff")).
+		Padding(0, 1)
+
+	valueStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("#ce2614ff")).
+		Padding(0, 1)
+
 	s := headerStyle.Render(" OSMIUM - CREATING A RUN SCRIPT ") + "\n\n"
 
 	if m.err != nil {
@@ -173,16 +183,34 @@ func (m ManageConfigsModel) View() string {
 		s += errorStyle.Render("Error: "+m.err.Error()) + "\n\n"
 	}
 
-	// Create a simple list
-	for i := 0; i < len(m.options); i++ {
-		cursor := "  "
-		if m.cursor == i {
-			cursor = "> "
+	switch m.step {
+	case 0:
+		// Create a simple list
+		for i := 0; i < len(m.options); i++ {
+			cursor := "  "
+			if m.cursor == i {
+				cursor = "> "
+			}
+			s += fmt.Sprintf("%s %s\n", cursor, m.options[i])
 		}
-		s += fmt.Sprintf("%s %s\n", cursor, m.options[i])
+	case 1:
+		for i := 0; i < len(m.configOptionKeys); i++ {
+			cursor := "  "
+			if m.cursor == i {
+				cursor = "> "
+			}
+
+			if m.selected == i {
+				s += fmt.Sprintf("%s %s=%s\n", cursor, keyStyle.Render(m.configOptionKeys[i]), valueStyle.Render(m.textInput.View()))
+			} else {
+				s += fmt.Sprintf("%s %s=%s\n", cursor, keyStyle.Render(m.configOptionKeys[i]), valueStyle.Render(m.configOptionValues[i]))
+			}
+
+		}
+
 	}
 
-	s += "\n\n" + "Navigate using arrow keys. Press 'q' to exit, 'backspace' to go back.\n\n"
+	s += "\n\n" + "Navigate using arrow keys. Press 'q' to exit, 'ctrl+backspace' to go back.\n\n"
 	return s
 }
 
