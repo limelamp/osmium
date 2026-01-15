@@ -10,6 +10,8 @@ var ServerVersions = map[string][]string{
 	// Mod Loaders
 	"Fabric":   {"1.21.11", "1.21", "1.20.6"},
 	"NeoForge": {"1.21.11", "1.21.4", "1.21.1"},
+	"Forge":    {"1.21.11", "1.21", "1.20.6"},
+	"Quilt":    {"1.21.11", "1.21", "1.20.6"},
 	// Hybrid
 	"Youer": {"1.21.4", "1.21.1"},
 }
@@ -18,6 +20,6 @@ var ServerVersions = map[string][]string{
 var CategoryOptions = map[string][]string{
 	"Vanilla/Simple": {"Vanilla"},
 	"Plugin-Based":   {"Paper", "Purpur"},
-	"Mod Loaders":    {"Fabric", "NeoForge"},
+	"Mod Loaders":    {"Fabric", "NeoForge", "Forge", "Quilt"},
 	"Hybrid":         {"Youer"},
 }

@@ -63,6 +63,23 @@ var NeoForgeVersionMap = map[string]string{
 	"1.21.1":  "21.1",
 }
 
+// Forge version mapping (MC version to Forge version)
+var ForgeVersionMap = map[string]string{
+	"1.21.11": "61.0.6",
+	"1.21":    "51.0.33",
+	"1.20.6":  "50.2.4",
+}
+
+// Quilt API structs
+type quiltLoaderVersion struct {
+	Version string `json:"version"`
+}
+
+type quiltInstallerVersion struct {
+	URL     string `json:"url"`
+	Version string `json:"version"`
+}
+
 // Youer/Mohist API structs
 type mohistBuildResponse struct {
 	Number    int    `json:"number"`
@@ -254,6 +271,47 @@ func getYouerServerURL(mcVersion string) (string, error) {
 	return url, nil
 }
 
+// getForgeServerURL returns the installer JAR URL for Forge
+func getForgeServerURL(mcVersion string) (string, string, error) {
+	forgeVersion, ok := ForgeVersionMap[mcVersion]
+	if !ok {
+		return "", "", fmt.Errorf("Forge version not found for Minecraft %s", mcVersion)
+	}
+
+	// Construct installer URL
+	// Format: https://maven.minecraftforge.net/net/minecraftforge/forge/{mcVer}-{forgeVer}/forge-{mcVer}-{forgeVer}-installer.jar
+	url := fmt.Sprintf("https://maven.minecraftforge.net/net/minecraftforge/forge/%s-%s/forge-%s-%s-installer.jar",
+		mcVersion, forgeVersion, mcVersion, forgeVersion)
+
+	return url, forgeVersion, nil
+}
+
+// getQuiltInstallerURL returns the Quilt installer JAR URL
+func getQuiltInstallerURL() (string, string, error) {
+	// Get the latest installer version from Quilt meta API
+	resp, err := http.Get("https://meta.quiltmc.org/v3/versions/installer")
+	if err != nil {
+		return "", "", err
+	}
+	defer resp.Body.Close()
+
+	var installers []quiltInstallerVersion
+	if err := json.NewDecoder(resp.Body).Decode(&installers); err != nil {
+		return "", "", err
+	}
+
+	if len(installers) == 0 {
+		return "", "", fmt.Errorf("no Quilt installer versions found")
+	}
+
+	// Use the first (latest) installer
+	installerVersion := installers[0].Version
+	url := fmt.Sprintf("https://maven.quiltmc.org/repository/release/org/quiltmc/quilt-installer/%s/quilt-installer-%s.jar",
+		installerVersion, installerVersion)
+
+	return url, installerVersion, nil
+}
+
 // // getFabricAPIURL fetches the latest Fabric API version for a specific Minecraft version from Modrinth
 // func getFabricAPIURL(mcVersion string) (string, string, error) {
 // 	// Create HTTP client with proper User-Agent (required by Modrinth API)
@@ -432,6 +490,22 @@ func DownloadJar(jarType string, jarVersion string) error {
 		}
 		installerFilename = fmt.Sprintf("neoforge-%s-installer.jar", neoforgeVer)
 		isInstaller = true
+	case "Forge":
+		var forgeVer string
+		url, forgeVer, err = getForgeServerURL(jarVersion)
+		if err != nil {
+			return err
+		}
+		installerFilename = fmt.Sprintf("forge-%s-%s-installer.jar", jarVersion, forgeVer)
+		isInstaller = true
+	case "Quilt":
+		var quiltInstallerVer string
+		url, quiltInstallerVer, err = getQuiltInstallerURL()
+		if err != nil {
+			return err
+		}
+		installerFilename = fmt.Sprintf("quilt-installer-%s.jar", quiltInstallerVer)
+		isInstaller = true
 	case "Youer":
 		url, err = getYouerServerURL(jarVersion)
 		if err != nil {
@@ -453,10 +527,16 @@ func DownloadJar(jarType string, jarVersion string) error {
 
 	fmt.Println("Download finished: ", output)
 
-	// If it's an installer (NeoForge), run the installer
+	// If it's an installer (NeoForge, Forge, Quilt), run the installer
 	if isInstaller {
 		fmt.Println("Running installer...")
-		if err := RunModLoaderInstaller(jarType, output); err != nil {
+		var err error
+		if jarType == "Quilt" {
+			err = RunModLoaderInstaller(jarType, output, jarVersion)
+		} else {
+			err = RunModLoaderInstaller(jarType, output)
+		}
+		if err != nil {
 			return err
 		}
 	}
@@ -474,14 +554,23 @@ func DownloadJar(jarType string, jarVersion string) error {
 	return nil
 }
 
-// RunModLoaderInstaller runs the mod loader installer to set up the server (for NeoForge)
-func RunModLoaderInstaller(loaderType string, installerFile string) error {
+// RunModLoaderInstaller runs the mod loader installer to set up the server (for NeoForge, Forge, Quilt)
+func RunModLoaderInstaller(loaderType string, installerFile string, mcVersion ...string) error {
 	var cmd *exec.Cmd
 
 	switch loaderType {
 	case "NeoForge":
 		// java -jar neoforge-installer.jar --installServer
 		cmd = exec.Command("java", "-jar", installerFile, "--installServer")
+	case "Forge":
+		// java -jar forge-installer.jar --installServer
+		cmd = exec.Command("java", "-jar", installerFile, "--installServer")
+	case "Quilt":
+		// java -jar quilt-installer.jar install server {mcVersion} --download-server
+		if len(mcVersion) == 0 {
+			return fmt.Errorf("Quilt requires mcVersion parameter")
+		}
+		cmd = exec.Command("java", "-jar", installerFile, "install", "server", mcVersion[0], "--download-server")
 	default:
 		return fmt.Errorf("unknown mod loader type: %s", loaderType)
 	}
@@ -503,8 +592,8 @@ func RunModLoaderInstaller(loaderType string, installerFile string) error {
 // GetServerRunCommand returns the command needed to run the server for a given jar type
 func GetServerRunCommand(jarType string) (string, []string) {
 	switch jarType {
-	case "NeoForge":
-		// NeoForge creates run.bat/run.sh after installation - use those directly
+	case "NeoForge", "Forge":
+		// NeoForge and Forge create run.bat/run.sh after installation - use those directly
 		switch runtime.GOOS {
 		case "windows": // On Windows, run the batch file
 			return "cmd", []string{"/c", "run.bat", "nogui"}
@@ -518,6 +607,9 @@ func GetServerRunCommand(jarType string) (string, []string) {
 			fmt.Println("Unsupported OS!")
 			return " ", []string{""} // Something had to be returned
 		}
+	case "Quilt":
+		// Quilt creates quilt-server-launch.jar after installation
+		return "java", []string{"-jar", "./server/server.jar", "nogui"}
 	default:
 		// Standard server.jar execution
 		return "java", []string{"-jar", "-Xms4G", "server.jar", "nogui"}
