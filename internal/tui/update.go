@@ -376,6 +376,7 @@ func (m ManageConfigsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 
 					m.fileType = "properties"
+					m.fileName = "server.properties"
 					m.configOptionKeys = keys
 					m.configOptionValues = values
 					m.step = 1
@@ -404,6 +405,7 @@ func (m ManageConfigsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 								m.configOptionKeys = append(m.configOptionKeys, key)
 								m.configOptionValues = append(m.configOptionValues, val)
 							}
+							m.fileName = "bukkit.yml"
 							m.fileType = "yml"
 							m.step = 1
 						}
@@ -426,7 +428,7 @@ func (m ManageConfigsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 						// 3. Write to file (0644 is standard permissions)
 						output := strings.Join(lines, "\n")
-						err := os.WriteFile("server.properties", []byte(output), 0644)
+						err := os.WriteFile(m.fileName, []byte(output), 0644)
 						if err != nil {
 							// Handle error (togril)
 						}
@@ -442,13 +444,26 @@ func (m ManageConfigsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						// 2. Prepare the file content
 						var lines []string
 						for i := range m.configOptionKeys {
-							line := fmt.Sprintf("%s: %s", m.configOptionKeys[i], m.configOptionValues[i])
-							lines = append(lines, line)
+							key := m.configOptionKeys[i]
+							val := m.configOptionValues[i]
+
+							// If it's a section header (no value)
+							if val == "" || val == "(section)" {
+								// Ensure NO space exists after the colon
+								line := strings.TrimRight(key, " ")
+								if !strings.HasSuffix(line, ":") {
+									line += ":"
+								}
+								lines = append(lines, line)
+							} else {
+								// It's a key-value pair
+								lines = append(lines, fmt.Sprintf("%s: %s", key, val))
+							}
 						}
 
 						// 3. Write to file (0644 is standard permissions)
 						output := strings.Join(lines, "\n")
-						err := os.WriteFile("bukkit.yml", []byte(output), 0644)
+						err := os.WriteFile(m.fileName, []byte(output), 0644)
 						if err != nil {
 							// Handle error (togril)
 						}
@@ -458,7 +473,7 @@ func (m ManageConfigsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.textInput.Blur() // unfocus
 					}
 
-				} else {
+				} else { // Select another/new option
 					m.selected = m.cursor                                // set the selected variable for the view function
 					m.textInput.SetValue(m.configOptionValues[m.cursor]) // give the data of value to textInput
 					m.textInput.Focus()                                  // focus after the unfocus
