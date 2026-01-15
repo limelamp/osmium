@@ -232,7 +232,7 @@ func (m RunServerModel) Init() tea.Cmd {
 func (m RunServerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.firstRun {
 		// Run the server
-		javaCMD := exec.Command(
+		m.javaCMD = exec.Command(
 			"java",
 			"-jar",
 			"-Xms4G",
@@ -240,17 +240,14 @@ func (m RunServerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			"nogui",
 		)
 
-		// Run in the same directory
-		javaCMD.Dir, _ = os.Getwd()
+		// Point both outputs to our buffer
+		m.javaCMD.Stdout = m.output
+		m.javaCMD.Stderr = m.output
 
-		// Output stuff
-		javaCMD.Stdout = os.Stdout
-		javaCMD.Stderr = os.Stderr
-		javaCMD.Stdin = os.Stdin
+		m.inputPipe, _ = m.javaCMD.StdinPipe() // This is the "entrance"
 
-		if err := javaCMD.Run(); err != nil {
-			m.err = err
-		}
+		// Start it in the background
+		go m.javaCMD.Run()
 
 		m.firstRun = false
 	}
@@ -259,6 +256,8 @@ func (m RunServerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c":
+			// Make sure to kill the java process if ctrl-c is used.
+			m.javaCMD.Process.Kill()
 			return m, tea.Quit
 		case "up":
 			if m.cursor > 0 {
@@ -272,9 +271,16 @@ func (m RunServerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// 	m.GoBack = true
 		// 	return m, nil
 		case "enter":
-			switch m.textInput.Value() {
+			// 1. Get the command from the input
+			command := m.textInput.Value()
 
+			if m.inputPipe != nil && command != "" {
+				// 2. Write it to the server with a newline
+				fmt.Fprintln(m.inputPipe, command)
 			}
+
+			// 3. Reset the text input for the next command
+			m.textInput.Reset()
 		default:
 
 		}

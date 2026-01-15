@@ -3,7 +3,10 @@
 package tui
 
 import (
+	"bytes"
+	"io"
 	"os"
+	"os/exec"
 
 	"github.com/charmbracelet/bubbles/textinput"
 )
@@ -77,6 +80,9 @@ type RunServerModel struct {
 	options   []string
 	textInput textinput.Model
 	firstRun  bool
+	javaCMD   *exec.Cmd
+	output    *bytes.Buffer // The "bucket" for logs
+	inputPipe io.WriteCloser
 	GoBack    bool
 	err       error
 }
@@ -95,6 +101,7 @@ func NewRunServerModel() RunServerModel {
 		options:   []string{"Recommended settings", "Detailed"},
 		textInput: ti,
 		firstRun:  true,
+		output:    &bytes.Buffer{},
 		GoBack:    false,
 	}
 }
