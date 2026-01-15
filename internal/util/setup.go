@@ -216,8 +216,8 @@ func getFabricServerURL(mcVersion string) (string, error) {
 	return url, nil
 }
 
-// getNeoForgeInstallerURL returns the installer JAR URL for NeoForge
-func getNeoForgeInstallerURL(mcVersion string) (string, string, error) {
+// getNeoForgeServerURL returns the installer JAR URL for NeoForge
+func getNeoForgeServerURL(mcVersion string) (string, string, error) {
 	// Get the NeoForge version prefix for this MC version
 	neoforgePrefix, ok := NeoForgeVersionMap[mcVersion]
 	if !ok {
@@ -254,126 +254,126 @@ func getYouerServerURL(mcVersion string) (string, error) {
 	return url, nil
 }
 
-// getFabricAPIURL fetches the latest Fabric API version for a specific Minecraft version from Modrinth
-func getFabricAPIURL(mcVersion string) (string, string, error) {
-	// Create HTTP client with proper User-Agent (required by Modrinth API)
-	client := &http.Client{}
-	req, err := http.NewRequest("GET", "https://api.modrinth.com/v2/project/fabric-api/version", nil)
-	if err != nil {
-		return "", "", err
-	}
-	req.Header.Set("User-Agent", "limelamp/osmium (github.com/limelamp/osmium)")
+// // getFabricAPIURL fetches the latest Fabric API version for a specific Minecraft version from Modrinth
+// func getFabricAPIURL(mcVersion string) (string, string, error) {
+// 	// Create HTTP client with proper User-Agent (required by Modrinth API)
+// 	client := &http.Client{}
+// 	req, err := http.NewRequest("GET", "https://api.modrinth.com/v2/project/fabric-api/version", nil)
+// 	if err != nil {
+// 		return "", "", err
+// 	}
+// 	req.Header.Set("User-Agent", "limelamp/osmium (github.com/limelamp/osmium)")
 
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", "", err
-	}
-	defer resp.Body.Close()
+// 	resp, err := client.Do(req)
+// 	if err != nil {
+// 		return "", "", err
+// 	}
+// 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return "", "", fmt.Errorf("Modrinth API error: %s", resp.Status)
-	}
+// 	if resp.StatusCode != http.StatusOK {
+// 		return "", "", fmt.Errorf("Modrinth API error: %s", resp.Status)
+// 	}
 
-	var versions []modrinthVersion
-	if err := json.NewDecoder(resp.Body).Decode(&versions); err != nil {
-		return "", "", err
-	}
+// 	var versions []modrinthVersion
+// 	if err := json.NewDecoder(resp.Body).Decode(&versions); err != nil {
+// 		return "", "", err
+// 	}
 
-	// Find the first release version that matches our MC version and is for fabric loader
-	for _, v := range versions {
-		// Check if this version supports our MC version
-		supportsVersion := false
-		for _, gv := range v.GameVersions {
-			if gv == mcVersion {
-				supportsVersion = true
-				break
-			}
-		}
+// 	// Find the first release version that matches our MC version and is for fabric loader
+// 	for _, v := range versions {
+// 		// Check if this version supports our MC version
+// 		supportsVersion := false
+// 		for _, gv := range v.GameVersions {
+// 			if gv == mcVersion {
+// 				supportsVersion = true
+// 				break
+// 			}
+// 		}
 
-		if !supportsVersion {
-			continue
-		}
+// 		if !supportsVersion {
+// 			continue
+// 		}
 
-		// Check if it's for fabric loader
-		supportsFabric := false
-		for _, loader := range v.Loaders {
-			if loader == "fabric" {
-				supportsFabric = true
-				break
-			}
-		}
+// 		// Check if it's for fabric loader
+// 		supportsFabric := false
+// 		for _, loader := range v.Loaders {
+// 			if loader == "fabric" {
+// 				supportsFabric = true
+// 				break
+// 			}
+// 		}
 
-		if !supportsFabric {
-			continue
-		}
+// 		if !supportsFabric {
+// 			continue
+// 		}
 
-		// Prefer release versions, but accept beta if no release found
-		if v.VersionType == "release" || v.VersionType == "beta" {
-			// Find the primary file
-			for _, file := range v.Files {
-				if file.Primary {
-					return file.URL, file.Filename, nil
-				}
-			}
-			// If no primary file, use the first one
-			if len(v.Files) > 0 {
-				return v.Files[0].URL, v.Files[0].Filename, nil
-			}
-		}
-	}
+// 		// Prefer release versions, but accept beta if no release found
+// 		if v.VersionType == "release" || v.VersionType == "beta" {
+// 			// Find the primary file
+// 			for _, file := range v.Files {
+// 				if file.Primary {
+// 					return file.URL, file.Filename, nil
+// 				}
+// 			}
+// 			// If no primary file, use the first one
+// 			if len(v.Files) > 0 {
+// 				return v.Files[0].URL, v.Files[0].Filename, nil
+// 			}
+// 		}
+// 	}
 
-	return "", "", fmt.Errorf("no Fabric API version found for Minecraft %s", mcVersion)
-}
+// 	return "", "", fmt.Errorf("no Fabric API version found for Minecraft %s", mcVersion)
+// }
 
-// DownloadFabricAPI downloads the Fabric API mod to the mods folder
-func DownloadFabricAPI(mcVersion string) error {
-	// Create mods folder if it doesn't exist
-	if err := os.MkdirAll("mods", 0755); err != nil {
-		return fmt.Errorf("failed to create mods folder: %w", err)
-	}
+// // DownloadFabricAPI downloads the Fabric API mod to the mods folder
+// func DownloadFabricAPI(mcVersion string) error {
+// 	// Create mods folder if it doesn't exist
+// 	if err := os.MkdirAll("mods", 0755); err != nil {
+// 		return fmt.Errorf("failed to create mods folder: %w", err)
+// 	}
 
-	// Get Fabric API URL
-	url, filename, err := getFabricAPIURL(mcVersion)
-	if err != nil {
-		return err
-	}
+// 	// Get Fabric API URL
+// 	url, filename, err := getFabricAPIURL(mcVersion)
+// 	if err != nil {
+// 		return err
+// 	}
 
-	fmt.Println("Downloading Fabric API...")
+// 	fmt.Println("Downloading Fabric API...")
 
-	// Download with proper User-Agent
-	client := &http.Client{}
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("User-Agent", "limelamp/osmium (github.com/limelamp/osmium)")
+// 	// Download with proper User-Agent
+// 	client := &http.Client{}
+// 	req, err := http.NewRequest("GET", url, nil)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	req.Header.Set("User-Agent", "limelamp/osmium (github.com/limelamp/osmium)")
 
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
+// 	resp, err := client.Do(req)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("download failed: %s", resp.Status)
-	}
+// 	if resp.StatusCode != http.StatusOK {
+// 		return fmt.Errorf("download failed: %s", resp.Status)
+// 	}
 
-	// Create the file in mods folder
-	filepath := "mods/" + filename
-	out, err := os.Create(filepath)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
+// 	// Create the file in mods folder
+// 	filepath := "mods/" + filename
+// 	out, err := os.Create(filepath)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	defer out.Close()
 
-	_, err = io.Copy(out, resp.Body)
-	if err != nil {
-		return err
-	}
+// 	_, err = io.Copy(out, resp.Body)
+// 	if err != nil {
+// 		return err
+// 	}
 
-	fmt.Printf("Fabric API downloaded: %s\n", filepath)
-	return nil
-}
+// 	fmt.Printf("Fabric API downloaded: %s\n", filepath)
+// 	return nil
+// }
 
 func downloadFile(url string, filename string) error {
 	resp, err := http.Get(url)
@@ -426,7 +426,7 @@ func DownloadJar(jarType string, jarVersion string) error {
 		}
 	case "NeoForge":
 		var neoforgeVer string
-		url, neoforgeVer, err = getNeoForgeInstallerURL(jarVersion)
+		url, neoforgeVer, err = getNeoForgeServerURL(jarVersion)
 		if err != nil {
 			return err
 		}
@@ -461,19 +461,20 @@ func DownloadJar(jarType string, jarVersion string) error {
 		}
 	}
 
-	// For Fabric, automatically download Fabric API as it's required by most mods
-	if jarType == "Fabric" {
-		fmt.Println("\nFabric API is required by most Fabric mods. Downloading automatically...")
-		if err := DownloadFabricAPI(jarVersion); err != nil {
-			fmt.Printf("Warning: Could not download Fabric API: %v\n", err)
-			fmt.Println("You may need to download it manually from https://modrinth.com/mod/fabric-api")
-		}
-	}
+	//* This logic will be implemented in mod management
+	// // For Fabric, automatically download Fabric API as it's required by most mods
+	// if jarType == "Fabric" {
+	// 	fmt.Println("\nFabric API is required by most Fabric mods. Downloading automatically...")
+	// 	if err := DownloadFabricAPI(jarVersion); err != nil {
+	// 		fmt.Printf("Warning: Could not download Fabric API: %v\n", err)
+	// 		fmt.Println("You may need to download it manually from https://modrinth.com/mod/fabric-api")
+	// 	}
+	// }
 
 	return nil
 }
 
-// RunModLoaderInstaller runs the mod loader installer to set up the server
+// RunModLoaderInstaller runs the mod loader installer to set up the server (for NeoForge)
 func RunModLoaderInstaller(loaderType string, installerFile string) error {
 	var cmd *exec.Cmd
 
@@ -499,27 +500,8 @@ func RunModLoaderInstaller(loaderType string, installerFile string) error {
 	return nil
 }
 
-// IsModLoader returns true if the jar type requires special handling (installer-based)
-func IsModLoader(jarType string) bool {
-	switch jarType {
-	case "NeoForge":
-		return true
-	default:
-		return false
-	}
-}
-
 // GetServerRunCommand returns the command needed to run the server for a given jar type
 func GetServerRunCommand(jarType string) (string, []string) {
-	// f, err := os.Create("output.txt")
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// defer f.Close()
-
-	// // Write jarType to file
-	// fmt.Fprintln(f, jarType)
-
 	switch jarType {
 	case "NeoForge":
 		// NeoForge creates run.bat/run.sh after installation - use those directly
@@ -536,10 +518,6 @@ func GetServerRunCommand(jarType string) (string, []string) {
 			fmt.Println("Unsupported OS!")
 			return " ", []string{""} // Something had to be returned
 		}
-
-	// case "Fabric":
-	// 	// Fabric server jar is named fabric-server-launch.jar or server.jar
-	// 	return "java", []string{"-jar", "-Xms4G", "server.jar", "nogui"}
 	default:
 		// Standard server.jar execution
 		return "java", []string{"-jar", "-Xms4G", "server.jar", "nogui"}
