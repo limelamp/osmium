@@ -4,6 +4,7 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -137,6 +138,16 @@ func (m RunServerModel) View() string {
 			Foreground(lipgloss.Color("#FF0000")).
 			Bold(true)
 		s += errorStyle.Render("Error: "+m.err.Error()) + "\n\n"
+	}
+
+	// Get everything in the bucket
+	allLogs := m.output.String()
+
+	// Split into lines
+	lines := strings.Split(allLogs, "\n")
+
+	for i := 0; i < len(lines); i++ {
+		s += lines[i] + "\n"
 	}
 
 	s += "> " + m.textInput.View()
