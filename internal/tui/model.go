@@ -108,17 +108,32 @@ func NewRunServerModel() RunServerModel {
 
 // ManageConfigsModel
 type ManageConfigsModel struct {
-	cursor  int
-	options []string
-	GoBack  bool
-	err     error
+	cursor             int
+	step               int
+	selected           int
+	options            []string
+	configOptionKeys   []string
+	configOptionValues []string
+	textInput          textinput.Model
+	GoBack             bool
+	err                error
 }
 
 func NewManageConfigsModel() ManageConfigsModel {
+	// textInput init
+	ti := textinput.New()
+	ti.Placeholder = "Enter a value..."
+	ti.Focus()     // Start with the cursor blinking inside it
+	ti.Prompt = "" // Remove the ">" out of the way
+	ti.CharLimit = 500
+	ti.Width = 20
+
 	return ManageConfigsModel{
-		cursor:  0,
-		options: []string{"server.properties", "bukkit.yml", "spigot.yml", "config/paper-global.yml", "config/paper-world-defaults.yml", "purpur.yml"},
-		GoBack:  false,
+		cursor:    0,
+		step:      0,
+		options:   []string{"server.properties", "bukkit.yml", "spigot.yml", "config/paper-global.yml", "config/paper-world-defaults.yml", "purpur.yml"},
+		textInput: ti,
+		GoBack:    false,
 	}
 }
 

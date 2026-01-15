@@ -3,10 +3,12 @@
 package tui
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/limelamp/osmium/internal/constants"
@@ -316,49 +318,63 @@ func (m ManageConfigsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor--
 			}
 		case "down":
-			if m.cursor < len(m.options)-1 {
-				m.cursor++
+			switch m.step {
+			case 0:
+				if m.cursor < len(m.options)-1 {
+					m.cursor++
+				}
+			case 1:
+				if m.cursor < len(m.configOptionKeys)-1 {
+					m.cursor++
+				}
 			}
-		case "backspace":
+
+		case "ctrl+h": // ctrl + backspace
 			m.GoBack = true
 			return m, nil
 		case "enter":
-			switch m.cursor {
-			case 0: // Recommended settings
-				const globalContent = "java -jar -Xms4G server.jar nogui"
-				var content []byte
-				var outputFile string
-				// Create a very basic bash script
-				switch runtime.GOOS { // Create different files and contents for different OS
-				case "linux":
-					content = []byte("#!/bin/bash\n\n" + globalContent)
-					outputFile = "run_server.sh"
-				case "windows":
-					content = []byte(globalContent)
-					outputFile = "run_server.bat"
-				case "darwin":
-					content = []byte("#!/bin/sh\n\n" + globalContent)
-					outputFile = "run_server.sh"
-				case "freebsd":
-					content = []byte("#!/bin/bash\n\n" + globalContent)
-					outputFile = "run_server.sh"
-				default:
-					fmt.Println("Unsupported OS!")
-					return m, nil
-				}
+			switch m.step {
+			case 0:
+				switch m.cursor {
+				case 0: // server.properties
+					var keys []string
+					var values []string
 
-				// Create the file
-				err := os.WriteFile(outputFile, content, 0755)
-				if err != nil {
-					m.err = err
-					return m, nil
-				}
+					file, _ := os.Open("server.properties")
+					defer file.Close()
 
-				fmt.Println("File Created!")
+					scanner := bufio.NewScanner(file)
+					for scanner.Scan() {
+						line := strings.TrimSpace(scanner.Text())
+
+						// Skip comments and empty lines to keep the UI clean
+						if line == "" || strings.HasPrefix(line, "#") {
+							continue
+						}
+
+						// Split by the first "="
+						parts := strings.SplitN(line, "=", 2)
+						if len(parts) == 2 {
+							keys = append(keys, strings.TrimSpace(parts[0]))
+							values = append(values, strings.TrimSpace(parts[1]))
+						}
+					}
+
+					m.configOptionKeys = keys
+					m.configOptionValues = values
+					m.step = 1
+				}
+			case 1:
+				m.selected = m.cursor                                // set the selected variable for the view function
+				m.textInput.SetValue(m.configOptionValues[m.cursor]) // give the data of value to textInput
 			}
+
 		}
 	}
-	return m, nil
+
+	var cmd tea.Cmd
+	m.textInput, cmd = m.textInput.Update(msg)
+	return m, cmd
 }
 
 // RemoveFiles State
