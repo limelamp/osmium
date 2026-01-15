@@ -317,6 +317,11 @@ func (m ManageConfigsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.cursor > 0 {
 				m.cursor--
 			}
+
+			// If the cursor goes above the top, scroll up
+			if m.cursor < m.topItem {
+				m.topItem = m.cursor
+			}
 		case "down":
 			switch m.step {
 			case 0:
@@ -326,6 +331,10 @@ func (m ManageConfigsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case 1:
 				if m.cursor < len(m.configOptionKeys)-1 {
 					m.cursor++
+				}
+				// If the cursor goes below the bottom of the window, scroll down
+				if m.cursor >= m.topItem+m.viewHeight {
+					m.topItem = m.cursor - m.viewHeight + 1
 				}
 			}
 
