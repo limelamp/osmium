@@ -524,9 +524,9 @@ func GetServerRunCommand(jarType string) (string, []string) {
 		// NeoForge creates run.bat/run.sh after installation - use those directly
 		// On Windows, run the batch file
 		return "cmd", []string{"/c", "run.bat"}
-	case "Fabric":
-		// Fabric server jar is named fabric-server-launch.jar or server.jar
-		return "java", []string{"-jar", "-Xms4G", "server.jar", "nogui"}
+	// case "Fabric":
+	// 	// Fabric server jar is named fabric-server-launch.jar or server.jar
+	// 	return "java", []string{"-jar", "-Xms4G", "server.jar", "nogui"}
 	default:
 		// Standard server.jar execution
 		return "java", []string{"-jar", "-Xms4G", "server.jar", "nogui"}
