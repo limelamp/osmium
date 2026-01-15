@@ -8,6 +8,13 @@ import (
 	"os"
 )
 
+var MOD_LOADERS = []string{"fabric", "forge", "neoforge", "quilt", "liteloader", "modloader", "rift"}
+var PLUGIN_LOADERS = []string{"paper", "purpur", "spigot", "bukkit", "folia", "bungeecord", "velocity", "waterfall", "sponge"}
+
+type modrinthProject struct {
+	ProjectType string `json:"project_type"`
+}
+
 // The structure of the Modrinth Version API response
 type modrinthVersion struct {
 	ID            string   `json:"id"`
@@ -43,16 +50,28 @@ func getInstalledVersion() string {
 	return ""
 }
 
-// Black magic
 func DownloadPluginByID(projectID string) error {
+	// 1. Define if the project is a mod or plugin
+	projectUrl := fmt.Sprintf("https://api.modrinth.com/v2/project/%s", projectID)
+	projectResp, err := http.Get(projectUrl)
+	if err != nil {
+		return fmt.Errorf("failed to fetch the project: %w", err)
+	}
+	defer projectResp.Body.Close()
+
+	var project modrinthProject
+	if err := json.NewDecoder(projectResp.Body).Decode(&project); err != nil {
+		return fmt.Errorf("failed to decode project response: %w", err)
+	}
+
+	fmt.Println(project.ProjectType)
+
 	mcVersion := getInstalledVersion()
 	client := &http.Client{}
 
-	// 1. Get the list of versions for this specific project
-	// Filter by game_versions to make sure we get the right one
+	// 2. Get the list of versions for this specific project
+	// Filter by game_versions and loaders to make sure we get the right one (loaders aren't implemented yet)
 	url := fmt.Sprintf("https://api.modrinth.com/v2/project/%s/version?game_versions=[%s]", projectID, mcVersion)
-	// url := fmt.Sprintf("https://api.modrinth.com/v2/project/%s", projectID)
-	//https://api.modrinth.com/v2/project/skinrestorer/version?game_versions="1.21.11"
 
 	req, _ := http.NewRequest("GET", url, nil)
 	req.Header.Set("User-Agent", "Osmium-Manager/1.0") // Modrinth REQUIRES this
@@ -63,10 +82,7 @@ func DownloadPluginByID(projectID string) error {
 	}
 	defer resp.Body.Close()
 
-	fmt.Print(resp.Body)
-
 	var versions []modrinthVersion
-	fmt.Println(versions)
 	if err := json.NewDecoder(resp.Body).Decode(&versions); err != nil {
 		return fmt.Errorf("failed to decode response: %w", err)
 	}
