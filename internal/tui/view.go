@@ -160,8 +160,8 @@ func (m RunServerModel) View() string {
 func (m ManageConfigsModel) View() string {
 	headerStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("#FAFAFA")).
-		Background(lipgloss.Color("#c256f4ff")).
+		Foreground(lipgloss.Color("#000000ff")).
+		Background(lipgloss.Color("#e6df13ff")).
 		Padding(0, 1)
 
 	keyStyle := lipgloss.NewStyle().
@@ -174,7 +174,7 @@ func (m ManageConfigsModel) View() string {
 		Foreground(lipgloss.Color("#ce2614ff"))
 		// Padding(0, 1)
 
-	s := headerStyle.Render(" OSMIUM - CREATING A RUN SCRIPT ") + "\n\n"
+	s := headerStyle.Render(" OSMIUM - CONFIG MANAGER ") + "\n\n"
 
 	if m.err != nil {
 		errorStyle := lipgloss.NewStyle().
