@@ -340,6 +340,10 @@ func (m ManageConfigsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "ctrl+h": // ctrl + backspace
 			m.GoBack = true
+			m.cursor = 0
+			m.step = 0
+			m.selected = -1
+
 			return m, nil
 		case "enter":
 			switch m.step {
