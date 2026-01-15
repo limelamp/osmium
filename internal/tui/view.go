@@ -166,13 +166,13 @@ func (m ManageConfigsModel) View() string {
 
 	keyStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("#2ae012ff")).
-		Padding(0, 1)
+		Foreground(lipgloss.Color("#2ae012ff"))
+		// Padding(0, 1)
 
 	valueStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("#ce2614ff")).
-		Padding(0, 1)
+		Foreground(lipgloss.Color("#ce2614ff"))
+		// Padding(0, 1)
 
 	s := headerStyle.Render(" OSMIUM - CREATING A RUN SCRIPT ") + "\n\n"
 
@@ -196,16 +196,30 @@ func (m ManageConfigsModel) View() string {
 	case 1:
 		end := m.topItem + m.viewHeight
 
+		// SAFETY CHECK: Cap 'end' at the slice length
+		if end > len(m.configOptionKeys) {
+			end = len(m.configOptionKeys)
+		}
+
 		for i := m.topItem; i < end; i++ {
 			cursor := "  "
 			if m.cursor == i {
 				cursor = "> "
 			}
 
-			if m.selected == i {
-				s += fmt.Sprintf("%s %s=%s\n", cursor, keyStyle.Render(m.configOptionKeys[i]), valueStyle.Render(m.textInput.View()))
-			} else {
-				s += fmt.Sprintf("%s %s=%s\n", cursor, keyStyle.Render(m.configOptionKeys[i]), valueStyle.Render(m.configOptionValues[i]))
+			switch m.fileType {
+			case "properties":
+				if m.selected == i {
+					s += fmt.Sprintf("%s %s=%s\n", cursor, keyStyle.Render(m.configOptionKeys[i]), valueStyle.Render(m.textInput.View()))
+				} else {
+					s += fmt.Sprintf("%s %s=%s\n", cursor, keyStyle.Render(m.configOptionKeys[i]), valueStyle.Render(m.configOptionValues[i]))
+				}
+			case "yml":
+				if m.selected == i {
+					s += fmt.Sprintf("%s %s: %s\n", cursor, keyStyle.Render(m.configOptionKeys[i]), valueStyle.Render(m.textInput.View()))
+				} else {
+					s += fmt.Sprintf("%s %s: %s\n", cursor, keyStyle.Render(m.configOptionKeys[i]), valueStyle.Render(m.configOptionValues[i]))
+				}
 			}
 
 		}
