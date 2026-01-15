@@ -133,6 +133,7 @@ func NewManageConfigsModel() ManageConfigsModel {
 	return ManageConfigsModel{
 		cursor:     0,
 		step:       0,
+		selected:   -1,
 		options:    []string{"server.properties", "bukkit.yml", "spigot.yml", "config/paper-global.yml", "config/paper-world-defaults.yml", "purpur.yml"},
 		textInput:  ti,
 		GoBack:     false,

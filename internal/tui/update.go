@@ -346,6 +346,8 @@ func (m ManageConfigsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case 0:
 				switch m.cursor {
 				case 0: // server.properties
+
+					// Read the file
 					var keys []string
 					var values []string
 
@@ -374,8 +376,33 @@ func (m ManageConfigsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.step = 1
 				}
 			case 1:
-				m.selected = m.cursor                                // set the selected variable for the view function
-				m.textInput.SetValue(m.configOptionValues[m.cursor]) // give the data of value to textInput
+				if m.selected == m.cursor { // if this is true, then the same field was selected twice, meaning we can write smth
+					// 1. Update the local data with the new value from the input
+					m.configOptionValues[m.cursor] = m.textInput.Value()
+
+					// 2. Prepare the file content
+					var lines []string
+					for i := range m.configOptionKeys {
+						line := fmt.Sprintf("%s=%s", m.configOptionKeys[i], m.configOptionValues[i])
+						lines = append(lines, line)
+					}
+
+					// 3. Write to file (0644 is standard permissions)
+					output := strings.Join(lines, "\n")
+					err := os.WriteFile("server.properties", []byte(output), 0644)
+					if err != nil {
+						// Handle error (togril)
+					}
+
+					// 4. Reset selection mode
+					m.selected = -1
+					m.textInput.Blur() // unfocus
+				} else {
+					m.selected = m.cursor                                // set the selected variable for the view function
+					m.textInput.SetValue(m.configOptionValues[m.cursor]) // give the data of value to textInput
+					m.textInput.Focus()                                  // focus after the unfocus
+				}
+
 			}
 
 		}
