@@ -79,7 +79,6 @@ func (m DashboardModel) View() string {
 		Padding(0, 1)
 
 	s := headerStyle.Render(" OSMIUM - DASHBOARD ") + "\n\n"
-	s += "Navigate using arrow keys. Press 'q' to exit.\n\n"
 
 	// Create a simple list
 	for i := 0; i < len(m.options); i++ {
@@ -89,6 +88,8 @@ func (m DashboardModel) View() string {
 		}
 		s += fmt.Sprintf("%s %s\n", cursor, m.options[i])
 	}
+
+	s += "\n\n" + "Navigate using arrow keys. Press 'q' to exit.\n\n"
 
 	return s
 }
