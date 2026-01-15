@@ -61,7 +61,7 @@ func (m SetupModel) View() string {
 			s += fmt.Sprintf("%s %s\n", cursor, m.options[i])
 		}
 	} else {
-		s += "> eula=" + m.textInput.Value()
+		s += "> eula=" + m.textInput.View()
 	}
 
 	s += "\n\n" + "Navigate using arrow keys. Press 'q' to exit.\n\n"

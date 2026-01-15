@@ -132,9 +132,9 @@ func (m SetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	// IMPORTANT: Update the internal textinput model
-	// var cmd tea.Cmd
-	m.textInput, _ = m.textInput.Update(msg)
-	return m, nil
+	var cmd tea.Cmd
+	m.textInput, cmd = m.textInput.Update(msg)
+	return m, cmd
 }
 
 // Dashboard State
