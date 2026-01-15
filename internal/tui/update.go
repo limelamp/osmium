@@ -280,8 +280,9 @@ func (m RunServerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	m.textInput, _ = m.textInput.Update(msg)
-	return m, nil
+	var cmd tea.Cmd
+	m.textInput, cmd = m.textInput.Update(msg)
+	return m, cmd
 }
 
 // RemoveFiles State

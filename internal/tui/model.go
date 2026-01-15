@@ -84,8 +84,9 @@ type RunServerModel struct {
 func NewRunServerModel() RunServerModel {
 	// textInput init
 	ti := textinput.New()
-	ti.Placeholder = "Enter server name..."
-	ti.Focus() // Start with the cursor blinking inside it
+	ti.Placeholder = "Enter a command..."
+	ti.Focus()     // Start with the cursor blinking inside it
+	ti.Prompt = "" // Remove the ">" out of the way
 	ti.CharLimit = 500
 	ti.Width = 20
 

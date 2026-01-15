@@ -139,7 +139,7 @@ func (m RunServerModel) View() string {
 		s += errorStyle.Render("Error: "+m.err.Error()) + "\n\n"
 	}
 
-	s += "> " + m.textInput.Value()
+	s += "> " + m.textInput.View()
 	// s += "\n\n" + "Navigate using arrow keys. Press 'q' to exit, 'backspace' to go back.\n\n"
 	return s
 }
