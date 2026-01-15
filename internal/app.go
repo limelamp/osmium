@@ -15,7 +15,7 @@ const (
 	stateDashboard
 	stateRunScript
 	stateRunServer
-	_
+	stateManageConfigs
 	stateRemoveFiles
 	statePluginManagement
 )
@@ -26,6 +26,7 @@ type RootModel struct {
 	dashboard        tui.DashboardModel // The main dashboard "page"
 	runscript        tui.RunScriptModel // Page to create a run_script
 	runserver        tui.RunServerModel
+	manageconfigs    tui.ManageConfigsModel
 	removefiles      tui.RemoveFilesModel
 	pluginmanagement tui.PluginManagementModel
 }
@@ -44,6 +45,7 @@ func NewRootModel() RootModel {
 		dashboard:        tui.NewDashboardModel(), // Main dashboard page
 		runscript:        tui.NewRunScriptModel(), // Page for creating a run script
 		runserver:        tui.NewRunServerModel(),
+		manageconfigs:    tui.NewManageConfigsModel(),
 		removefiles:      tui.NewRemoveFilesModel(),
 		pluginmanagement: tui.NewPluginManagementModel(),
 	}
@@ -85,19 +87,19 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// All of the states accessed through the Dashboard here
 		switch m.dashboard.CurrentAction {
 		case 1:
-			m.dashboard.CurrentAction = 0 // Can be safely reset now. The reset is needed for backspacing
 			m.state = stateRunScript
 		case 2:
-			m.dashboard.CurrentAction = 0
 			m.state = stateRunServer
+		case 3:
+			m.state = stateManageConfigs
 		case 4:
-			m.dashboard.CurrentAction = 0
 			m.state = stateRemoveFiles
 		case 5:
-			m.dashboard.CurrentAction = 0
 			m.state = statePluginManagement
 		}
 
+		// Can be safely reset now. The reset is needed for backspacing
+		m.dashboard.CurrentAction = 0
 		cmd = newCmd
 
 	case stateRunScript:
@@ -115,6 +117,18 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case stateRunServer:
 		newRS, newCmd := m.runserver.Update(msg)
 		m.runserver = newRS.(tui.RunServerModel)
+
+		cmd = newCmd
+
+	case stateManageConfigs:
+		newRS, newCmd := m.manageconfigs.Update(msg)
+		m.manageconfigs = newRS.(tui.ManageConfigsModel)
+
+		// Going back scenario
+		if m.manageconfigs.GoBack {
+			m.manageconfigs.GoBack = false
+			m.state = stateDashboard
+		}
 
 		cmd = newCmd
 
@@ -152,6 +166,8 @@ func (m RootModel) View() string {
 		return m.runscript.View()
 	case stateRunServer:
 		return m.runserver.View()
+	case stateManageConfigs:
+		return m.manageconfigs.View()
 	case stateRemoveFiles:
 		return m.removefiles.View()
 	case statePluginManagement:
