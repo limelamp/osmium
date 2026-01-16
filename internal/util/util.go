@@ -12,5 +12,11 @@ func FindExecutable() string {
 			return exe
 		}
 	}
+
+	// case for Quilt
+	if _, err := os.Stat("./server/server.jar"); !os.IsNotExist(err) {
+		return "server.jar"
+	}
+
 	return ""
 }
