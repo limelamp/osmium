@@ -36,3 +36,6 @@ usercache.json
 version_history.json
 whitelist.json
 .console_history
+
+# keep the config in internal/
+!internal/config
