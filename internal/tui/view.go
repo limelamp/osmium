@@ -305,3 +305,37 @@ func (m PluginManagementModel) View() string {
 	s += "\n\n" + "Navigate using arrow keys. Press 'q' to exit, 'ctrl+backspace' to go back.\n\n"
 	return s
 }
+
+// ModManagement View
+func (m ModManagementModel) View() string {
+	headerStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("#FAFAFA")).
+		Background(lipgloss.Color("#05fae6ff")).
+		Padding(0, 1)
+
+	// Header
+	s := headerStyle.Render(" OSMIUM - MOD MANAGEMENT") + "\n\n"
+
+	// Error display
+	if m.err != nil {
+		errorStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FF0000")).
+			Bold(true)
+		s += errorStyle.Render("Error: "+m.err.Error()) + "\n\n"
+	}
+
+	// Create a simple list
+	for i := 0; i < len(m.options); i++ {
+		cursor := "  "
+		if m.cursor == i {
+			cursor = "> "
+		}
+		s += fmt.Sprintf("%s %s\n", cursor, m.options[i])
+	}
+
+	s += m.queryInput.View() + "\n\n"
+
+	s += "\n\n" + "Navigate using arrow keys. Press 'q' to exit, 'ctrl+backspace' to go back.\n\n"
+	return s
+}

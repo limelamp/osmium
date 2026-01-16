@@ -18,6 +18,7 @@ const (
 	stateManageConfigs
 	stateRemoveFiles
 	statePluginManagement
+	stateModManagement
 )
 
 type RootModel struct {
@@ -29,6 +30,7 @@ type RootModel struct {
 	manageconfigs    tui.ManageConfigsModel
 	removefiles      tui.RemoveFilesModel
 	pluginmanagement tui.PluginManagementModel
+	modmanagement    tui.ModManagementModel
 }
 
 func NewRootModel() RootModel {
@@ -48,6 +50,7 @@ func NewRootModel() RootModel {
 		manageconfigs:    tui.NewManageConfigsModel(),
 		removefiles:      tui.NewRemoveFilesModel(),
 		pluginmanagement: tui.NewPluginManagementModel(),
+		modmanagement:    tui.NewModManagementModel(),
 	}
 
 	return mainModel
@@ -96,6 +99,8 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.state = stateRemoveFiles
 		case 5:
 			m.state = statePluginManagement
+		case 6:
+			m.state = stateModManagement
 		}
 
 		// Can be safely reset now. The reset is needed for backspacing
@@ -153,6 +158,16 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.pluginmanagement.GoBack = false
 			m.state = stateDashboard
 		}
+	case stateModManagement:
+		newRS, newCmd := m.modmanagement.Update(msg)
+		m.modmanagement = newRS.(tui.ModManagementModel)
+
+		cmd = newCmd
+
+		if m.modmanagement.GoBack {
+			m.modmanagement.GoBack = false
+			m.state = stateDashboard
+		}
 	}
 
 	return m, cmd
@@ -172,6 +187,9 @@ func (m RootModel) View() string {
 		return m.removefiles.View()
 	case statePluginManagement:
 		return m.pluginmanagement.View()
+	case stateModManagement:
+		return m.modmanagement.View()
 	}
+
 	return m.dashboard.View()
 }

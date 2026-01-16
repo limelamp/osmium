@@ -592,7 +592,42 @@ func (m PluginManagementModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.GoBack = true
 			return m, nil
 		case "enter":
-			if err := util.DownloadPluginByID(m.queryInput.Value()); err != nil {
+			if err := util.DownloadProjectByID(m.queryInput.Value(), "plugins"); err != nil {
+				fmt.Println(err)
+			} else {
+				fmt.Println("Downloaded, good luck lol")
+			}
+		}
+	}
+	var cmd tea.Cmd
+	m.queryInput, cmd = m.queryInput.Update(msg)
+	return m, cmd
+}
+
+// ModManagement State
+func (m ModManagementModel) Init() tea.Cmd {
+	return nil
+}
+
+func (m ModManagementModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c", "q":
+			return m, tea.Quit
+		case "up":
+			if m.cursor > 0 {
+				m.cursor--
+			}
+		case "down":
+			if m.cursor < len(m.options)-1 {
+				m.cursor++
+			}
+		case "ctrl+h": // ctrl+backspace
+			m.GoBack = true
+			return m, nil
+		case "enter":
+			if err := util.DownloadProjectByID(m.queryInput.Value(), "mods"); err != nil {
 				fmt.Println(err)
 			} else {
 				fmt.Println("Downloaded, good luck lol")

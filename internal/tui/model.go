@@ -190,3 +190,27 @@ func NewPluginManagementModel() PluginManagementModel {
 		queryInput: ti,
 	}
 }
+
+// ModManagement Model
+type ModManagementModel struct {
+	cursor     int
+	options    []string
+	GoBack     bool
+	queryInput textinput.Model
+	err        error
+}
+
+func NewModManagementModel() ModManagementModel {
+	ti := textinput.New()
+	ti.Placeholder = "Enter mod id..."
+	ti.Focus() // Start with the cursor blinking inside it
+	ti.CharLimit = 20
+	ti.Width = 20
+
+	return ModManagementModel{
+		cursor:     0,
+		options:    []string{"Recommended settings", "Detailed"},
+		GoBack:     false,
+		queryInput: ti,
+	}
+}

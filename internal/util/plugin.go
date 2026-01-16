@@ -8,7 +8,6 @@ import (
 	"os"
 )
 
-
 //* API didn't work as expected
 // type modrinthProject struct {
 // 	ProjectType string `json:"project_type"`
@@ -49,7 +48,8 @@ func getInstalledVersion() string {
 	return ""
 }
 
-func DownloadPluginByID(projectID string) error {
+// works for plugins and mods
+func DownloadProjectByID(projectID string, folder string) error {
 	//* To be considered later
 	// // 1. Define if the project is a mod or plugin
 	// projectUrl := fmt.Sprintf("https://api.modrinth.com/v2/project/%s", projectID)
@@ -107,11 +107,11 @@ func DownloadPluginByID(projectID string) error {
 	defer fileResp.Body.Close()
 
 	// Ensure the plugins folder exists
-	if err := os.MkdirAll("plugins", 0755); err != nil {
-		return fmt.Errorf("failed to create plugins folder: %w", err)
+	if err := os.MkdirAll(folder, 0755); err != nil {
+		return fmt.Errorf("failed to create %s folder: %w", folder, err)
 	}
 
-	out, err := os.Create("plugins/" + fileInfo.Filename)
+	out, err := os.Create(folder + "/" + fileInfo.Filename)
 	if err != nil {
 		return fmt.Errorf("failed to create file: %w", err)
 	}
