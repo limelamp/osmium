@@ -107,6 +107,8 @@ func (m SetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.options = []string{"Yes", "No, skip to the dashboard"}
 				m.infoText = "Would you like to initialize the files by running the server once?"
 
+				// Fixes an issue where the last step's first lines are still printing until terminal height is updated
+				return m, tea.ClearScreen
 			case 3: // Init files prompt
 				switch m.cursor {
 				case 0:
