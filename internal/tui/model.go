@@ -9,6 +9,7 @@ import (
 	"os/exec"
 
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/limelamp/osmium/internal/config"
 )
 
 // Setup Model
@@ -19,6 +20,7 @@ type SetupModel struct {
 	category   string // Vanilla/Simple, Plugin-Based, Mod Loaders, Hybrid
 	jarType    string
 	jarVersion string
+	osmiumConf config.OsmiumConfig
 	options    []string
 	infoText   string
 	textInput  textinput.Model

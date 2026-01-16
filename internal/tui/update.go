@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/limelamp/osmium/internal/config"
 	"github.com/limelamp/osmium/internal/constants"
 	"github.com/limelamp/osmium/internal/util"
 )
@@ -53,6 +54,7 @@ func (m SetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.err = fmt.Errorf("unknown category: %s", m.category)
 					return m, nil
 				}
+				m.osmiumConf.Category = m.category
 
 				// Move to server type selection
 				m.step = 1
@@ -69,6 +71,7 @@ func (m SetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.err = fmt.Errorf("no versions found for %s", m.jarType)
 					return m, nil
 				}
+				m.osmiumConf.Loader = m.jarType
 
 				// Move to version selection
 				m.step = 2
@@ -84,6 +87,8 @@ func (m SetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.err = err
 					return m, nil
 				}
+				m.osmiumConf.Version = m.jarVersion
+				config.WriteConfig(&m.osmiumConf)
 
 				// Move to init prompt
 				m.step = 3
