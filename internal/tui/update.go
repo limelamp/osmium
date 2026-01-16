@@ -129,7 +129,18 @@ func (m SetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					javaCMD.Stderr = os.Stderr
 					javaCMD.Stdin = os.Stdin
 
-					go javaCMD.Run()
+					// Exception handling with goroutines and channels (for Turlan)
+					errCh := make(chan error, 1)
+
+					go func() {
+						errCh <- javaCMD.Run()
+					}()
+
+					go func() {
+						if err := <-errCh; err != nil {
+							m.err = err
+						}
+					}()
 				}
 			}
 		}
@@ -254,8 +265,18 @@ func (m RunServerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		m.inputPipe, _ = m.javaCMD.StdinPipe() // This is the "entrance"
 
-		// Start it in the background
-		go m.javaCMD.Run()
+		// Exception handling with goroutines and channels (for Turlan)
+		errCh := make(chan error, 1)
+
+		go func() {
+			errCh <- m.javaCMD.Run()
+		}()
+
+		go func() {
+			if err := <-errCh; err != nil {
+				m.err = err
+			}
+		}()
 
 		m.firstRun = false
 	}
