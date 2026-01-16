@@ -26,6 +26,10 @@ func (m SetupModel) Init() tea.Cmd {
 
 func (m SetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		// msg.Width and msg.Height are automatically provided
+		m.viewHeight = msg.Height - 15
+		return m, nil
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
@@ -373,6 +377,10 @@ func (m ManageConfigsModel) Init() tea.Cmd {
 
 func (m ManageConfigsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		// msg.Width and msg.Height are automatically provided
+		m.viewHeight = msg.Height - 10
+		return m, nil
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":

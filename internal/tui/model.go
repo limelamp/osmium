@@ -9,6 +9,7 @@ import (
 	"os/exec"
 
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/x/term"
 	"github.com/limelamp/osmium/internal/config"
 )
 
@@ -39,12 +40,15 @@ func NewSetupModel() SetupModel {
 	ti.Width = 20
 	ti.SetValue("false")
 
+	// terminal width, height
+	_, h, _ := term.GetSize(uintptr(os.Stdout.Fd()))
+
 	return SetupModel{
 		cursor:     0,
 		options:    []string{"Vanilla/Simple", "Plugin-Based", "Mod Loaders", "Hybrid"},
 		infoText:   "Choose the type of server you would like to create:",
 		textInput:  ti,
-		viewHeight: 40,
+		viewHeight: h - 15,
 	}
 }
 
@@ -137,6 +141,9 @@ func NewManageConfigsModel() ManageConfigsModel {
 	ti.CharLimit = 500
 	ti.Width = 20
 
+	// terminal width, height
+	_, h, _ := term.GetSize(uintptr(os.Stdout.Fd()))
+
 	return ManageConfigsModel{
 		cursor:     0,
 		step:       0,
@@ -144,7 +151,7 @@ func NewManageConfigsModel() ManageConfigsModel {
 		options:    []string{"server.properties", "bukkit.yml", "spigot.yml", "config/paper-global.yml", "config/paper-world-defaults.yml", "purpur.yml"},
 		textInput:  ti,
 		GoBack:     false,
-		viewHeight: 40,
+		viewHeight: h - 10,
 	}
 }
 
