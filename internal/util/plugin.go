@@ -8,12 +8,11 @@ import (
 	"os"
 )
 
-var MOD_LOADERS = []string{"fabric", "forge", "neoforge", "quilt", "liteloader", "modloader", "rift"}
-var PLUGIN_LOADERS = []string{"paper", "purpur", "spigot", "bukkit", "folia", "bungeecord", "velocity", "waterfall", "sponge"}
 
-type modrinthProject struct {
-	ProjectType string `json:"project_type"`
-}
+//* API didn't work as expected
+// type modrinthProject struct {
+// 	ProjectType string `json:"project_type"`
+// }
 
 // The structure of the Modrinth Version API response
 type modrinthVersion struct {
@@ -51,20 +50,22 @@ func getInstalledVersion() string {
 }
 
 func DownloadPluginByID(projectID string) error {
-	// 1. Define if the project is a mod or plugin
-	projectUrl := fmt.Sprintf("https://api.modrinth.com/v2/project/%s", projectID)
-	projectResp, err := http.Get(projectUrl)
-	if err != nil {
-		return fmt.Errorf("failed to fetch the project: %w", err)
-	}
-	defer projectResp.Body.Close()
+	//* To be considered later
+	// // 1. Define if the project is a mod or plugin
+	// projectUrl := fmt.Sprintf("https://api.modrinth.com/v2/project/%s", projectID)
+	// projectResp, err := http.Get(projectUrl)
+	// if err != nil {
+	// 	return fmt.Errorf("failed to fetch the project: %w", err)
+	// }
+	// defer projectResp.Body.Close()
 
-	var project modrinthProject
-	if err := json.NewDecoder(projectResp.Body).Decode(&project); err != nil {
-		return fmt.Errorf("failed to decode project response: %w", err)
-	}
+	// var project modrinthProject
+	// if err := json.NewDecoder(projectResp.Body).Decode(&project); err != nil {
+	// 	return fmt.Errorf("failed to decode project response: %w", err)
+	// }
 
-	fmt.Println(project.ProjectType)
+	// fmt.Println(project.ProjectType)
+	//* To be considered later
 
 	mcVersion := getInstalledVersion()
 	client := &http.Client{}
