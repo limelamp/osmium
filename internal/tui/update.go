@@ -129,9 +129,7 @@ func (m SetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					javaCMD.Stderr = os.Stderr
 					javaCMD.Stdin = os.Stdin
 
-					if err := javaCMD.Run(); err != nil {
-						m.err = err
-					}
+					go javaCMD.Run()
 				}
 			}
 		}
