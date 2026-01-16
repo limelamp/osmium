@@ -33,15 +33,20 @@ func (m SetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "up":
 			if m.cursor > 0 {
 				m.cursor--
-			} else {
-				m.cursor = len(m.options) - 1
+			}
+
+			// If the cursor goes above the top, scroll up
+			if m.cursor < m.topItem {
+				m.topItem = m.cursor
 			}
 		case "down":
-			// assuming 4 options
 			if m.cursor < len(m.options)-1 {
 				m.cursor++
-			} else {
-				m.cursor = 0
+			}
+
+			// If the cursor goes below the bottom of the window, scroll down
+			if m.cursor >= m.topItem+m.viewHeight {
+				m.topItem = m.cursor - m.viewHeight + 1
 			}
 		case "enter":
 			switch m.step {
@@ -66,8 +71,10 @@ func (m SetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.jarType = m.options[m.cursor] // Save the type
 
 				// Get versions for this server type
-				versions, ok := constants.ServerVersions[m.jarType]
-				if !ok {
+				// versions, ok := constants.ServerVersions[m.jarType]
+				// Get all versions
+				versions, err := util.GetVersionStrings("release")
+				if err != nil {
 					m.err = fmt.Errorf("no versions found for %s", m.jarType)
 					return m, nil
 				}

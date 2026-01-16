@@ -2,12 +2,14 @@ package util
 
 import (
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 )
 
 // Json structs ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -17,8 +19,9 @@ type vanillaVersionManifest struct {
 		Release string `json:"release"`
 	} `json:"latest"`
 	Versions []struct {
-		ID  string `json:"id"`  // e.g., "1.21.1"
-		URL string `json:"url"` // The link to this version's specific JSON
+		ID   string `json:"id"`   // e.g., "1.21.1"
+		Type string `json:"type"` // release, snapshot etc.
+		URL  string `json:"url"`  // The link to this version's specific JSON
 	} `json:"versions"`
 }
 
@@ -56,18 +59,12 @@ type fabricLoaderVersion struct {
 	Stable  bool   `json:"stable"`
 }
 
-// NeoForge version mapping (MC version to NeoForge version prefix)
-var NeoForgeVersionMap = map[string]string{
-	"1.21.11": "21.11",
-	"1.21.4":  "21.4",
-	"1.21.1":  "21.1",
+type neoForgeVersion struct {
+	Versions []string `xml:"versioning>versions>version"`
 }
 
-// Forge version mapping (MC version to Forge version)
-var ForgeVersionMap = map[string]string{
-	"1.21.11": "61.0.6",
-	"1.21":    "51.0.33",
-	"1.20.6":  "50.2.4",
+type forgeVersion struct {
+	Versions []string `xml:"versioning>versions>version"`
 }
 
 // Quilt API structs
@@ -91,6 +88,39 @@ type mohistBuildResponse struct {
 // Note: modrinthVersion struct is defined in plugin.go and shared across the package
 
 // General functions ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+func GetMinecraftVersionsManifest() (*vanillaVersionManifest, error) {
+	resp, err := http.Get("https://launchermeta.mojang.com/mc/game/version_manifest.json")
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var manifest vanillaVersionManifest
+	if err := json.NewDecoder(resp.Body).Decode(&manifest); err != nil {
+		return nil, err
+	}
+
+	return &manifest, nil
+}
+
+func GetVersionStrings(version_type string) ([]string, error) {
+	manifest, err := GetMinecraftVersionsManifest()
+	if err != nil {
+		return nil, err
+	}
+
+	var versionList []string
+	for _, v := range manifest.Versions {
+		if v.Type == version_type {
+			// v.ID is the string like "1.20.1" or "rd-132211"
+			versionList = append(versionList, v.ID)
+		}
+
+	}
+
+	return versionList, nil
+}
+
 func getVanillaServerURL(targetVersion string) (string, error) {
 	// Step 1: Get the Master Manifest
 	resp, err := http.Get("https://launchermeta.mojang.com/mc/game/version_manifest.json")
@@ -233,21 +263,50 @@ func getFabricServerURL(mcVersion string) (string, error) {
 	return url, nil
 }
 
-// getNeoForgeServerURL returns the installer JAR URL for NeoForge
-func getNeoForgeServerURL(mcVersion string) (string, string, error) {
-	// Get the NeoForge version prefix for this MC version
-	neoforgePrefix, ok := NeoForgeVersionMap[mcVersion]
-	if !ok {
-		return "", "", fmt.Errorf("NeoForge version not found for Minecraft %s", mcVersion)
+func getNeoForgeVersionMap() map[string]string {
+	resp, err := http.Get("https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml")
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+
+	var metadata neoForgeVersion
+	if err := xml.NewDecoder(resp.Body).Decode(&metadata); err != nil {
+		return nil
 	}
 
-	// We'll use a known stable version for each MC version
-	// These are hardcoded stable versions that work
-	stableVersions := map[string]string{
-		"1.21.11": "21.11.25-beta", // Latest for 1.21.11
-		"1.21.4":  "21.4.156",      // Stable for 1.21.4
-		"1.21.1":  "21.1.216",      // Stable for 1.21.1
+	versions, err := GetVersionStrings("release")
+	if err != nil {
+		return nil
 	}
+
+	versionMap := make(map[string]string)
+
+	// matching
+	for _, mcVersion := range versions {
+		// Convert "1.21.1" -> "21.1" (The NeoForge Prefix)
+		prefix := strings.TrimPrefix(mcVersion, "1.")
+
+		// Find the latest NeoForge version that starts with that prefix
+		var bestMatch string
+		for _, neoforgeVersion := range metadata.Versions {
+			if strings.HasPrefix(neoforgeVersion, prefix) {
+				// Since Maven lists versions chronologically,
+				// the last one we find for this prefix is the newest.
+				bestMatch = neoforgeVersion
+			}
+		}
+
+		if bestMatch != "" {
+			versionMap[mcVersion] = bestMatch
+		}
+	}
+	return versionMap
+}
+
+// getNeoForgeServerURL returns the installer JAR URL for NeoForge
+func getNeoForgeServerURL(mcVersion string) (string, string, error) {
+	stableVersions := getNeoForgeVersionMap()
 
 	neoforgeVersion, ok := stableVersions[mcVersion]
 	if !ok {
@@ -259,8 +318,6 @@ func getNeoForgeServerURL(mcVersion string) (string, string, error) {
 	url := fmt.Sprintf("https://maven.neoforged.net/releases/net/neoforged/neoforge/%s/neoforge-%s-installer.jar",
 		neoforgeVersion, neoforgeVersion)
 
-	_ = neoforgePrefix // silence unused variable
-
 	return url, neoforgeVersion, nil
 }
 
@@ -271,17 +328,56 @@ func getYouerServerURL(mcVersion string) (string, error) {
 	return url, nil
 }
 
+func getForgeVersionMap() map[string]string {
+	resp, err := http.Get("https://maven.minecraftforge.net/net/minecraftforge/forge/maven-metadata.xml")
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+
+	var metadata forgeVersion
+	if err := xml.NewDecoder(resp.Body).Decode(&metadata); err != nil {
+		return nil
+	}
+
+	versions, err := GetVersionStrings("release")
+	if err != nil {
+		return nil
+	}
+
+	versionMap := make(map[string]string)
+
+	// matching
+	for _, mcVersion := range versions {
+		// Find the latest NeoForge version that starts with that prefix
+		var bestMatch string
+		for _, neoforgeVersion := range metadata.Versions {
+			if strings.HasPrefix(neoforgeVersion, mcVersion) {
+				// Since Maven lists versions chronologically,
+				// the last one we find for this prefix is the newest.
+				bestMatch = neoforgeVersion
+			}
+		}
+
+		if bestMatch != "" {
+			versionMap[mcVersion] = bestMatch
+		}
+	}
+	return versionMap
+}
+
 // getForgeServerURL returns the installer JAR URL for Forge
 func getForgeServerURL(mcVersion string) (string, string, error) {
-	forgeVersion, ok := ForgeVersionMap[mcVersion]
+	forgeVersionMap := getForgeVersionMap()
+	forgeVersion, ok := forgeVersionMap[mcVersion]
 	if !ok {
 		return "", "", fmt.Errorf("Forge version not found for Minecraft %s", mcVersion)
 	}
 
 	// Construct installer URL
-	// Format: https://maven.minecraftforge.net/net/minecraftforge/forge/{mcVer}-{forgeVer}/forge-{mcVer}-{forgeVer}-installer.jar
-	url := fmt.Sprintf("https://maven.minecraftforge.net/net/minecraftforge/forge/%s-%s/forge-%s-%s-installer.jar",
-		mcVersion, forgeVersion, mcVersion, forgeVersion)
+	// Format: https://maven.minecraftforge.net/net/minecraftforge/forge/{forgeVer}/forge-{forgeVer}-installer.jar
+	url := fmt.Sprintf("https://maven.minecraftforge.net/net/minecraftforge/forge/%s/forge-%s-installer.jar",
+		forgeVersion, forgeVersion)
 
 	return url, forgeVersion, nil
 }

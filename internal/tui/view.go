@@ -54,7 +54,14 @@ func (m SetupModel) View() string {
 	// Display options based on step
 	// Step 4 is EULA input, so we show text input instead of options
 	if m.step != 4 {
-		for i := 0; i < len(m.options); i++ {
+		end := m.topItem + m.viewHeight
+
+		// SAFETY CHECK: Cap 'end' at the slice length
+		if end > len(m.options) {
+			end = len(m.options)
+		}
+
+		for i := m.topItem; i < end; i++ {
 			cursor := "  "
 			if m.cursor == i {
 				cursor = "> "

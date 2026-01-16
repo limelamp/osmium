@@ -24,6 +24,8 @@ type SetupModel struct {
 	options    []string
 	infoText   string
 	textInput  textinput.Model
+	topItem    int // The index of the first item currently visible
+	viewHeight int // How many items to show at once
 	err        error
 }
 
@@ -38,10 +40,11 @@ func NewSetupModel() SetupModel {
 	ti.SetValue("false")
 
 	return SetupModel{
-		cursor:    0,
-		options:   []string{"Vanilla/Simple", "Plugin-Based", "Mod Loaders", "Hybrid"},
-		infoText:  "Choose the type of server you would like to create:",
-		textInput: ti,
+		cursor:     0,
+		options:    []string{"Vanilla/Simple", "Plugin-Based", "Mod Loaders", "Hybrid"},
+		infoText:   "Choose the type of server you would like to create:",
+		textInput:  ti,
+		viewHeight: 40,
 	}
 }
 
