@@ -5,7 +5,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
+	"strings"
+
+	"github.com/limelamp/osmium/internal/config"
 )
 
 //* API didn't work as expected
@@ -27,27 +31,6 @@ type modrinthVersion struct {
 	} `json:"files"`
 }
 
-func getInstalledVersion() string {
-	// 1. Point to the "versions" folder relative to where the app is running
-	path := "versions"
-
-	// 2. Read all files/folders inside
-	entries, err := os.ReadDir(path)
-	if err != nil {
-		return "" //, err
-	}
-
-	// 3. Loop through to find the first directory
-	for _, entry := range entries {
-		if entry.IsDir() {
-			// Return the name of the folder (e.g., "1.21.11")
-			return entry.Name() //, nil
-		}
-	}
-
-	return ""
-}
-
 // works for plugins and mods
 func DownloadProjectByID(projectID string, folder string) error {
 	//* To be considered later
@@ -66,15 +49,27 @@ func DownloadProjectByID(projectID string, folder string) error {
 
 	// fmt.Println(project.ProjectType)
 	//* To be considered later
+	baseUrl := fmt.Sprintf("https://api.modrinth.com/v2/project/%s/version", projectID)
 
-	mcVersion := getInstalledVersion()
+	osmiumConf, err := config.ReadConfig()
+	if err != nil {
+		return fmt.Errorf("failed to read osmium.json: %w", err)
+	}
+
+	// parsing the url and queries
+	projectUrl, err := url.Parse(baseUrl)
+	if err != nil {
+		return fmt.Errorf("failed to parse base url: %w", err)
+	}
+	q := projectUrl.Query()
+	q.Set("game_versions", fmt.Sprintf(`["%s"]`, osmiumConf.Version))
+	q.Set("loaders", fmt.Sprintf(`["%s"]`, strings.ToLower(osmiumConf.Loader)))
+	projectUrl.RawQuery = q.Encode()
+
+	fmt.Println(projectUrl)
+
 	client := &http.Client{}
-
-	// 2. Get the list of versions for this specific project
-	// Filter by game_versions and loaders to make sure we get the right one (loaders aren't implemented yet)
-	url := fmt.Sprintf("https://api.modrinth.com/v2/project/%s/version?game_versions=[%s]", projectID, mcVersion)
-
-	req, _ := http.NewRequest("GET", url, nil)
+	req, _ := http.NewRequest("GET", projectUrl.String(), nil)
 	req.Header.Set("User-Agent", "Osmium-Manager/1.0") // Modrinth REQUIRES this
 
 	resp, err := client.Do(req)
@@ -89,7 +84,7 @@ func DownloadProjectByID(projectID string, folder string) error {
 	}
 
 	if len(versions) == 0 {
-		return fmt.Errorf("no compatible versions found for Minecraft %s", mcVersion)
+		return fmt.Errorf("no compatible versions found for Minecraft %s", osmiumConf.Version)
 	}
 
 	// 2. Pick the first file from the newest version
