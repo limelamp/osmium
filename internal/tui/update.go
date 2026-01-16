@@ -238,23 +238,17 @@ func (m RunServerModel) Init() tea.Cmd {
 
 func (m RunServerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.firstRun {
-		// Set the exec command
-		if _, err := os.Stat("run.bat"); err == nil { // If there is an existing run.bat file in the folder (NeoForge)
-			switch runtime.GOOS {
-			case "windows": // On Windows, run the batch file
-				m.javaCMD = exec.Command("cmd", "/c", "run.bat", "nogui")
-			case "linux":
-				m.javaCMD = exec.Command("bash", "run.sh", "nogui")
-			case "darwin":
-				m.javaCMD = exec.Command("sh", "run.sh", "nogui")
-			case "freebsd":
-				m.javaCMD = exec.Command("bash", "run.sh", "nogui")
-				// default:
-				// 	fmt.Println("Unsupported OS!")
-			}
-		} else {
-			m.javaCMD = exec.Command("java", "-jar", "-Xms4G", "server.jar", "nogui")
+		osmiumConf, err := config.ReadConfig()
+		if err != nil {
+			m.err = err
+			return m, nil
 		}
+
+		javaPath, args := util.GetServerRunCommand(osmiumConf.Loader)
+
+		m.javaCMD = exec.Command(javaPath, args...)
+
+		m.javaCMD.Dir, _ = os.Getwd()
 
 		// Point both outputs to our buffer
 		m.javaCMD.Stdout = m.output
