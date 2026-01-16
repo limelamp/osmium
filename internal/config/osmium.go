@@ -13,7 +13,7 @@ type OsmiumConfig struct {
 }
 
 func WriteConfig(config *OsmiumConfig) error {
-	bytes, err := json.Marshal(config)
+	bytes, err := json.MarshalIndent(config, "", " ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal Osmium config: %w", err)
 	}
