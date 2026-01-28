@@ -6,10 +6,18 @@ import (
 	"os"
 )
 
+type Project struct {
+	VersionNumber string `json:"version_number"`
+	FileName string `json:"filename"` // files[0].filename
+	DownloadURL string `json:"url"` // files[0].download_url
+}
+ 
 type OsmiumConfig struct {
 	Category string `json:"category"`
 	Loader   string `json:"loader"`
 	Version  string `json:"version"`
+	Mods map[string]Project `json:"mods"`
+	Plugins map[string]Project `json:"plugins"`
 }
 
 func WriteConfig(config *OsmiumConfig) error {

@@ -13,6 +13,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/limelamp/osmium/internal/config"
 	"github.com/limelamp/osmium/internal/constants"
+	"github.com/limelamp/osmium/internal/shared"
 	"github.com/limelamp/osmium/internal/util"
 )
 
@@ -99,6 +100,8 @@ func (m SetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				m.osmiumConf.Version = m.jarVersion
+				m.osmiumConf.Mods = make(map[string]config.Project)
+				m.osmiumConf.Plugins = make(map[string]config.Project)
 				config.WriteConfig(&m.osmiumConf)
 
 				// Move to init prompt
@@ -627,7 +630,7 @@ func (m PluginManagementModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.GoBack = true
 			return m, nil
 		case "enter":
-			if err := util.DownloadProjectByID(m.queryInput.Value(), "plugins"); err != nil {
+			if err := shared.AddProjectByID(m.queryInput.Value(), "plugins"); err != nil {
 				fmt.Println(err)
 			} else {
 				fmt.Println("Downloaded, good luck lol")
@@ -662,7 +665,7 @@ func (m ModManagementModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.GoBack = true
 			return m, nil
 		case "enter":
-			if err := util.DownloadProjectByID(m.queryInput.Value(), "mods"); err != nil {
+			if err := shared.AddProjectByID(m.queryInput.Value(), "mods"); err != nil {
 				fmt.Println(err)
 			} else {
 				fmt.Println("Downloaded, good luck lol")

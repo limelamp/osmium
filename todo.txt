@@ -1,4 +1,14 @@
 Toghrul's Responsibilities:
+
+1.GetRunServer function in runserverupdate (it specifies custom runs for different loaders only in setupupdate)
+2."run.bat -nogui", find more traditional way to run
+3.figure out if neoforge jar filename has a functional reason in setup go 
+4.implement mod/plugin management page (the same page will be named differently depending on the loader type, plugin or mod)
+5.clean up the mess in rootmodel, view and state, adding new pages is a fucking hell
+6.eliminate hardcored values in neoforgesetup
+7.openthe runserver page on initial run in setup stage
+8.make logs scrollable by using viewport component from bubbletea ecosystem bubbles lib
+
 1. Store directories in an ./mc-servers/CUSTOM_SERVER_NAME directory
 2. (sometime) Prompt user to install latest Java depending on the OS, and etc (works similar to .net installation of GHelper)
 3. (sometime) Installs the "osmium" command globally when the installed executable is run by a user
