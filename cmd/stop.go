@@ -15,7 +15,7 @@ var forceFlag bool
 
 // stopCmd represents the stop command
 var stopCmd = &cobra.Command{
-	Use:   "osmium stop",
+	Use:   "stop",
 	Short: "Stop the Minecraft server.",
 	Long:  `Stops the Minecraft server that is currently running with Osmium.`,
 	Run: func(cmd *cobra.Command, args []string) {

@@ -14,7 +14,7 @@ import (
 
 // startCmd represents the start command
 var startCmd = &cobra.Command{
-	Use:   "osmium start",
+	Use:   "start",
 	Short: "Start the Minecraft server.",
 	Long:  `Starts the \"Run Server\" page inside Osmium, which then starts the Minecraft server.`,
 	Run: func(cmd *cobra.Command, args []string) {
