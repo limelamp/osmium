@@ -15,14 +15,9 @@ var forceFlag bool
 
 // stopCmd represents the stop command
 var stopCmd = &cobra.Command{
-	Use:   "stop",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+	Use:   "osmium stop",
+	Short: "Stop the Minecraft server.",
+	Long:  `Stops the Minecraft server that is currently running with Osmium.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		// Read and get the pid from lock file
 		data, err := os.ReadFile(".osmium_process.lock")
