@@ -4,10 +4,12 @@ package tui
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -262,7 +264,28 @@ func (m RunServerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		errCh := make(chan error, 1)
 
 		go func() {
-			errCh <- m.javaCMD.Run()
+
+			// Lock file checks and creation
+			lockfileName := ".osmium_process.lock"
+
+			// We want to prevent the creation of another server process and .lock file so that an already existing
+			// does not get overridden
+			if _, err := os.Stat(lockfileName); err == nil { // File exists.
+				//TODO: The following line only shows up for a split second, needs to be fixed
+				fmt.Println("Server already running! To bypass, run `osmium stop --force` or remove the " + lockfileName + " file at your own risk.")
+			} else if errors.Is(err, os.ErrNotExist) { // File does not exist.
+				errCh <- m.javaCMD.Start() // 1. Start the process
+
+				lockfileContent := []byte(strconv.Itoa(m.javaCMD.Process.Pid)) // 2. Get the pid
+
+				// 3. Write the pid of the process into the lock file
+				err = os.WriteFile(lockfileName, lockfileContent, 0644)
+				if err != nil {
+					fmt.Println("Error writing to file: " + lockfileName)
+				}
+			} else {
+				fmt.Println("Unexpected error occured while checking for lock file's existence.")
+			}
 		}()
 
 		go func() {
@@ -280,6 +303,13 @@ func (m RunServerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c":
 			// Make sure to kill the java process if ctrl-c is used.
 			m.javaCMD.Process.Kill()
+
+			// Remove the .lock file once the process is killed.
+			err := os.Remove(".osmium_process.lock")
+			if err != nil {
+				fmt.Println("Error removing file:", err)
+			}
+
 			return m, tea.Quit
 		case "up":
 			if m.cursor > 0 {
