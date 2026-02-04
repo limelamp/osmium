@@ -1,0 +1,11 @@
+These commands below will compress the resulting executable into a smaller file (functionality remains intact)
+
+Linux:
+CGO_ENABLED=0
+go build -trimpath -ldflags="-s -w" -o osmium.exe
+upx --best osmium.exe (optional: use --lzma flag)
+
+Windows: (reduced 11mb to 2.7mb)
+set CGO_ENABLED=0
+go build -trimpath -ldflags "-s -w" -o osmium.exe
+.\upx.exe --best osmium.exe (optional: use --lzma flag, 2.3mb)
