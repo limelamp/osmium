@@ -6,6 +6,9 @@
 osmium
 osmium.exe
 
+# Exe for compression (source https://github.com/upx/upx)
+upx.exe
+
 # Used for testing
 server.jar
 run_server.sh
