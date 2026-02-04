@@ -67,20 +67,28 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch m.state {
 	case stateSetup:
-		// Pass the message to the setup model
-		newSetup, newCmd := m.setup.Update(msg)
-		m.setup = newSetup.(tui.SetupModel)
-		cmd = newCmd
 
-		//Check for the `server.jar` file's existance in the background
-		// if _, err := os.Stat("server.jar"); err == nil {
-		// 	m.state = stateDashboard
-		// }
+		switch m.setup.State {
+		// Actual Init Phase
+		case 0:
+			// Pass the message to the setup model
+			newSetup, newCmd := m.setup.Update(msg)
+			m.setup = newSetup.(tui.SetupModel)
+			cmd = newCmd
 
-		// Going back scenario
-		if m.setup.GoBack {
-			m.setup.GoBack = false
-			m.state = stateDashboard
+			//Check for the `server.jar` file's existance in the background
+			// if _, err := os.Stat("server.jar"); err == nil {
+			// 	m.state = stateDashboard
+			// }
+
+			// Going back scenario
+			if m.setup.GoBack {
+				m.setup.GoBack = false
+				m.state = stateDashboard
+			}
+		// Run server state (switching to it)
+		case 1:
+			m.state = stateRunServer
 		}
 
 	case stateDashboard:

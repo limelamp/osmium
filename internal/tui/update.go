@@ -131,32 +131,9 @@ func (m SetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 					os.WriteFile("eula.txt", []byte(content), 0644)
 
-					// Get the appropriate run command for this server type
-					javaPath, args := util.GetServerRunCommand(m.jarType)
+					// Set the state to that of RunServer's in app.go
+					m.State = 1
 
-					// Run the server
-					javaCMD := exec.Command(javaPath, args...)
-
-					// Run in the same directory
-					javaCMD.Dir, _ = os.Getwd()
-
-					// Output stuff
-					javaCMD.Stdout = os.Stdout
-					javaCMD.Stderr = os.Stderr
-					javaCMD.Stdin = os.Stdin
-
-					// Exception handling with goroutines and channels (for Turlan)
-					errCh := make(chan error, 1)
-
-					go func() {
-						errCh <- javaCMD.Run()
-					}()
-
-					go func() {
-						if err := <-errCh; err != nil {
-							m.err = err
-						}
-					}()
 				}
 			}
 		}

@@ -27,6 +27,7 @@ type SetupModel struct {
 	textInput  textinput.Model
 	topItem    int // The index of the first item currently visible
 	viewHeight int // How many items to show at once
+	State      int
 	err        error
 }
 
@@ -49,6 +50,7 @@ func NewSetupModel() SetupModel {
 		infoText:   "Choose the type of server you would like to create:",
 		textInput:  ti,
 		viewHeight: h - 15,
+		State:      0,
 	}
 }
 
