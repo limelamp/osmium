@@ -10,12 +10,21 @@ import (
 	"strings"
 
 	"github.com/limelamp/osmium/internal/config"
+	"github.com/limelamp/osmium/internal/constants"
 )
 
 //* API didn't work as expected
 // type modrinthProject struct {
 // 	ProjectType string `json:"project_type"`
 // }
+
+/*
+	What the dependency types mean
+		required — the mod must be present for this version to work.
+		optional — the mod can be present but isn’t necessary.
+		incompatible — the mod must not be present because it breaks things.
+		embedded — the dependency is included inside the mod itself and doesn’t have to be fetched separately.
+*/
 
 type slugData struct {
 	Slug string `json:"slug"`
@@ -109,7 +118,13 @@ func AddProjectByID(projectID string, folder string) error {
 	}
 	q := projectUrl.Query()
 	q.Set("game_versions", fmt.Sprintf(`["%s"]`, osmiumConf.Version))
-	q.Set("loaders", fmt.Sprintf(`["%s"]`, strings.ToLower(osmiumConf.Loader)))
+
+	// getting compatible loaders (for plugin loaders, might have to be optimized)
+	loaders, ok := constants.PLUGIN_RESOLVER[strings.ToLower(osmiumConf.Loader)]
+	if !ok {
+		loaders = []string{strings.ToLower(osmiumConf.Loader)} // fallback, mods included here
+	}
+	q.Set("loaders", `["`+strings.Join(loaders, `","`)+`"]`)
 	projectUrl.RawQuery = q.Encode()
 
 	// fmt.Println(projectUrl) //* Keep for debugging
@@ -189,14 +204,19 @@ func AddProjectByID(projectID string, folder string) error {
 	// Run the dependency install loop
 	for _, dep := range deps {
 		depFolder := ""
-		switch dep.DependencyType {
-		case "optional":
-			depFolder = fmt.Sprintf("optional_%s", folder)
-		case "required":
-			// if the depFolder in recursive function is "optional_mods", required projects of optional projects are installed in optional directory lol
+		if strings.HasPrefix(folder, "optional_") {
+			// if parent is optional, all dependencies stay in the same optional folder
 			depFolder = folder
-		default:
-			return fmt.Errorf("unknown dependency type %s", dep.ProjectID)
+		} else {
+			// parent is not optional
+			switch dep.DependencyType {
+			case "optional":
+				depFolder = fmt.Sprintf("optional_%s", folder)
+			case "required":
+				depFolder = folder
+			default:
+				return fmt.Errorf("unknown dependency type %s", dep.ProjectID)
+			}
 		}
 
 		fmt.Printf("Installing dependency %s (%s) in %s\n", dep.ProjectID, dep.DependencyType, depFolder)
