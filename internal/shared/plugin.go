@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/limelamp/osmium/internal/config"
@@ -26,8 +27,9 @@ import (
 		embedded — the dependency is included inside the mod itself and doesn’t have to be fetched separately.
 */
 
-type slugData struct {
-	Slug string `json:"slug"`
+type projectInfo struct {
+	Slug    string   `json:"slug"`
+	Loaders []string `json:"loaders"`
 }
 
 type dependency struct {
@@ -50,181 +52,244 @@ type modrinthVersion struct {
 	Dependencies []dependency `json:"dependencies"`
 }
 
-// works for plugins and mods
-func AddProjectByID(projectID string, folder string) error {
-	//* To be considered later
-	// // 1. Define if the project is a mod or plugin
-	// projectUrl := fmt.Sprintf("https://api.modrinth.com/v2/project/%s", projectID)
-	// projectResp, err := http.Get(projectUrl)
-	// if err != nil {
-	// 	return fmt.Errorf("failed to fetch the project: %w", err)
-	// }
-	// defer projectResp.Body.Close()
+//# --- HTTP Client Helpers ---
 
-	// var project modrinthProject
-	// if err := json.NewDecoder(projectResp.Body).Decode(&project); err != nil {
-	// 	return fmt.Errorf("failed to decode project response: %w", err)
-	// }
+// createModrinthClient returns an HTTP client configured for Modrinth API
+func createModrinthClient() *http.Client {
+	return &http.Client{}
+}
 
-	// fmt.Println(project.ProjectType)
-	//* To be considered later
+// doModrinthRequest performs an HTTP request with required Modrinth headers
+func doModrinthRequest(client *http.Client, url string) (*http.Response, error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "Osmium-Manager/1.0")
+	return client.Do(req)
+}
 
-	//Todo: use this url to identify if the project is a mod or plugin or hybrid "loaders": [...]
-	// 1. Retrieve the slug instead of ID for osmium.json (USE TO IDENTIFY PROJECT_TYPE LATER)
+//# --- project functions ---
+
+// getProjectInfo fetches the project info (slug and loaders) from Modrinth API by project ID
+func getProjectInfo(projectID string) (projectInfo, error) {
 	slugUrl := fmt.Sprintf("https://api.modrinth.com/v2/project/%s", projectID)
 
-	client := &http.Client{}
-	slugReq, _ := http.NewRequest("GET", slugUrl, nil)
-	slugReq.Header.Set("User-Agent", "Osmium-Manager/1.0") // Modrinth REQUIRES this
-
-	slugResp, err := client.Do(slugReq)
+	client := createModrinthClient()
+	resp, err := doModrinthRequest(client, slugUrl)
 	if err != nil {
-		return fmt.Errorf("failed to fetch slug: %w", err)
+		return projectInfo{}, fmt.Errorf("failed to fetch slug: %w", err)
 	}
-	defer slugResp.Body.Close()
+	defer resp.Body.Close()
 
-	var slug slugData
-	if err := json.NewDecoder(slugResp.Body).Decode(&slug); err != nil {
-		return fmt.Errorf("failed to decode slug response: %w", err)
-	}
-
-	// check if the file already exists
-	osmiumConf, err := config.ReadConfig()
-	if err != nil {
-		return fmt.Errorf("failed to read osmium.json: %w", err)
+	var info projectInfo
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		return projectInfo{}, fmt.Errorf("failed to decode slug response: %w", err)
 	}
 
+	return info, nil
+}
+
+// isProjectInstalled checks if a project is already installed in the config
+func isProjectInstalled(slug, folder string, conf *config.OsmiumConfig) bool {
 	switch folder {
 	case "mods", "optional_mods":
-		if _, ok := osmiumConf.Mods[slug.Slug]; ok {
-			fmt.Printf("%s already installed\n", slug.Slug)
-			return nil
-		}
+		_, ok := conf.Mods[slug]
+		return ok
 	case "plugins", "optional_plugins":
-		if _, ok := osmiumConf.Plugins[slug.Slug]; ok {
-			fmt.Printf("%s already installed\n", slug.Slug)
-			return nil
-		}
-	default: // optional_mods or optional_plugins
+		_, ok := conf.Plugins[slug]
+		return ok
+	default:
+		return false
 	}
+}
 
-	// 2. Finding projectURL by slug
-	baseUrl := fmt.Sprintf("https://api.modrinth.com/v2/project/%s/version", slug.Slug)
+// buildVersionQueryURL constructs the Modrinth version query URL with filters
+func buildVersionQueryURL(slug string, conf *config.OsmiumConfig) (string, error) {
+	baseUrl := fmt.Sprintf("https://api.modrinth.com/v2/project/%s/version", slug)
 
-	// parsing the url and queries
 	projectUrl, err := url.Parse(baseUrl)
 	if err != nil {
-		return fmt.Errorf("failed to parse base url: %w", err)
+		return "", fmt.Errorf("failed to parse base url: %w", err)
 	}
-	q := projectUrl.Query()
-	q.Set("game_versions", fmt.Sprintf(`["%s"]`, osmiumConf.Version))
 
-	// getting compatible loaders (for plugin loaders, might have to be optimized)
-	loaders, ok := constants.PLUGIN_RESOLVER[strings.ToLower(osmiumConf.Loader)]
+	q := projectUrl.Query()
+	q.Set("game_versions", fmt.Sprintf(`["%s"]`, conf.Version))
+
+	// Get compatible loaders
+	loaders, ok := constants.PLUGIN_RESOLVER[strings.ToLower(conf.Loader)]
+	fmt.Println(loaders)
 	if !ok {
-		loaders = []string{strings.ToLower(osmiumConf.Loader)} // fallback, mods included here
+		loaders = []string{strings.ToLower(conf.Loader)}
 	}
 	q.Set("loaders", `["`+strings.Join(loaders, `","`)+`"]`)
+
 	projectUrl.RawQuery = q.Encode()
+	return projectUrl.String(), nil
+}
 
-	// fmt.Println(projectUrl) //* Keep for debugging
-
-	req, _ := http.NewRequest("GET", projectUrl.String(), nil)
-	req.Header.Set("User-Agent", "Osmium-Manager/1.0") // Modrinth REQUIRES this
-
-	resp, err := client.Do(req)
+// getProjectVersions fetches compatible versions from Modrinth API
+func getProjectVersions(slug string, conf *config.OsmiumConfig) ([]modrinthVersion, error) {
+	projectUrl, err := buildVersionQueryURL(slug, conf)
 	if err != nil {
-		return fmt.Errorf("failed to fetch versions: %w", err)
+		return nil, err
+	}
+
+	client := createModrinthClient()
+	resp, err := doModrinthRequest(client, projectUrl)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch versions: %w", err)
 	}
 	defer resp.Body.Close()
 
 	var versions []modrinthVersion
 	if err := json.NewDecoder(resp.Body).Decode(&versions); err != nil {
-		return fmt.Errorf("failed to decode response: %w", err)
+		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
 	if len(versions) == 0 {
-		return fmt.Errorf("no compatible versions found for Minecraft %s", osmiumConf.Version)
+		return nil, fmt.Errorf("no compatible versions found for Minecraft %s", conf.Version)
 	}
 
-	// 3. Pick the first file from the newest version
-	if len(versions[0].Files) == 0 {
-		return fmt.Errorf("no files found in the latest version")
-	}
-	fileInfo := versions[0].Files[0]
-	fmt.Printf("Downloading %s...\n\n", fileInfo.Filename)
+	return versions, nil
+}
 
-	// 4. Download the actual .jar
-	fileResp, err := http.Get(fileInfo.URL)
+// downloadFile downloads a file from URL to the specified folder
+func downloadFile(url, folder, filename string) error {
+	resp, err := http.Get(url)
 	if err != nil {
 		return fmt.Errorf("failed to download file: %w", err)
 	}
-	defer fileResp.Body.Close()
+	defer resp.Body.Close()
 
-	// Ensure the plugins folder exists
+	// Ensure folder exists
 	if err := os.MkdirAll(folder, 0755); err != nil {
 		return fmt.Errorf("failed to create %s folder: %w", folder, err)
 	}
 
-	out, err := os.Create(folder + "/" + fileInfo.Filename)
+	filePath := filepath.Join(folder, filename)
+	out, err := os.Create(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to create file: %w", err)
 	}
 	defer out.Close()
 
-	_, err = io.Copy(out, fileResp.Body)
+	_, err = io.Copy(out, resp.Body)
 	if err != nil {
 		return fmt.Errorf("failed to write file: %w", err)
 	}
 
-	// 5. Adding project data to Osmium.json
+	return nil
+}
+
+// updateConfigWithProject adds the project to the appropriate section in config
+func updateConfigWithProject(slug, folder string, version modrinthVersion, conf *config.OsmiumConfig) error {
+	if len(version.Files) == 0 {
+		return fmt.Errorf("no files found in version")
+	}
+
+	fileInfo := version.Files[0]
+	project := config.Project{
+		VersionNumber: version.VersionNumber,
+		FileName:      fileInfo.Filename,
+		DownloadURL:   fileInfo.URL,
+	}
+
 	switch folder {
 	case "mods":
-		osmiumConf.Mods[slug.Slug] = config.Project{
-			VersionNumber: versions[0].VersionNumber,
-			FileName:      fileInfo.Filename,
-			DownloadURL:   fileInfo.URL,
-		}
+		conf.Mods[slug] = project
 	case "plugins":
-		osmiumConf.Plugins[slug.Slug] = config.Project{
-			VersionNumber: versions[0].VersionNumber,
-			FileName:      fileInfo.Filename,
-			DownloadURL:   fileInfo.URL,
-		}
-	default: // optional_mods or optional_plugins
+		conf.Plugins[slug] = project
+		// optional folders don't get tracked in config
 	}
 
-	if err := config.WriteConfig(osmiumConf); err != nil {
-		return fmt.Errorf("failed to update osmium.json: %w", err)
+	return config.WriteConfig(conf)
+}
+
+// getDependencyFolder determines the correct folder for a dependency
+func getDependencyFolder(parentFolder string, depType string) (string, error) {
+	if strings.HasPrefix(parentFolder, "optional_") {
+		// If parent is optional, all dependencies go to same optional folder
+		return parentFolder, nil
 	}
 
-	// 6. Check for dependencies
-	deps := versions[0].Dependencies
+	// Parent is not optional
+	switch depType {
+	case "optional":
+		return fmt.Sprintf("optional_%s", parentFolder), nil
+	case "required":
+		return parentFolder, nil
+	default:
+		return "", fmt.Errorf("unknown dependency type: %s", depType)
+	}
+}
 
-	// Run the dependency install loop
+// installDependencies recursively installs all dependencies
+func installDependencies(deps []dependency, parentFolder string) error {
 	for _, dep := range deps {
-		depFolder := ""
-		if strings.HasPrefix(folder, "optional_") {
-			// if parent is optional, all dependencies stay in the same optional folder
-			depFolder = folder
-		} else {
-			// parent is not optional
-			switch dep.DependencyType {
-			case "optional":
-				depFolder = fmt.Sprintf("optional_%s", folder)
-			case "required":
-				depFolder = folder
-			default:
-				return fmt.Errorf("unknown dependency type %s", dep.ProjectID)
-			}
+		depFolder, err := getDependencyFolder(parentFolder, dep.DependencyType)
+		if err != nil {
+			return err
 		}
 
-		fmt.Printf("Installing dependency %s (%s) in %s\n", dep.ProjectID, dep.DependencyType, depFolder)
+		fmt.Printf("Installing dependency %s (%s) in %s\n",
+			dep.ProjectID, dep.DependencyType, depFolder)
 
-		// recursively download a dependency (installs required dependencies of optional dependencies to optional directory smh)
 		if err := AddProjectByID(dep.ProjectID, depFolder); err != nil {
 			return fmt.Errorf("failed to install dependency %s: %w", dep.ProjectID, err)
 		}
+	}
+	return nil
+}
+
+//# --- Main Public Functions ---
+
+// AddProjectByID downloads and installs a mod/plugin from Modrinth by project ID
+func AddProjectByID(projectID string, folder string) error {
+	// 1. Get project info
+	info, err := getProjectInfo(projectID)
+	if err != nil {
+		return err
+	}
+
+	// 2. Check if already installed
+	osmiumConf, err := config.ReadConfig()
+	if err != nil {
+		return fmt.Errorf("failed to read osmium.json: %w", err)
+	}
+
+	if isProjectInstalled(info.Slug, folder, osmiumConf) {
+		fmt.Printf("%s already installed\n\n", info.Slug)
+		return nil
+	}
+
+	// 3. Get compatible versions
+	versions, err := getProjectVersions(info.Slug, osmiumConf)
+	if err != nil {
+		return err
+	}
+
+	// 4. Download the latest version
+	latestVersion := versions[0]
+	if len(latestVersion.Files) == 0 {
+		return fmt.Errorf("no files found in the latest version")
+	}
+
+	fileInfo := latestVersion.Files[0]
+	fmt.Printf("Downloading %s...\n\n", fileInfo.Filename)
+
+	if err := downloadFile(fileInfo.URL, folder, fileInfo.Filename); err != nil {
+		return err
+	}
+
+	// 5. Update config
+	if err := updateConfigWithProject(info.Slug, folder, latestVersion, osmiumConf); err != nil {
+		return fmt.Errorf("failed to update osmium.json: %w", err)
+	}
+
+	// 6. Install dependencies
+	if err := installDependencies(latestVersion.Dependencies, folder); err != nil {
+		return err
 	}
 
 	return nil
@@ -253,7 +318,8 @@ func RemoveProjectByID(projectID string, folder string) error {
 	default: // optional_mods or optional_plugins
 	}
 
-	if err := os.Remove(fmt.Sprintf("%s/%s", folder, project.FileName)); err != nil && !os.IsNotExist(err) {
+	filePath := filepath.Join(folder, project.FileName)
+	if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to remove project file: %w", err)
 	}
 
