@@ -1,6 +1,8 @@
 package shared
 
 import (
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -39,7 +41,7 @@ type dependency struct {
 
 // The structure of the Modrinth Version API response
 type modrinthVersion struct {
-	ID            string   `json:"id"`
+	ProjectID     string   `json:"project_id"`
 	VersionNumber string   `json:"version_number"`
 	GameVersions  []string `json:"game_versions"`
 	Loaders       []string `json:"loaders"`
@@ -48,19 +50,18 @@ type modrinthVersion struct {
 		URL      string `json:"url"`
 		Filename string `json:"filename"`
 		Primary  bool   `json:"primary"`
+		Hashes   struct {
+			SHA1 string `json:"sha1"`
+		} `json:"hashes"`
 	} `json:"files"`
 	Dependencies []dependency `json:"dependencies"`
 }
 
-//# --- HTTP Client Helpers ---
-
-// createModrinthClient returns an HTTP client configured for Modrinth API
-func createModrinthClient() *http.Client {
-	return &http.Client{}
-}
+//# --- project functions ---
 
 // doModrinthRequest performs an HTTP request with required Modrinth headers
-func doModrinthRequest(client *http.Client, url string) (*http.Response, error) {
+func doModrinthRequest(url string) (*http.Response, error) {
+	client := http.Client{}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
@@ -69,14 +70,11 @@ func doModrinthRequest(client *http.Client, url string) (*http.Response, error) 
 	return client.Do(req)
 }
 
-//# --- project functions ---
-
 // getProjectInfo fetches the project info (slug and loaders) from Modrinth API by project ID
 func getProjectInfo(projectID string) (projectInfo, error) {
 	slugUrl := fmt.Sprintf("https://api.modrinth.com/v2/project/%s", projectID)
 
-	client := createModrinthClient()
-	resp, err := doModrinthRequest(client, slugUrl)
+	resp, err := doModrinthRequest(slugUrl)
 	if err != nil {
 		return projectInfo{}, fmt.Errorf("failed to fetch slug: %w", err)
 	}
@@ -118,7 +116,6 @@ func buildVersionQueryURL(slug string, conf *config.OsmiumConfig) (string, error
 
 	// Get compatible loaders
 	loaders, ok := constants.PLUGIN_RESOLVER[strings.ToLower(conf.Loader)]
-	fmt.Println(loaders)
 	if !ok {
 		loaders = []string{strings.ToLower(conf.Loader)}
 	}
@@ -135,8 +132,7 @@ func getProjectVersions(slug string, conf *config.OsmiumConfig) ([]modrinthVersi
 		return nil, err
 	}
 
-	client := createModrinthClient()
-	resp, err := doModrinthRequest(client, projectUrl)
+	resp, err := doModrinthRequest(projectUrl)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch versions: %w", err)
 	}
@@ -193,6 +189,7 @@ func updateConfigWithProject(slug, folder string, version modrinthVersion, conf 
 		VersionNumber: version.VersionNumber,
 		FileName:      fileInfo.Filename,
 		DownloadURL:   fileInfo.URL,
+		SHA1:          fileInfo.Hashes.SHA1,
 	}
 
 	switch folder {
@@ -325,6 +322,124 @@ func RemoveProjectByID(projectID string, folder string) error {
 
 	if err := config.WriteConfig(osmiumConf); err != nil {
 		return fmt.Errorf("failed to update osmium.json: %w", err)
+	}
+
+	return nil
+}
+
+// calculateSHA1 calculates the SHA1 checksum of a file
+func calculateSHA1(filePath string) (string, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	hash := sha1.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return "", fmt.Errorf("failed to calculate hash: %w", err)
+	}
+
+	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+func getProjectByHash(hash string) (modrinthVersion, error) {
+	projectUrl := fmt.Sprintf("https://api.modrinth.com/v2/version_file/%s", hash)
+
+	resp, err := doModrinthRequest(projectUrl)
+	if err != nil {
+		return modrinthVersion{}, fmt.Errorf("failed to fetch versions: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var project modrinthVersion
+	if err := json.NewDecoder(resp.Body).Decode(&project); err != nil {
+		return modrinthVersion{}, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return project, nil
+}
+
+// processDirectory reads a directory and calculates SHA1 for each file
+func processDirectory(folder string) error {
+	if _, err := os.Stat(folder); os.IsNotExist(err) {
+		return nil
+	}
+
+	entries, err := os.ReadDir(folder)
+	if err != nil {
+		return fmt.Errorf("failed to read directory %s: %w", folder, err)
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue // skip subdirectories
+		}
+
+		filePath := filepath.Join(folder, entry.Name())
+
+		// filter .jar files
+		if !strings.HasSuffix(strings.ToLower(entry.Name()), ".jar") {
+			continue
+		}
+
+		checksum, err := calculateSHA1(filePath)
+		if err != nil {
+			fmt.Printf("failed to calculate checksum for %s: %v\n", filePath, err)
+			continue
+		}
+
+		project, err := getProjectByHash(checksum)
+
+		// 1. Get project info
+		info, err := getProjectInfo(project.ProjectID)
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
+
+		// 2. Check if already installed
+		osmiumConf, err := config.ReadConfig()
+		if err != nil {
+			return fmt.Errorf("failed to read osmium.json: %w", err)
+		}
+
+		if isProjectInstalled(info.Slug, folder, osmiumConf) {
+			fmt.Println(info.Slug, "already in osmium.json")
+			continue
+		}
+
+		// 3. Update config
+		if len(project.Files) == 0 {
+			fmt.Println("no files found in the latest version for", info.Slug)
+			continue
+		}
+
+		if err := updateConfigWithProject(info.Slug, folder, project, osmiumConf); err != nil {
+			return fmt.Errorf("failed to update osmium.json: %w", err)
+		}
+
+		// // 6. Install dependencies
+		// if err := installDependencies(project.Dependencies, folder); err != nil {
+		// 	return err
+		// }
+
+		fmt.Println("Tracked", info.Slug)
+	}
+
+	return nil
+}
+
+// trackProjects reads the plugins and mods directories and calculates SHA
+func TrackProjects() error {
+	// Process plugins directory
+	if err := processDirectory("plugins"); err != nil {
+		return err
+	}
+
+	// Process mods directory
+	if err := processDirectory("mods"); err != nil {
+		return err
 	}
 
 	return nil
