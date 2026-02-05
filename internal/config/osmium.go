@@ -10,6 +10,7 @@ type Project struct {
 	VersionNumber string `json:"version_number"`
 	FileName string `json:"filename"` // files[0].filename
 	DownloadURL string `json:"url"` // files[0].download_url
+	SHA1 string `json:"sha1"`
 }
  
 type OsmiumConfig struct {
