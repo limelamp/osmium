@@ -28,11 +28,6 @@ Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		if len(args) < 1 {
-			fmt.Println("Error: project ID required")
-			return
-		}
-
 		var projectType string
 
 		switch {
@@ -41,7 +36,17 @@ to quickly create a Cobra application.`,
 		case updateflags.pluginFlag:
 			projectType = "plugins"
 		default:
-			fmt.Println("Error: you must specify either --mod or --plugin")
+			if len(args) != 0 {
+				fmt.Println("Error: you must specify either --mod or --plugin")
+				return
+			}
+			projectType = "all"
+		}
+
+		if len(args) == 0 {
+			if err := shared.UpdateAllProjects(projectType); err != nil {
+				fmt.Println(err)
+			}
 			return
 		}
 
