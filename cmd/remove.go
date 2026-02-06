@@ -10,6 +10,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
+type removeFlags struct {
+	modFlag    bool
+	pluginFlag bool
+}
+
+var removeflags removeFlags
+
 // removeCmd represents the remove command
 var removeCmd = &cobra.Command{
 	Use:   "remove",
@@ -29,15 +36,15 @@ to quickly create a Cobra application.`,
 		var projectType string
 
 		switch {
-		case modFlag:
+		case removeflags.modFlag:
 			projectType = "mods"
-		case pluginFlag:
+		case removeflags.pluginFlag:
 			projectType = "plugins"
 		default:
 			fmt.Println("Error: you must specify either --mod or --plugin")
 			return
 		}
-		
+
 		for _, projectID := range args {
 			if err := shared.RemoveProjectByID(projectID, projectType); err != nil {
 				fmt.Println(err)
@@ -49,8 +56,8 @@ to quickly create a Cobra application.`,
 func init() {
 	rootCmd.AddCommand(removeCmd)
 
-	removeCmd.Flags().BoolVarP(&modFlag, "mod", "m", false, "Download as mod")
-	removeCmd.Flags().BoolVarP(&pluginFlag, "plugin", "p", false, "Download as plugin")
+	removeCmd.Flags().BoolVarP(&removeflags.modFlag, "mod", "m", false, "Download as mod")
+	removeCmd.Flags().BoolVarP(&removeflags.pluginFlag, "plugin", "p", false, "Download as plugin")
 
 	// make them mutually exclusive (Cobra built‑in)
 	removeCmd.MarkFlagsMutuallyExclusive("mod", "plugin")

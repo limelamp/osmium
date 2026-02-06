@@ -444,3 +444,67 @@ func TrackProjects() error {
 
 	return nil
 }
+
+func UpdateProject(projectID string, folder string) error {
+	// 1. Get project info
+	info, err := getProjectInfo(projectID)
+	if err != nil {
+		return err
+	}
+
+	// 2. Check if already installed
+	osmiumConf, err := config.ReadConfig()
+	if err != nil {
+		return fmt.Errorf("failed to read osmium.json: %w", err)
+	}
+
+	if !isProjectInstalled(info.Slug, folder, osmiumConf) {
+		return fmt.Errorf("%s is not installed\n\n", info.Slug)
+	}
+
+	// 3. Get compatible versions
+	versions, err := getProjectVersions(info.Slug, osmiumConf)
+	if err != nil {
+		return err
+	}
+
+	// 4. Download the latest version
+	latestVersion := versions[0]
+	if len(latestVersion.Files) == 0 {
+		return fmt.Errorf("no files found in the latest version")
+	}
+
+	fileInfo := latestVersion.Files[0]
+
+	var currentHash string
+	switch folder {
+	case "mods":
+		currentHash = osmiumConf.Mods[info.Slug].SHA1
+	case "plugins":
+		currentHash = osmiumConf.Plugins[info.Slug].SHA1
+		// optional folders don't get tracked in config
+	}
+
+	if currentHash == fileInfo.Hashes.SHA1 {
+		fmt.Println(info.Slug, "is the latest version")
+		return nil
+	}
+
+	fmt.Printf("Updating %s...\n\n", fileInfo.Filename)
+
+	if err := downloadFile(fileInfo.URL, folder, fileInfo.Filename); err != nil {
+		return err
+	}
+
+	// 5. Update config
+	if err := updateConfigWithProject(info.Slug, folder, latestVersion, osmiumConf); err != nil {
+		return fmt.Errorf("failed to update osmium.json: %w", err)
+	}
+
+	// 6. Install dependencies
+	if err := installDependencies(latestVersion.Dependencies, folder); err != nil {
+		return err
+	}
+
+	return nil
+}

@@ -10,10 +10,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
+type addFlags struct {
 	modFlag    bool
 	pluginFlag bool
-)
+}
+
+var addflags addFlags
 
 // addCmd represents the add command
 var addCmd = &cobra.Command{
@@ -34,9 +36,9 @@ to quickly create a Cobra application.`,
 		var projectType string
 
 		switch {
-		case modFlag:
+		case addflags.modFlag:
 			projectType = "mods"
-		case pluginFlag:
+		case addflags.pluginFlag:
 			projectType = "plugins"
 		default:
 			fmt.Println("Error: you must specify either --mod or --plugin")
@@ -54,8 +56,8 @@ to quickly create a Cobra application.`,
 func init() {
 	rootCmd.AddCommand(addCmd)
 
-	addCmd.Flags().BoolVarP(&modFlag, "mod", "m", false, "Download as mod")
-	addCmd.Flags().BoolVarP(&pluginFlag, "plugin", "p", false, "Download as plugin")
+	addCmd.Flags().BoolVarP(&addflags.modFlag, "mod", "m", false, "Download as mod")
+	addCmd.Flags().BoolVarP(&addflags.pluginFlag, "plugin", "p", false, "Download as plugin")
 
 	// make them mutually exclusive (Cobra built‑in)
 	addCmd.MarkFlagsMutuallyExclusive("mod", "plugin")
