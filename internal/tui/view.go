@@ -139,6 +139,12 @@ func (m RunServerModel) View() string {
 		Background(lipgloss.Color("#d56509ff")).
 		Padding(0, 1)
 
+	statusStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#eaff00ff")).
+		Background(lipgloss.Color("#000000ff"))
+		// Background(lipgloss.Color("#eaff00ff")).
+		// Foreground(lipgloss.Color("#000000ff"))
+
 	s := headerStyle.Render(" OSMIUM - RUNNING SERVER ") + " Ctrl-C to Exit" + "\n\n"
 
 	if m.err != nil {
@@ -159,6 +165,7 @@ func (m RunServerModel) View() string {
 	}
 
 	s += "> " + m.textInput.View()
+	s += statusStyle.Render(m.statusMessage)
 	// s += "\n\n" + "Navigate using arrow keys. Press 'q' to exit, 'backspace' to go back.\n\n"
 	return s
 }

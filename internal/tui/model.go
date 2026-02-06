@@ -87,15 +87,16 @@ func NewRunScriptModel() RunScriptModel {
 
 // RunServer Model
 type RunServerModel struct {
-	cursor    int
-	options   []string
-	textInput textinput.Model
-	firstRun  bool
-	javaCMD   *exec.Cmd
-	output    *bytes.Buffer // The "bucket" for logs
-	inputPipe io.WriteCloser
-	GoBack    bool
-	err       error
+	cursor        int
+	options       []string
+	textInput     textinput.Model
+	firstRun      bool
+	javaCMD       *exec.Cmd
+	output        *bytes.Buffer // The "bucket" for logs
+	inputPipe     io.WriteCloser
+	statusMessage string
+	GoBack        bool
+	err           error
 }
 
 func NewRunServerModel() RunServerModel {
@@ -105,7 +106,7 @@ func NewRunServerModel() RunServerModel {
 	ti.Focus()     // Start with the cursor blinking inside it
 	ti.Prompt = "" // Remove the ">" out of the way
 	ti.CharLimit = 500
-	ti.Width = 20
+	ti.Width = 500
 
 	return RunServerModel{
 		cursor:    0,
