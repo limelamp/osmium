@@ -271,8 +271,8 @@ func (m RunServerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// We want to prevent the creation of another server process and .lock file so that an already existing
 			// does not get overridden
 			if _, err := os.Stat(lockfileName); err == nil { // File exists.
-				//TODO: The following line only shows up for a split second, needs to be fixed
-				fmt.Println("Server already running! To bypass, run `osmium stop --force` or remove the " + lockfileName + " file at your own risk.")
+				//TODO: The following line only shows up whenever it likes, needs to be fixed
+				m.statusMessage = "\n\n Server already running! To bypass, run `osmium stop --force` or remove the " + lockfileName + " file at your own risk."
 			} else if errors.Is(err, os.ErrNotExist) { // File does not exist.
 
 				// Start the socket listener in the background
