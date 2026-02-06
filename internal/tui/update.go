@@ -6,8 +6,6 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"io"
-	"net"
 	"os"
 	"os/exec"
 	"runtime"
@@ -242,35 +240,6 @@ func (m RunServerModel) Init() tea.Cmd {
 	return nil
 }
 
-func startSocketServer(inputPipe io.WriteCloser) {
-
-	// Main action
-	l, err := net.Listen("tcp", "127.0.0.1:59072")
-	if err != nil {
-		fmt.Println("Error: Could not start listener. Is port 59072 in use?")
-		return
-	}
-	defer l.Close()
-
-	for {
-		conn, err := l.Accept()
-		if err != nil {
-			continue
-		}
-
-		// Handle the connection in a goroutine so the server doesn't freeze
-		go func(c net.Conn) {
-			defer c.Close()
-			scanner := bufio.NewScanner(c)
-			for scanner.Scan() {
-				command := scanner.Text()
-				// Write the command received from the socket into Java's Stdin
-				fmt.Fprintln(inputPipe, command)
-			}
-		}(conn)
-	}
-}
-
 func (m RunServerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.firstRun {
 		osmiumConf, err := config.ReadConfig()
@@ -307,7 +276,7 @@ func (m RunServerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if errors.Is(err, os.ErrNotExist) { // File does not exist.
 
 				// Start the socket listener in the background
-				go startSocketServer(m.inputPipe)
+				go shared.StartBasicSocketServer(m.inputPipe)
 
 				errCh <- m.javaCMD.Start() // 1. Start the process
 
