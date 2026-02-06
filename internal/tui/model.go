@@ -182,9 +182,30 @@ func NewRemoveFilesModel() RemoveFilesModel {
 }
 
 // PluginManagement Model
+
+type SessionState int // Define menu options as an enum or constant list to avoid index confusion
+const (
+	StateOperations SessionState = iota
+	StateAdd
+	StateRemove
+	StateInstall
+	StateUpdate
+	StateTrack
+)
+
+type StateStep int // Define menu options as an enum or constant list to avoid index confusion
+const (
+	StepSelect StateStep = iota
+	StepAction
+)
+
 type PluginManagementModel struct {
+	state      SessionState
+	step       StateStep
 	cursor     int
 	options    []string
+	files      map[int]os.DirEntry
+	selected   map[int]bool
 	GoBack     bool
 	queryInput textinput.Model
 	err        error
@@ -199,7 +220,8 @@ func NewPluginManagementModel() PluginManagementModel {
 
 	return PluginManagementModel{
 		cursor:     0,
-		options:    []string{"Recommended settings", "Detailed"},
+		step:       0,
+		options:    []string{"Add a new plugin", "Remove selected plugins", "Install all added plugins", "Update selected plugins", "Track untracked plugins"},
 		GoBack:     false,
 		queryInput: ti,
 	}
@@ -209,6 +231,7 @@ func NewPluginManagementModel() PluginManagementModel {
 type ModManagementModel struct {
 	cursor     int
 	options    []string
+	step       int
 	GoBack     bool
 	queryInput textinput.Model
 	err        error
@@ -223,7 +246,7 @@ func NewModManagementModel() ModManagementModel {
 
 	return ModManagementModel{
 		cursor:     0,
-		options:    []string{"Recommended settings", "Detailed"},
+		options:    []string{"Add a new mod", "Remove selected mods", "Install all added mods", "Update selected mods", "Track untracked mods"},
 		GoBack:     false,
 		queryInput: ti,
 	}

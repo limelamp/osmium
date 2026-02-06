@@ -290,6 +290,9 @@ func (m PluginManagementModel) View() string {
 	// Header
 	s := headerStyle.Render(" OSMIUM - PLUGIN MANAGEMENT") + "\n\n"
 
+	selectedStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#FF0000"))
+
 	// Error display
 	if m.err != nil {
 		errorStyle := lipgloss.NewStyle().
@@ -298,18 +301,54 @@ func (m PluginManagementModel) View() string {
 		s += errorStyle.Render("Error: "+m.err.Error()) + "\n\n"
 	}
 
-	// Create a simple list
-	for i := 0; i < len(m.options); i++ {
-		cursor := "  "
-		if m.cursor == i {
-			cursor = "> "
+	switch m.state {
+	case StateOperations: // Operations
+		// Create a simple list
+		for i := 0; i < len(m.options); i++ {
+			cursor := "  "
+			if m.cursor == i {
+				cursor = "> "
+			}
+			s += fmt.Sprintf("%s %s\n", cursor, m.options[i])
 		}
-		s += fmt.Sprintf("%s %s\n", cursor, m.options[i])
+	case StateAdd: // Add
+		s += "Enter the id/slug of the plugin you want to add and install:\n\n"
+
+		s += m.queryInput.View() + "\n\n"
+	case StateRemove: // Remove
+		for i := 0; i < len(m.files); i++ {
+			cursor := "  "
+			if m.cursor == i {
+				cursor = "> "
+			}
+
+			name := m.files[i].Name()
+
+			if m.selected[i] {
+				// Selected: add asterisk and color red
+				s += fmt.Sprintf("%s%s\n", cursor, selectedStyle.Render("* "+name))
+			} else {
+				// Not selected: normal display
+				s += fmt.Sprintf("%s  %s\n", cursor, name)
+			}
+		}
+	case StateInstall: // Install
+	case StateUpdate: // Update
+		s += "Enter the id/slug of the specific plugin you want to update or update all:\n\n"
+
+		for i := 0; i < 2; i++ {
+			cursor := "  "
+			if m.cursor == i {
+				cursor = "> "
+			}
+			s += fmt.Sprintf("%s %s\n", cursor, m.options[i])
+		}
+		// s += m.queryInput.View() + "\n\n"
+	case StateTrack: // Track
+		s += "Tracked mods! \n"
 	}
 
-	s += m.queryInput.View() + "\n\n"
-
-	s += "\n\n" + "Navigate using arrow keys. Press 'q' to exit, 'ctrl+backspace' to go back.\n\n"
+	s += "\n\n" + "Navigate using arrow keys. Press 'q' to exit, 'backspace' to go back.\n\n"
 	return s
 }
 
