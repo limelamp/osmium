@@ -446,24 +446,18 @@ func TrackProjects() error {
 }
 
 func UpdateProject(projectID string, folder string) error {
-	// 1. Get project info
-	info, err := getProjectInfo(projectID)
-	if err != nil {
-		return err
-	}
-
-	// 2. Check if already installed
+	// 1. Check if already installed
 	osmiumConf, err := config.ReadConfig()
 	if err != nil {
 		return fmt.Errorf("failed to read osmium.json: %w", err)
 	}
 
-	if !isProjectInstalled(info.Slug, folder, osmiumConf) {
-		return fmt.Errorf("%s is not installed\n\n", info.Slug)
+	if !isProjectInstalled(projectID, folder, osmiumConf) {
+		return fmt.Errorf("%s is not installed", projectID)
 	}
 
 	// 3. Get compatible versions
-	versions, err := getProjectVersions(info.Slug, osmiumConf)
+	versions, err := getProjectVersions(projectID, osmiumConf)
 	if err != nil {
 		return err
 	}
@@ -479,14 +473,14 @@ func UpdateProject(projectID string, folder string) error {
 	var currentHash string
 	switch folder {
 	case "mods":
-		currentHash = osmiumConf.Mods[info.Slug].SHA1
+		currentHash = osmiumConf.Mods[projectID].SHA1
 	case "plugins":
-		currentHash = osmiumConf.Plugins[info.Slug].SHA1
+		currentHash = osmiumConf.Plugins[projectID].SHA1
 		// optional folders don't get tracked in config
 	}
 
 	if currentHash == fileInfo.Hashes.SHA1 {
-		fmt.Println(info.Slug, "is the latest version")
+		fmt.Println(projectID, "is the latest version")
 		return nil
 	}
 
@@ -497,13 +491,50 @@ func UpdateProject(projectID string, folder string) error {
 	}
 
 	// 5. Update config
-	if err := updateConfigWithProject(info.Slug, folder, latestVersion, osmiumConf); err != nil {
+	if err := updateConfigWithProject(projectID, folder, latestVersion, osmiumConf); err != nil {
 		return fmt.Errorf("failed to update osmium.json: %w", err)
 	}
 
 	// 6. Install dependencies
 	if err := installDependencies(latestVersion.Dependencies, folder); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func UpdateAllProjects(folder string) error {
+	osmiumConf, err := config.ReadConfig()
+	if err != nil {
+		return fmt.Errorf("failed to read osmium.json: %w", err)
+	}
+
+	switch folder {
+	case "mods":
+		for mod := range osmiumConf.Mods {
+			if err := UpdateProject(mod, "mods"); err != nil {
+				fmt.Println(err)
+			}
+		}
+	case "plugins":
+		for plugin := range osmiumConf.Plugins {
+			if err := UpdateProject(plugin, "plugins"); err != nil {
+				fmt.Println(err)
+			}
+		}
+	case "all":
+		for mod := range osmiumConf.Mods {
+			if err := UpdateProject(mod, "mods"); err != nil {
+				fmt.Println(err)
+			}
+		}
+		for plugin := range osmiumConf.Plugins {
+			if err := UpdateProject(plugin, "plugins"); err != nil {
+				fmt.Println(err)
+			}
+		}
+	default:
+		return fmt.Errorf("Invalid case")
 	}
 
 	return nil
