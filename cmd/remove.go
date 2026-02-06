@@ -37,9 +37,11 @@ to quickly create a Cobra application.`,
 			fmt.Println("Error: you must specify either --mod or --plugin")
 			return
 		}
-
-		if err := shared.RemoveProjectByID(args[0], projectType); err != nil {
-			fmt.Println(err)
+		
+		for _, projectID := range args {
+			if err := shared.RemoveProjectByID(projectID, projectType); err != nil {
+				fmt.Println(err)
+			}
 		}
 	},
 }
