@@ -43,8 +43,10 @@ to quickly create a Cobra application.`,
 			return
 		}
 
-		if err := shared.AddProjectByID(args[0], projectType); err != nil {
-			fmt.Println(err)
+		for _, projectID := range args {
+			if err := shared.AddProjectByID(projectID, projectType); err != nil {
+				fmt.Println(err)
+			}
 		}
 	},
 }
