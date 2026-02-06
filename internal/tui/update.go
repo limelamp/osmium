@@ -637,15 +637,39 @@ func (m PluginManagementModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.cursor < len(m.options)-1 {
 				m.cursor++
 			}
-		case "ctrl+h": // ctrl+backspace
+		case "backspace": // ctrl+backspace = ctrl+h
 			m.GoBack = true
 			return m, nil
 		case "enter":
-			if err := shared.AddProjectByID(m.queryInput.Value(), "plugins"); err != nil {
-				fmt.Println(err)
-			} else {
-				fmt.Println("Downloaded, good luck lol")
+			switch m.state {
+			case StateOperations: // Operations
+				m.state = SessionState(m.cursor) + 1 // + 1 compensate
+			case StateAdd: // Add
+				if err := shared.AddProjectByID(m.queryInput.Value(), "plugins"); err != nil {
+					fmt.Println(err)
+				} else {
+					fmt.Println("Downloaded, good luck lol")
+					m.cursor = 0
+				}
+			case StateRemove: // Remove
+				// shared.RemoveProjectByID()
+			case StateInstall: // Install
+			case StateUpdate: // Update
+				m.cursor = 0
+				switch m.step {
+				case StepSelect:
+					m.options = []string{m.queryInput.View(), "All mods"}
+				case StepAction:
+					if err := shared.UpdateAllProjects("plugins"); err != nil {
+						fmt.Println(err)
+					}
+
+				}
+
+			case StateTrack: // Track
+				shared.TrackProjects()
 			}
+
 		}
 	}
 	var cmd tea.Cmd
