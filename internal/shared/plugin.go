@@ -92,10 +92,18 @@ func getProjectInfo(projectID string) (projectInfo, error) {
 func isProjectInstalled(slug, folder string, conf *config.OsmiumConfig) bool {
 	switch folder {
 	case "mods", "optional_mods":
-		_, ok := conf.Mods[slug]
+		project, ok := conf.Mods[slug]
+		// check if the file exists in mods folder
+		if _, err := os.Stat(filepath.Join("mods", project.FileName)); os.IsNotExist(err) {
+			return false
+		}
 		return ok
 	case "plugins", "optional_plugins":
-		_, ok := conf.Plugins[slug]
+		project, ok := conf.Plugins[slug]
+		// check if the file exists in plugins folder
+		if _, err := os.Stat(filepath.Join("plugins", project.FileName)); os.IsNotExist(err) {
+			return false
+		}
 		return ok
 	default:
 		return false
@@ -535,6 +543,65 @@ func UpdateAllProjects(folder string) error {
 		}
 	default:
 		return fmt.Errorf("Invalid case")
+	}
+
+	return nil
+}
+
+func InstallProjectByID(projectID string, folder string) error {
+	// 1. Check if already installed
+	osmiumConf, err := config.ReadConfig()
+	if err != nil {
+		return fmt.Errorf("failed to read osmium.json: %w", err)
+	}
+
+	if isProjectInstalled(projectID, folder, osmiumConf) {
+		fmt.Printf("%s already installed\n\n", projectID)
+		return nil
+	}
+
+	// 3. Get compatible versions
+	versions, err := getProjectVersions(projectID, osmiumConf)
+	if err != nil {
+		return err
+	}
+
+	// 4. Download the latest version
+	latestVersion := versions[0]
+	if len(latestVersion.Files) == 0 {
+		return fmt.Errorf("no files found in the latest version")
+	}
+
+	fileInfo := latestVersion.Files[0]
+	fmt.Printf("Downloading %s...\n\n", fileInfo.Filename)
+
+	if err := downloadFile(fileInfo.URL, folder, fileInfo.Filename); err != nil {
+		return err
+	}
+
+	// 5. Install dependencies
+	if err := installDependencies(latestVersion.Dependencies, folder); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func InstallProjectsFromConfig() error {
+	osmiumConf, err := config.ReadConfig()
+	if err != nil {
+		return fmt.Errorf("failed to read osmium.json: %w", err)
+	}
+
+	for mod := range osmiumConf.Mods {
+		if err := InstallProjectByID(mod, "mods"); err != nil {
+			fmt.Println(err)
+		}
+	}
+	for plugin := range osmiumConf.Plugins {
+		if err := InstallProjectByID(plugin, "plugins"); err != nil {
+			fmt.Println(err)
+		}
 	}
 
 	return nil
