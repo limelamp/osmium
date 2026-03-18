@@ -14,6 +14,7 @@ import (
 
 	"github.com/limelamp/osmium/internal/config"
 	"github.com/limelamp/osmium/internal/constants"
+	"github.com/limelamp/osmium/internal/util"
 )
 
 //* API didn't work as expected
@@ -478,21 +479,23 @@ func UpdateProject(projectID string, folder string) error {
 
 	fileInfo := latestVersion.Files[0]
 
-	var currentHash string
+	var currentProject config.Project
 	switch folder {
 	case "mods":
-		currentHash = osmiumConf.Mods[projectID].SHA1
+		currentProject = osmiumConf.Mods[projectID]
 	case "plugins":
-		currentHash = osmiumConf.Plugins[projectID].SHA1
+		currentProject = osmiumConf.Plugins[projectID]
 		// optional folders don't get tracked in config
 	}
 
-	if currentHash == fileInfo.Hashes.SHA1 {
+	if currentProject.SHA1 == fileInfo.Hashes.SHA1 {
 		fmt.Println(projectID, "is the latest version")
 		return nil
 	}
 
 	fmt.Printf("Updating %s...\n\n", fileInfo.Filename)
+
+	os.Remove(filepath.Join(folder, currentProject.FileName))
 
 	if err := downloadFile(fileInfo.URL, folder, fileInfo.Filename); err != nil {
 		return err
@@ -602,6 +605,214 @@ func InstallProjectsFromConfig() error {
 		if err := InstallProjectByID(plugin, "plugins"); err != nil {
 			fmt.Println(err)
 		}
+	}
+
+	return nil
+}
+
+// migrateProject attempts to migrate a single project to new loader/version
+// Returns true if migrated successfully, false if incompatible (needs backup)
+func migrateProject(slug string, folder string, newConf *config.OsmiumConfig) (bool, error) {
+	// Get compatible versions for the new loader/version
+	versions, err := getProjectVersions(slug, newConf)
+	if err != nil {
+		// Project not compatible with new loader/version
+		return false, err
+	}
+
+	if len(versions) == 0 {
+		return false, fmt.Errorf("no compatible versions found")
+	}
+
+	// Get current project to delete old file
+	oldConf, err := config.ReadConfig()
+	if err != nil {
+		return false, err
+	}
+
+	var oldProject config.Project
+	var exists bool
+
+	switch folder {
+	case "mods", "optional_mods":
+		oldProject, exists = oldConf.Mods[slug]
+	case "plugins", "optional_plugins":
+		oldProject, exists = oldConf.Plugins[slug]
+	}
+
+	// Download new version
+	latestVersion := versions[0]
+	if len(latestVersion.Files) == 0 {
+		return false, fmt.Errorf("no files found in the latest version")
+	}
+
+	fileInfo := latestVersion.Files[0]
+	fmt.Printf("Migrating %s to %s...\n", slug, fileInfo.Filename)
+
+	if err := downloadFile(fileInfo.URL, folder, fileInfo.Filename); err != nil {
+		return false, err
+	}
+
+	// Remove old file if it exists and is different
+	if exists && oldProject.FileName != fileInfo.Filename {
+		oldPath := filepath.Join(folder, oldProject.FileName)
+		if err := os.Remove(oldPath); err != nil && !os.IsNotExist(err) {
+			fmt.Printf("Warning: failed to remove old file %s: %v\n", oldPath, err)
+		}
+	}
+
+	// Update config (only for tracked folders)
+	if folder == "mods" || folder == "plugins" {
+		if err := updateConfigWithProject(slug, folder, latestVersion, newConf); err != nil {
+			return false, err
+		}
+	}
+
+	// Install dependencies
+	if err := installDependencies(latestVersion.Dependencies, folder); err != nil {
+		fmt.Printf("Warning: failed to install dependencies for %s: %v\n", slug, err)
+	}
+
+	return true, nil
+}
+
+// processProjectsForMigration processes all projects in a folder for migration
+func processProjectsForMigration(folder string, projects map[string]config.Project, newConf *config.OsmiumConfig) error {
+	backupFolder := filepath.Join("migration_backup", folder)
+
+	for slug := range projects {
+		migrated, err := migrateProject(slug, folder, newConf)
+		if !migrated {
+			// Project is not compatible, move to backup
+			fmt.Printf("⚠ Warning: %s is not available for %s %s\n", slug, newConf.Loader, newConf.Version)
+			fmt.Printf("Moving to backup folder: %s\n", backupFolder)
+
+			// Create backup folder
+			if err := os.MkdirAll(backupFolder, 0755); err != nil {
+				return fmt.Errorf("failed to create backup folder: %w", err)
+			}
+
+			// Get the project to find its filename
+			oldConf, err := config.ReadConfig()
+			if err != nil {
+				return err
+			}
+
+			var project config.Project
+			if folder == "mods" || folder == "optional_mods" {
+				project = oldConf.Mods[slug]
+			} else {
+				project = oldConf.Plugins[slug]
+			}
+
+			// Move file to backup
+			srcPath := filepath.Join(folder, project.FileName)
+			dstPath := filepath.Join(backupFolder, project.FileName)
+
+			if err := os.Rename(srcPath, dstPath); err != nil && !os.IsNotExist(err) {
+				fmt.Printf("Warning: failed to move %s to backup: %v\n", srcPath, err)
+			}
+
+			// Remove from config
+			switch folder {
+			case "mods":
+				delete(newConf.Mods, slug)
+			case "plugins":
+				delete(newConf.Plugins, slug)
+			}
+		} else if err != nil {
+			fmt.Printf("Warning: error migrating %s: %v\n", slug, err)
+		}
+	}
+
+	return nil
+}
+
+func MigrateServer(loader string, version string) error {
+	fmt.Printf("\n=== Starting server migration to %s %s ===\n\n", loader, version)
+
+	// Read current config
+	oldConf, err := config.ReadConfig()
+	if err != nil {
+		return fmt.Errorf("failed to read osmium.json: %w", err)
+	}
+
+	fmt.Printf("Current: %s %s\n", oldConf.Loader, oldConf.Version)
+	fmt.Printf("Target:  %s %s\n\n", loader, version)
+
+	// Create new config with updated loader and version
+	newConf := &config.OsmiumConfig{
+		Category: oldConf.Category,
+		Loader:   loader,
+		Version:  version,
+		Mods:     make(map[string]config.Project),
+		Plugins:  make(map[string]config.Project),
+	}
+
+	// Copy existing mods and plugins to new config (will be updated during migration)
+	for k, v := range oldConf.Mods {
+		newConf.Mods[k] = v
+	}
+	for k, v := range oldConf.Plugins {
+		newConf.Plugins[k] = v
+	}
+
+	// Step 1: Migrate mods (if any)
+	if len(oldConf.Mods) > 0 {
+		fmt.Println("\n--- Migrating mods ---")
+		if err := processProjectsForMigration("mods", oldConf.Mods, newConf); err != nil {
+			return err
+		}
+
+		// Process optional_mods if the folder exists
+		if _, err := os.Stat("optional_mods"); err == nil {
+			fmt.Println("\n--- Migrating optional mods ---")
+			if err := processProjectsForMigration("optional_mods", oldConf.Mods, newConf); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Step 2: Migrate plugins (if any)
+	if len(oldConf.Plugins) > 0 {
+		fmt.Println("\n--- Migrating plugins ---")
+		if err := processProjectsForMigration("plugins", oldConf.Plugins, newConf); err != nil {
+			return err
+		}
+
+		// Process optional_plugins if the folder exists
+		if _, err := os.Stat("optional_plugins"); err == nil {
+			fmt.Println("\n--- Migrating optional plugins ---")
+			if err := processProjectsForMigration("optional_plugins", oldConf.Plugins, newConf); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Step 3: Update config file with new loader and version
+	fmt.Println("\n--- Updating osmium.json ---")
+	if err := config.WriteConfig(newConf); err != nil {
+		return fmt.Errorf("failed to update osmium.json: %w", err)
+	}
+	fmt.Println("✓ Config updated")
+
+	// Step 4: Download and install new server.jar (only if loader or version changed)
+	if strings.EqualFold(oldConf.Loader, loader) && oldConf.Version == version {
+		fmt.Println("\n--- Server.jar unchanged ---")
+		fmt.Println("✓ Same loader and version, skipping server.jar download")
+	} else {
+		fmt.Println("\n--- Installing new server.jar ---")
+		if err := util.DownloadJar(loader, version); err != nil {
+			return fmt.Errorf("failed to download new server.jar: %w", err)
+		}
+		fmt.Println("✓ Server files downloaded")
+	}
+
+	fmt.Printf("\n=== Migration completed! ===\n")
+	fmt.Printf("Server migrated from %s %s to %s %s\n", oldConf.Loader, oldConf.Version, loader, version)
+	fmt.Println("\nNote: World folders, server.properties, and other config files remain intact.")
+	if _, err := os.Stat("migration_backup"); err == nil {
+		fmt.Println("Incompatible mods/plugins have been moved to 'migration_backup' folder.")
 	}
 
 	return nil

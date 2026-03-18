@@ -1,40 +1,50 @@
 /*
 Copyright © 2026 NAME HERE <EMAIL ADDRESS>
-
 */
 package cmd
 
 import (
 	"fmt"
+	"os"
 
+	"github.com/limelamp/osmium/internal/shared"
 	"github.com/spf13/cobra"
 )
+
+type migrateFlags struct {
+	loader  string
+	version string
+}
+
+var migrateflags migrateFlags
 
 // migrateCmd represents the migrate command
 var migrateCmd = &cobra.Command{
 	Use:   "migrate",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
+	Short: "Migrate server to a different loader or version",
+	Long: `Migrate your Minecraft server to a different mod loader or version.
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+This command will:
+  - Replace the server.jar with the new loader/version
+  - Migrate existing mods/plugins to compatible versions
+  - Keep world data, configs, and other files intact
+  - Move incompatible mods/plugins to a backup folder
+
+Example:
+  osmium migrate -l Paper -v 1.21.1
+  osmium migrate -l Fabric -v 1.20.4`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("migrate called")
+		if err := shared.MigrateServer(migrateflags.loader, migrateflags.version); err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(migrateCmd)
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// migrateCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// migrateCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	migrateCmd.Flags().StringVarP(&migrateflags.loader, "loader", "l", "", "Minecraft mod or plugin loader")
+	migrateCmd.Flags().StringVarP(&migrateflags.version, "version", "v", "", "Minecraft version")
+	migrateCmd.MarkFlagRequired("loader")
+	migrateCmd.MarkFlagRequired("version")
 }
