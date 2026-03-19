@@ -20,13 +20,12 @@ var installflags installFlags
 // installCmd represents the install command
 var installCmd = &cobra.Command{
 	Use:   "install",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
+	Short: "Install all projects from osmium.json.",
+	Long: `Installs all tracked mods and plugins listed in osmium.json.
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+Example:
+  osmium install`,
+	Args: cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := shared.InstallProjectsFromConfig(); err != nil {
 			fmt.Println(err)

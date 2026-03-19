@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"time"
 )
 
 // Json structs ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -85,11 +86,27 @@ type mohistBuildResponse struct {
 	CreatedAt int64  `json:"createdAt"`
 }
 
+var setupHTTPClient = &http.Client{Timeout: 30 * time.Second}
+
+func getWithStatus(url string) (*http.Response, error) {
+	resp, err := setupHTTPClient.Get(url)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		defer resp.Body.Close()
+		return nil, fmt.Errorf("request failed: %s", resp.Status)
+	}
+
+	return resp, nil
+}
+
 // Note: modrinthVersion struct is defined in plugin.go and shared across the package
 
 // General functions ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 func GetMinecraftVersionsManifest() (*vanillaVersionManifest, error) {
-	resp, err := http.Get("https://launchermeta.mojang.com/mc/game/version_manifest.json")
+	resp, err := getWithStatus("https://launchermeta.mojang.com/mc/game/version_manifest.json")
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +140,7 @@ func GetVersionStrings(version_type string) ([]string, error) {
 
 func getVanillaServerURL(targetVersion string) (string, error) {
 	// Step 1: Get the Master Manifest
-	resp, err := http.Get("https://launchermeta.mojang.com/mc/game/version_manifest.json")
+	resp, err := getWithStatus("https://launchermeta.mojang.com/mc/game/version_manifest.json")
 	if err != nil {
 		return "", err
 	}
@@ -148,7 +165,7 @@ func getVanillaServerURL(targetVersion string) (string, error) {
 	}
 
 	// Step 3: Get the specific version's JSON package
-	resp, err = http.Get(versionDetailURL)
+	resp, err = getWithStatus(versionDetailURL)
 	if err != nil {
 		return "", err
 	}
@@ -165,7 +182,7 @@ func getVanillaServerURL(targetVersion string) (string, error) {
 func getPaperServerURL(version string) (string, error) {
 	// Step 1: Get the builds list to find the LATEST build number
 	buildsURL := fmt.Sprintf("https://api.papermc.io/v2/projects/paper/versions/%s", version)
-	resp, err := http.Get(buildsURL)
+	resp, err := getWithStatus(buildsURL)
 	if err != nil {
 		return "", err
 	}
@@ -183,7 +200,7 @@ func getPaperServerURL(version string) (string, error) {
 
 	// Step 2: Get the filename for that specific build
 	infoURL := fmt.Sprintf("https://api.papermc.io/v2/projects/paper/versions/%s/builds/%d", version, latestBuild)
-	resp, err = http.Get(infoURL)
+	resp, err = getWithStatus(infoURL)
 	if err != nil {
 		return "", err
 	}
@@ -209,7 +226,7 @@ func getPaperServerURL(version string) (string, error) {
 
 func getFabricServerURL(mcVersion string) (string, error) {
 	// Step 1: Get the latest stable loader version
-	loaderResp, err := http.Get("https://meta.fabricmc.net/v2/versions/loader")
+	loaderResp, err := getWithStatus("https://meta.fabricmc.net/v2/versions/loader")
 	if err != nil {
 		return "", err
 	}
@@ -233,7 +250,7 @@ func getFabricServerURL(mcVersion string) (string, error) {
 	}
 
 	// Step 2: Get the latest stable installer version
-	installerResp, err := http.Get("https://meta.fabricmc.net/v2/versions/installer")
+	installerResp, err := getWithStatus("https://meta.fabricmc.net/v2/versions/installer")
 	if err != nil {
 		return "", err
 	}
@@ -264,7 +281,7 @@ func getFabricServerURL(mcVersion string) (string, error) {
 }
 
 func getNeoForgeVersionMap() map[string]string {
-	resp, err := http.Get("https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml")
+	resp, err := getWithStatus("https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml")
 	if err != nil {
 		return nil
 	}
@@ -329,7 +346,7 @@ func getYouerServerURL(mcVersion string) (string, error) {
 }
 
 func getForgeVersionMap() map[string]string {
-	resp, err := http.Get("https://maven.minecraftforge.net/net/minecraftforge/forge/maven-metadata.xml")
+	resp, err := getWithStatus("https://maven.minecraftforge.net/net/minecraftforge/forge/maven-metadata.xml")
 	if err != nil {
 		return nil
 	}
@@ -385,7 +402,7 @@ func getForgeServerURL(mcVersion string) (string, string, error) {
 // getQuiltInstallerURL returns the Quilt installer JAR URL
 func getQuiltInstallerURL() (string, string, error) {
 	// Get the latest installer version from Quilt meta API
-	resp, err := http.Get("https://meta.quiltmc.org/v3/versions/installer")
+	resp, err := getWithStatus("https://meta.quiltmc.org/v3/versions/installer")
 	if err != nil {
 		return "", "", err
 	}
@@ -530,15 +547,11 @@ func getQuiltInstallerURL() (string, string, error) {
 // }
 
 func downloadFile(url string, filename string) error {
-	resp, err := http.Get(url)
+	resp, err := getWithStatus(url)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("bad status: %s", resp.Status)
-	}
 
 	out, err := os.Create(filename)
 	if err != nil {

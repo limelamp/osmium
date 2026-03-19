@@ -19,20 +19,16 @@ var addflags addFlags
 
 // addCmd represents the add command
 var addCmd = &cobra.Command{
-	Use:   "add",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
+	Use:   "add [project-id ...]",
+	Short: "Add one or more Modrinth projects.",
+	Long: `Downloads and installs one or more Modrinth projects.
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+Use --mod for mods or --plugin for plugins.
+Examples:
+  osmium add --mod sodium
+  osmium add --plugin luckperms viaversion`,
+	Args: cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		if len(args) < 1 {
-			fmt.Println("Error: project ID required")
-			return
-		}
-
 		var projectType string
 
 		switch {
@@ -61,4 +57,5 @@ func init() {
 
 	// make them mutually exclusive (Cobra built‑in)
 	addCmd.MarkFlagsMutuallyExclusive("mod", "plugin")
+	addCmd.MarkFlagsOneRequired("mod", "plugin")
 }

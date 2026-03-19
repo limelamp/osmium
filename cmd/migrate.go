@@ -20,7 +20,7 @@ var migrateflags migrateFlags
 
 // migrateCmd represents the migrate command
 var migrateCmd = &cobra.Command{
-	Use:   "migrate",
+	Use:   "migrate --loader <loader> --version <version>",
 	Short: "Migrate server to a different loader or version",
 	Long: `Migrate your Minecraft server to a different mod loader or version.
 
@@ -33,6 +33,7 @@ This command will:
 Example:
   osmium migrate -l Paper -v 1.21.1
   osmium migrate -l Fabric -v 1.20.4`,
+	Args: cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := shared.MigrateServer(migrateflags.loader, migrateflags.version); err != nil {
 			fmt.Printf("Error: %v\n", err)
