@@ -6,8 +6,8 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"strconv"
 
+	"github.com/limelamp/osmium/internal/shared"
 	"github.com/spf13/cobra"
 )
 
@@ -19,43 +19,51 @@ var stopCmd = &cobra.Command{
 	Short: "Stop the Minecraft server.",
 	Long:  `Stops the Minecraft server that is currently running with Osmium.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		// Read and get the pid from lock file
-		data, err := os.ReadFile(".osmium_process.lock")
+		pid, err := shared.ReadLockPID()
 		if err != nil {
-			fmt.Println("Error reading the lock file:", err)
+			fmt.Println("No active lock file found. Server may already be stopped.")
 			return
 		}
-		pid, _ := strconv.Atoi(string(data)) // Converts data from []byte --> string --> int
+
+		if !shared.IsPIDRunning(pid) {
+			if err := shared.RemoveLockFile(); err != nil {
+				fmt.Println(err)
+				return
+			}
+			fmt.Printf("Found stale lock file for PID %d. Lock file removed.\n", pid)
+			return
+		}
 
 		// Check if the process with that pid actually exists
 		process, err := os.FindProcess(pid)
 		if err != nil {
-			fmt.Printf("failed to find process: %d", err)
+			fmt.Printf("failed to find process: %v\n", err)
+			return
 		}
 
 		if forceFlag { // .Kill() is equivalent to SIGKILL (force quit)
 			err = process.Kill()
 			if err != nil {
-				fmt.Printf("failed to kill process: %d", err)
+				fmt.Printf("failed to kill process: %v\n", err)
+				return
 			}
-			fmt.Printf("Process %d has been killed.\n", pid)
+			fmt.Printf("Server process %d has been force-killed.\n", pid)
 
 			// Remove the .lock file once the process is killed.
-			err := os.Remove(".osmium_process.lock")
-			if err != nil {
-				fmt.Println("Error removing file:", err)
+			if err := shared.RemoveLockFile(); err != nil {
+				fmt.Println(err)
 			}
 		} else { // process.Signal(os.Interrupt) for a cleaner exit(?)
 			err = process.Signal(os.Interrupt)
 			if err != nil {
-				fmt.Printf("failed to stop process: %d", err)
+				fmt.Printf("failed to stop process: %v\n", err)
+				return
 			}
-			fmt.Printf("Process %d has been stopped.\n", pid)
+			fmt.Printf("Server process %d has been asked to stop gracefully.\n", pid)
 
 			// Remove the .lock file once the process is stopped.
-			err := os.Remove(".osmium_process.lock")
-			if err != nil {
-				fmt.Println("Error removing file:", err)
+			if err := shared.RemoveLockFile(); err != nil {
+				fmt.Println(err)
 			}
 		}
 	},

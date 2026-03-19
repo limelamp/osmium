@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/limelamp/osmium/internal/config"
 	"github.com/limelamp/osmium/internal/constants"
@@ -58,17 +59,18 @@ type modrinthVersion struct {
 	Dependencies []dependency `json:"dependencies"`
 }
 
+var modrinthHTTPClient = &http.Client{Timeout: 30 * time.Second}
+
 //# --- project functions ---
 
 // doModrinthRequest performs an HTTP request with required Modrinth headers
 func doModrinthRequest(url string) (*http.Response, error) {
-	client := http.Client{}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("User-Agent", "Osmium-Manager/1.0")
-	return client.Do(req)
+	return modrinthHTTPClient.Do(req)
 }
 
 // getProjectInfo fetches the project info (slug and loaders) from Modrinth API by project ID
@@ -80,6 +82,10 @@ func getProjectInfo(projectID string) (projectInfo, error) {
 		return projectInfo{}, fmt.Errorf("failed to fetch slug: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return projectInfo{}, fmt.Errorf("failed to fetch project info: %s", resp.Status)
+	}
 
 	var info projectInfo
 	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
@@ -147,6 +153,10 @@ func getProjectVersions(slug string, conf *config.OsmiumConfig) ([]modrinthVersi
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to fetch versions: %s", resp.Status)
+	}
+
 	var versions []modrinthVersion
 	if err := json.NewDecoder(resp.Body).Decode(&versions); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
@@ -161,11 +171,15 @@ func getProjectVersions(slug string, conf *config.OsmiumConfig) ([]modrinthVersi
 
 // downloadFile downloads a file from URL to the specified folder
 func downloadFile(url, folder, filename string) error {
-	resp, err := http.Get(url)
+	resp, err := modrinthHTTPClient.Get(url)
 	if err != nil {
 		return fmt.Errorf("failed to download file: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to download file: %s", resp.Status)
+	}
 
 	// Ensure folder exists
 	if err := os.MkdirAll(folder, 0755); err != nil {
@@ -361,6 +375,10 @@ func getProjectByHash(hash string) (modrinthVersion, error) {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		return modrinthVersion{}, fmt.Errorf("failed to fetch version by hash: %s", resp.Status)
+	}
+
 	var project modrinthVersion
 	if err := json.NewDecoder(resp.Body).Decode(&project); err != nil {
 		return modrinthVersion{}, fmt.Errorf("failed to decode response: %w", err)
@@ -399,6 +417,10 @@ func processDirectory(folder string) error {
 		}
 
 		project, err := getProjectByHash(checksum)
+		if err != nil {
+			fmt.Printf("failed to fetch project metadata for %s: %v\n", filePath, err)
+			continue
+		}
 
 		// 1. Get project info
 		info, err := getProjectInfo(project.ProjectID)
