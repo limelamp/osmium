@@ -4,12 +4,10 @@ package tui
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"runtime"
-	"strconv"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -104,7 +102,10 @@ func (m SetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.osmiumConf.Version = m.jarVersion
 				m.osmiumConf.Mods = make(map[string]config.Project)
 				m.osmiumConf.Plugins = make(map[string]config.Project)
-				config.WriteConfig(&m.osmiumConf)
+				if err := config.WriteConfig(&m.osmiumConf); err != nil {
+					m.err = err
+					return m, nil
+				}
 
 				// Move to init prompt
 				m.step = 3
@@ -131,7 +132,10 @@ func (m SetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					content := "#By changing the setting below to TRUE you are indicating your agreement to our EULA (https://aka.ms/MinecraftEULA).\n"
 					content += "eula=true\n"
 
-					os.WriteFile("eula.txt", []byte(content), 0644)
+					if err := os.WriteFile("eula.txt", []byte(content), 0644); err != nil {
+						m.err = err
+						return m, nil
+					}
 
 					// Set the state to that of RunServer's in app.go
 					m.State = 1
@@ -242,10 +246,27 @@ func (m RunServerModel) Init() tea.Cmd {
 
 func (m RunServerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.firstRun {
+		if len(m.options) == 0 {
+			m.options = []string{""}
+		}
+
 		osmiumConf, err := config.ReadConfig()
 		if err != nil {
 			m.err = err
 			return m, nil
+		}
+
+		if pid, err := shared.ReadLockPID(); err == nil {
+			if shared.IsPIDRunning(pid) {
+				m.err = fmt.Errorf("server already running (pid %d). stop it with 'osmium stop'", pid)
+				m.firstRun = false
+				return m, nil
+			}
+
+			if err := shared.RemoveLockFile(); err != nil {
+				m.err = err
+				return m, nil
+			}
 		}
 
 		javaPath, args := util.GetServerRunCommand(osmiumConf.Loader)
@@ -258,45 +279,30 @@ func (m RunServerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.javaCMD.Stdout = m.output
 		m.javaCMD.Stderr = m.output
 
-		m.inputPipe, _ = m.javaCMD.StdinPipe() // This is the "entrance"
+		m.inputPipe, err = m.javaCMD.StdinPipe() // This is the "entrance"
+		if err != nil {
+			m.err = err
+			return m, nil
+		}
 
-		// Exception handling with goroutines and channels (for Turlan)
-		errCh := make(chan error, 1)
+		if err := m.javaCMD.Start(); err != nil {
+			m.err = err
+			return m, nil
+		}
 
-		go func() {
+		if err := shared.WriteLockPID(m.javaCMD.Process.Pid); err != nil {
+			m.err = err
+			_ = m.javaCMD.Process.Kill()
+			return m, nil
+		}
 
-			// Lock file checks and creation
-			lockfileName := ".osmium_process.lock"
+		// Start the socket listener in the background
+		go shared.StartBasicSocketServer(m.inputPipe)
 
-			// We want to prevent the creation of another server process and .lock file so that an already existing
-			// does not get overridden
-			if _, err := os.Stat(lockfileName); err == nil { // File exists.
-				//TODO: The following line only shows up whenever it likes, needs to be fixed
-				m.statusMessage = "\n\n Server already running! To bypass, run `osmium stop --force` or remove the " + lockfileName + " file at your own risk."
-			} else if errors.Is(err, os.ErrNotExist) { // File does not exist.
-
-				// Start the socket listener in the background
-				go shared.StartBasicSocketServer(m.inputPipe)
-
-				errCh <- m.javaCMD.Start() // 1. Start the process
-
-				lockfileContent := []byte(strconv.Itoa(m.javaCMD.Process.Pid)) // 2. Get the pid
-
-				// 3. Write the pid of the process into the lock file
-				err = os.WriteFile(lockfileName, lockfileContent, 0644)
-				if err != nil {
-					fmt.Println("Error writing to file: " + lockfileName)
-				}
-			} else {
-				fmt.Println("Unexpected error occured while checking for lock file's existence.")
-			}
-		}()
-
-		go func() {
-			if err := <-errCh; err != nil {
-				m.err = err
-			}
-		}()
+		go func(cmd *exec.Cmd) {
+			_ = cmd.Wait()
+			_ = shared.RemoveLockFile()
+		}(m.javaCMD)
 
 		m.firstRun = false
 	}
@@ -306,12 +312,13 @@ func (m RunServerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c":
 			// Make sure to kill the java process if ctrl-c is used.
-			m.javaCMD.Process.Kill()
+			if m.javaCMD != nil && m.javaCMD.Process != nil {
+				_ = m.javaCMD.Process.Kill()
+			}
 
 			// Remove the .lock file once the process is killed.
-			err := os.Remove(".osmium_process.lock")
-			if err != nil {
-				fmt.Println("Error removing file:", err)
+			if err := shared.RemoveLockFile(); err != nil {
+				m.err = err
 			}
 
 			return m, tea.Quit
@@ -348,8 +355,11 @@ func (m RunServerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // ManageConfigs State
-func (m *ManageConfigsModel) loadYamlConfig(path string, fileType string) {
-	file, _ := os.Open(path)
+func (m *ManageConfigsModel) loadYamlConfig(path string, fileType string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
 	defer file.Close()
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
@@ -382,9 +392,15 @@ func (m *ManageConfigsModel) loadYamlConfig(path string, fileType string) {
 			m.configOptionValues = append(m.configOptionValues, "")
 		}
 	}
+
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+
 	m.fileName = path
 	m.fileType = fileType
 	m.step = 1
+	return nil
 }
 
 func (m ManageConfigsModel) Init() tea.Cmd {
@@ -443,7 +459,11 @@ func (m ManageConfigsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					var keys []string
 					var values []string
 
-					file, _ := os.Open("server.properties")
+					file, err := os.Open("server.properties")
+					if err != nil {
+						m.err = err
+						return m, nil
+					}
 					defer file.Close()
 
 					scanner := bufio.NewScanner(file)
@@ -463,6 +483,11 @@ func (m ManageConfigsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						}
 					}
 
+					if err := scanner.Err(); err != nil {
+						m.err = err
+						return m, nil
+					}
+
 					m.fileType = "properties"
 					m.fileName = "server.properties"
 					m.configOptionKeys = keys
@@ -470,19 +495,34 @@ func (m ManageConfigsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.step = 1
 
 				case 1: // bukkit.yml
-					m.loadYamlConfig("bukkit.yml", "yml")
+					if err := m.loadYamlConfig("bukkit.yml", "yml"); err != nil {
+						m.err = err
+						return m, nil
+					}
 
 				case 2: // spigot.yml
-					m.loadYamlConfig("spigot.yml", "yml")
+					if err := m.loadYamlConfig("spigot.yml", "yml"); err != nil {
+						m.err = err
+						return m, nil
+					}
 
 				case 3: // config/paper-global.yml
-					m.loadYamlConfig("./config/paper-global.yml", "yml")
+					if err := m.loadYamlConfig("./config/paper-global.yml", "yml"); err != nil {
+						m.err = err
+						return m, nil
+					}
 
 				case 4: // config/paper-world-defaults.yml
-					m.loadYamlConfig("./config/paper-world-defaults.yml", "yml")
+					if err := m.loadYamlConfig("./config/paper-world-defaults.yml", "yml"); err != nil {
+						m.err = err
+						return m, nil
+					}
 
 				case 5: // purpur.yml
-					m.loadYamlConfig("purpur.yml", "yml")
+					if err := m.loadYamlConfig("purpur.yml", "yml"); err != nil {
+						m.err = err
+						return m, nil
+					}
 
 				}
 			case 1:
@@ -501,9 +541,9 @@ func (m ManageConfigsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 						// 3. Write to file (0644 is standard permissions)
 						output := strings.Join(lines, "\n")
-						err := os.WriteFile(m.fileName, []byte(output), 0644)
-						if err != nil {
-							// Handle error (togril)
+						if err := os.WriteFile(m.fileName, []byte(output), 0644); err != nil {
+							m.err = err
+							return m, nil
 						}
 
 						// 4. Reset selection mode
@@ -543,9 +583,9 @@ func (m ManageConfigsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 						// 3. Write to file (0644 is standard permissions)
 						output := strings.Join(lines, "\n")
-						err := os.WriteFile(m.fileName, []byte(output), 0644)
-						if err != nil {
-							// Handle error (togril)
+						if err := os.WriteFile(m.fileName, []byte(output), 0644); err != nil {
+							m.err = err
+							return m, nil
 						}
 
 						// 4. Reset selection mode
@@ -592,27 +632,44 @@ func (m RemoveFilesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.GoBack = true
 			return m, nil
 		case " ":
-			m.selected[m.cursor] = !m.selected[m.cursor]
+			if len(m.options) > 0 {
+				m.selected[m.cursor] = !m.selected[m.cursor]
+			}
 		case "ctrl+a":
 			for i := 0; i < len(m.options); i++ {
-				m.selected[i] = !m.selected[i]
+				m.selected[i] = true
 			}
-		//! panic when deleting the second time in a single session, the cause is cursor index misalign with the m.options map
 		case "enter":
-			for key, value := range m.selected {
-				if value {
-					os.RemoveAll(m.options[key].Name())
-					delete(m.options, key)
+			for i, selected := range m.selected {
+				if !selected || i < 0 || i >= len(m.options) {
+					continue
+				}
+
+				if err := os.RemoveAll(m.options[i].Name()); err != nil {
+					m.err = err
+					return m, nil
 				}
 			}
+
 			m.selected = make(map[int]bool)
-			entries, _ := os.ReadDir(".")
-			m.options = make(map[int]os.DirEntry)
-			for index, value := range entries {
-				m.options[index] = value
+			entries, err := os.ReadDir(".")
+			if err != nil {
+				m.err = err
+				return m, nil
 			}
+			m.options = entries
+
+			if m.cursor >= len(m.options) && len(m.options) > 0 {
+				m.cursor = len(m.options) - 1
+			}
+			if len(m.options) == 0 {
+				m.cursor = 0
+			}
+
 			m.GoBack = true
-			m.cursor = 0
+			if len(m.options) == 0 {
+				m.cursor = 0
+			}
 		}
 	}
 	return m, nil
