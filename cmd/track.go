@@ -13,15 +13,15 @@ import (
 // trackCmd represents the track command
 var trackCmd = &cobra.Command{
 	Use:   "track",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
+	Short: "Track existing jar files into osmium.json.",
+	Long: `Scans the mods and plugins directories, resolves known projects by hash,
+and adds missing entries to osmium.json.
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+Example:
+  osmium track`,
+	Args: cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
-		err := shared.TrackProjects();
+		err := shared.TrackProjects()
 		if err != nil {
 			fmt.Println(err)
 		}

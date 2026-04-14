@@ -161,7 +161,7 @@ func NewManageConfigsModel() ManageConfigsModel {
 // RemoveFiles Model
 type RemoveFilesModel struct {
 	cursor   int
-	options  map[int]os.DirEntry
+	options  []os.DirEntry
 	selected map[int]bool
 	GoBack   bool
 	err      error
@@ -169,14 +169,10 @@ type RemoveFilesModel struct {
 
 func NewRemoveFilesModel() RemoveFilesModel {
 	entries, _ := os.ReadDir(".")
-	options := make(map[int]os.DirEntry)
-	for index, value := range entries {
-		options[index] = value
-	}
 
 	return RemoveFilesModel{
 		cursor:   0,
-		options:  options,
+		options:  entries,
 		selected: make(map[int]bool),
 		GoBack:   false,
 	}

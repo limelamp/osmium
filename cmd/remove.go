@@ -19,20 +19,16 @@ var removeflags removeFlags
 
 // removeCmd represents the remove command
 var removeCmd = &cobra.Command{
-	Use:   "remove",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
+	Use:   "remove [project-id ...]",
+	Short: "Remove one or more tracked projects.",
+	Long: `Removes one or more tracked projects and deletes their files.
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+Use --mod for mods or --plugin for plugins.
+Examples:
+  osmium remove --mod sodium
+  osmium remove --plugin luckperms`,
+	Args: cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		if len(args) < 1 {
-			fmt.Println("Error: project ID required")
-			return
-		}
-
 		var projectType string
 
 		switch {
@@ -61,4 +57,5 @@ func init() {
 
 	// make them mutually exclusive (Cobra built‑in)
 	removeCmd.MarkFlagsMutuallyExclusive("mod", "plugin")
+	removeCmd.MarkFlagsOneRequired("mod", "plugin")
 }
