@@ -19,7 +19,6 @@ import (
 // RunServer Model
 type RunServerModel struct {
 	cursor        int
-	options       []string
 	textInput     textinput.Model
 	firstRun      bool
 	javaCMD       *exec.Cmd
@@ -41,7 +40,6 @@ func NewRunServerModel() RunServerModel {
 
 	return RunServerModel{
 		cursor:    0,
-		options:   []string{"Recommended settings", "Detailed"},
 		textInput: ti,
 		firstRun:  true,
 		output:    &bytes.Buffer{},
@@ -56,9 +54,6 @@ func (m RunServerModel) Init() tea.Cmd {
 
 func (m RunServerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.firstRun {
-		if len(m.options) == 0 {
-			m.options = []string{""}
-		}
 
 		osmiumConf, err := config.ReadConfig()
 		if err != nil {
@@ -137,9 +132,6 @@ func (m RunServerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor--
 			}
 		case "down":
-			if m.cursor < len(m.options)-1 {
-				m.cursor++
-			}
 		// case "backspace":
 		// 	m.GoBack = true
 		// 	return m, nil
