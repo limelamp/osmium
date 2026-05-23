@@ -3,7 +3,9 @@ package tui
 import (
 	"bufio"
 	"fmt"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -12,6 +14,11 @@ import (
 	"github.com/charmbracelet/x/term"
 )
 
+type configFile struct {
+	path  string
+	entry os.DirEntry
+}
+
 // ManageConfigsModel
 type ManageConfigsModel struct {
 	cursor             int
@@ -19,7 +26,7 @@ type ManageConfigsModel struct {
 	fileName           string
 	step               int
 	selected           int
-	options            []string
+	options            []configFile
 	configOptionKeys   []string
 	configOptionValues []string
 	textInput          textinput.Model
@@ -45,7 +52,7 @@ func NewManageConfigsModel() ManageConfigsModel {
 		cursor:     0,
 		step:       0,
 		selected:   -1,
-		options:    []string{"server.properties", "bukkit.yml", "spigot.yml", "config/paper-global.yml", "config/paper-world-defaults.yml", "purpur.yml"},
+		options:    GetConfigFiles(),
 		textInput:  ti,
 		GoBack:     false,
 		viewHeight: h - 10,
@@ -53,54 +60,6 @@ func NewManageConfigsModel() ManageConfigsModel {
 }
 
 // ManageConfigs State
-func (m *ManageConfigsModel) loadYamlConfig(path string, fileType string) error {
-	file, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		// Inside your scanner loop
-		line := scanner.Text()
-		trimmed := strings.TrimSpace(line)
-
-		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
-			continue
-		}
-
-		// Check for the YAML separator ": " (colon + space)
-		if idx := strings.Index(line, ": "); idx != -1 {
-			// We found a key-value pair!
-			// Key is everything before ": ", value is everything after.
-			key := line[:idx]
-			val := strings.TrimSpace(line[idx+2:]) // +2 to skip the ": "
-
-			m.configOptionKeys = append(m.configOptionKeys, key)
-			m.configOptionValues = append(m.configOptionValues, val)
-		} else if strings.HasSuffix(trimmed, ":") {
-			// This is a header/section (it ends in a colon with no value after)
-			// We keep the whole line (including leading spaces) as the key
-			m.configOptionKeys = append(m.configOptionKeys, line)
-			m.configOptionValues = append(m.configOptionValues, "")
-		} else if strings.HasPrefix(trimmed, "-") {
-			// This is a list item like "- minecraft:lodestone"
-			// We treat the whole line as the key and keep the value empty
-			m.configOptionKeys = append(m.configOptionKeys, line)
-			m.configOptionValues = append(m.configOptionValues, "")
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		return err
-	}
-
-	m.fileName = path
-	m.fileType = fileType
-	m.step = 1
-	return nil
-}
-
 func (m ManageConfigsModel) Init() tea.Cmd {
 	return nil
 }
@@ -138,6 +97,7 @@ func (m ManageConfigsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.cursor >= m.topItem+m.viewHeight {
 					m.topItem = m.cursor - m.viewHeight + 1
 				}
+
 			}
 
 		case "ctrl+h": // ctrl + backspace
@@ -146,18 +106,22 @@ func (m ManageConfigsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.step = 0
 			m.selected = -1
 
+			// Reset the second step's keys and values option entries
+			m.configOptionKeys = nil
+			m.configOptionValues = nil
+
 			return m, nil
 		case "enter":
 			switch m.step {
-			case 0:
-				switch m.cursor {
-				case 0: // server.properties
+			case 0: // The file selecting step
+				currentFilePath := m.options[m.cursor].path
 
+				if strings.HasSuffix(currentFilePath, ".properties") { // server.properties
 					// Read the file
 					var keys []string
 					var values []string
 
-					file, err := os.Open("server.properties")
+					file, err := os.Open(currentFilePath)
 					if err != nil {
 						m.err = err
 						return m, nil
@@ -187,43 +151,17 @@ func (m ManageConfigsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 
 					m.fileType = "properties"
-					m.fileName = "server.properties"
+					m.fileName = currentFilePath
 					m.configOptionKeys = keys
 					m.configOptionValues = values
 					m.step = 1
-
-				case 1: // bukkit.yml
-					if err := m.loadYamlConfig("bukkit.yml", "yml"); err != nil {
+				} else if strings.HasSuffix(currentFilePath, ".yml") {
+					if err := m.loadYamlConfig(currentFilePath); err != nil {
 						m.err = err
 						return m, nil
 					}
-
-				case 2: // spigot.yml
-					if err := m.loadYamlConfig("spigot.yml", "yml"); err != nil {
-						m.err = err
-						return m, nil
-					}
-
-				case 3: // config/paper-global.yml
-					if err := m.loadYamlConfig("./config/paper-global.yml", "yml"); err != nil {
-						m.err = err
-						return m, nil
-					}
-
-				case 4: // config/paper-world-defaults.yml
-					if err := m.loadYamlConfig("./config/paper-world-defaults.yml", "yml"); err != nil {
-						m.err = err
-						return m, nil
-					}
-
-				case 5: // purpur.yml
-					if err := m.loadYamlConfig("purpur.yml", "yml"); err != nil {
-						m.err = err
-						return m, nil
-					}
-
 				}
-			case 1:
+			case 1: // The file editing step
 				if m.selected == m.cursor { // if this is true, then the same field was selected twice, meaning we can write smth
 					switch m.fileType {
 					case "properties":
@@ -325,6 +263,7 @@ func (m ManageConfigsModel) View() string {
 		Foreground(lipgloss.Color("#ce2614ff"))
 		// Padding(0, 1)
 
+	// Header
 	s := headerStyle.Render(" OSMIUM - CONFIG MANAGER ") + "\n\n"
 
 	if m.err != nil {
@@ -334,6 +273,7 @@ func (m ManageConfigsModel) View() string {
 		s += errorStyle.Render("Error: "+m.err.Error()) + "\n\n"
 	}
 
+	// Options
 	switch m.step {
 	case 0:
 		// Create a simple list
@@ -342,7 +282,7 @@ func (m ManageConfigsModel) View() string {
 			if m.cursor == i {
 				cursor = "> "
 			}
-			s += fmt.Sprintf("%s %s\n", cursor, m.options[i])
+			s += fmt.Sprintf("%s %s\n", cursor, m.options[i].entry.Name())
 		}
 	case 1:
 		end := m.topItem + m.viewHeight
@@ -379,4 +319,79 @@ func (m ManageConfigsModel) View() string {
 
 	s += "\n\n" + "Navigate using arrow keys. Press 'q' to exit, 'ctrl+backspace' to go back.\n\n"
 	return s
+}
+
+func (m *ManageConfigsModel) loadYamlConfig(path string) error {
+	fileType := "yml"
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		// Inside your scanner loop
+		line := scanner.Text()
+		trimmed := strings.TrimSpace(line)
+
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+
+		// Check for the YAML separator ": " (colon + space)
+		if idx := strings.Index(line, ": "); idx != -1 {
+			// We found a key-value pair!
+			// Key is everything before ": ", value is everything after.
+			key := line[:idx]
+			val := strings.TrimSpace(line[idx+2:]) // +2 to skip the ": "
+
+			m.configOptionKeys = append(m.configOptionKeys, key)
+			m.configOptionValues = append(m.configOptionValues, val)
+		} else if strings.HasSuffix(trimmed, ":") {
+			// This is a header/section (it ends in a colon with no value after)
+			// We keep the whole line (including leading spaces) as the key
+			m.configOptionKeys = append(m.configOptionKeys, line)
+			m.configOptionValues = append(m.configOptionValues, "")
+		} else if strings.HasPrefix(trimmed, "-") {
+			// This is a list item like "- minecraft:lodestone"
+			// We treat the whole line as the key and keep the value empty
+			m.configOptionKeys = append(m.configOptionKeys, line)
+			m.configOptionValues = append(m.configOptionValues, "")
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+
+	m.fileName = path
+	m.fileType = fileType
+	m.step = 1
+	return nil
+}
+
+func GetConfigFiles() []configFile {
+	extensions := []string{".yml", ".properties"} // Supported config filetypes
+
+	var configEntries []configFile                                                // Entries that are configs
+	filepath.WalkDir(".", func(path string, entry fs.DirEntry, err error) error { // Walking through the whole folder
+		if err != nil {
+			return nil // skip unreadable entries
+		}
+
+		if entry.IsDir() {
+			return nil // If it is a directory skip it
+		}
+
+		for _, ext := range extensions {
+			if strings.HasSuffix(entry.Name(), ext) { // Check if found file has the supported filetype
+				configEntries = append(configEntries, configFile{path, entry})
+				break
+			}
+		}
+
+		return nil
+	})
+
+	return configEntries
 }
