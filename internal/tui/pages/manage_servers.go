@@ -11,9 +11,9 @@ import (
 type ManageServersModel struct {
 	layout core.Layout
 
-	servers  components.ServersModel
-	actions  components.ActionsModel
-	activity components.ActivityModel
+	servers      components.ServersModel
+	activity     components.ActivityModel
+	activeAction core.Action
 
 	value int
 	focus int
@@ -22,9 +22,9 @@ type ManageServersModel struct {
 // NewManageServersModel accepts the ServerStore and passes it down to the child components
 func NewManageServersModel(store *storage.ServerStore) ManageServersModel {
 	return ManageServersModel{
-		servers:  components.NewServersModel(store).SetFocus(true),
-		actions:  components.NewActionsModel().SetFocus(false),
-		activity: components.NewActivityModel().SetFocus(false),
+		servers:      components.NewServersModel(store).SetFocus(true),
+		activeAction: components.NewActionsModel().SetFocus(false), // Set it to default action "dashboard"'s model
+		activity:     components.NewActivityModel().SetFocus(false),
 	}
 }
 
@@ -32,7 +32,7 @@ func (m ManageServersModel) Init() tea.Cmd {
 	// forward Init to child components (tea.Batch() is concurrent, no strict order of execution)
 	return tea.Batch(
 		m.servers.Init(),
-		m.actions.Init(),
+		m.activeAction.Init(),
 		m.activity.Init(),
 	)
 }
@@ -42,17 +42,22 @@ func (m ManageServersModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	//? in case you need to register the keymsg for all views despite being out of focus
 	// isEvent := false
 	switch msg := msg.(type) {
+	// Sent when the Action needs to be switched.
+	case core.SwitchActionMsg:
+		m.activeAction = msg.NewAction
+		// Immediately enforce the current layout and focus constraints onto the new model
+		// m.activeAction = m.activeAction.SetLayout(m.getPageLayout())
+		m.activeAction = m.activeAction.SetFocus(m.focus == 1)
+		// Initialize the new component and return its command
+		return m, m.activeAction.Init()
+
 	case tea.KeyPressMsg:
 		switch msg.String() {
-		case "a":
-			m.value++
-			return m, nil
-
 		case "tab":
 			m.focus = (m.focus + 1) % 3
 
 			m.servers = m.servers.SetFocus(m.focus == 0)
-			m.actions = m.actions.SetFocus(m.focus == 1)
+			m.activeAction = m.activeAction.SetFocus(m.focus == 1)
 			m.activity = m.activity.SetFocus(m.focus == 2)
 
 			return m.SetLayout(m.layout), nil
@@ -69,8 +74,8 @@ func (m ManageServersModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			updated, cmd = m.servers.Update(msg)
 			m.servers = updated.(components.ServersModel)
 		case 1:
-			updated, cmd = m.actions.Update(msg)
-			m.actions = updated.(components.ActionsModel)
+			updated, cmd = m.activeAction.Update(msg)
+			m.activeAction = updated.(core.Action)
 		case 2:
 			updated, cmd = m.activity.Update(msg)
 			m.activity = updated.(components.ActivityModel)
@@ -92,11 +97,11 @@ func (m ManageServersModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// forward the Update message to child components
 	updatedServers, cmd1 := m.servers.Update(msg)
-	updatedActions, cmd2 := m.actions.Update(msg)
+	updatedActions, cmd2 := m.activeAction.Update(msg)
 	updatedActivity, cmd3 := m.activity.Update(msg)
 
 	m.servers = updatedServers.(components.ServersModel)
-	m.actions = updatedActions.(components.ActionsModel)
+	m.activeAction = updatedActions.(core.Action)
 	m.activity = updatedActivity.(components.ActivityModel)
 
 	return m, tea.Batch(cmd1, cmd2, cmd3)
@@ -108,7 +113,7 @@ func (m ManageServersModel) View() tea.View {
 	}
 
 	leftView := m.servers.View()
-	topView := m.actions.View()
+	topView := m.activeAction.View()
 	bottomView := m.activity.View()
 
 	content := lipgloss.JoinHorizontal(
@@ -151,7 +156,7 @@ func (m ManageServersModel) SetLayout(l core.Layout) tea.Model {
 
 	// propagate to children components
 	m.servers = m.servers.SetLayout(leftLayout)
-	m.actions = m.actions.SetLayout(topLayout)
+	m.activeAction = m.activeAction.SetLayout(topLayout)
 	m.activity = m.activity.SetLayout(bottomLayout)
 
 	return m
