@@ -203,7 +203,7 @@ func (m PluginManagementModel) View() tea.View {
 
 // additional methods
 func (m PluginManagementModel) Title() string {
-	return "Remove Files"
+	return "Plugin Management"
 }
 
 func (m PluginManagementModel) SetLayout(l core.Layout) core.Action {
