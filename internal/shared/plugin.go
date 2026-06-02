@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/limelamp/osmium/internal/config"
-	"github.com/limelamp/osmium/internal/constants"
+	"github.com/limelamp/osmium/internal/tui/constants"
 	"github.com/limelamp/osmium/internal/util"
 )
 

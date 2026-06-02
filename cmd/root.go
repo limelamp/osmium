@@ -1,11 +1,8 @@
 package cmd
 
 import (
-	"fmt"
 	"os"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/limelamp/osmium/internal"
 	"github.com/spf13/cobra"
 )
 
@@ -13,13 +10,14 @@ import (
 var rootCmd = &cobra.Command{
 	Use:   "osmium",
 	Short: "A full-screen TUI app for managing minecraft servers.",
-	Run: func(cmd *cobra.Command, args []string) {
-		mainProcess := tea.NewProgram(internal.NewRootModel(), tea.WithAltScreen())
-		if _, err := mainProcess.Run(); err != nil {
-			fmt.Println(err)
-			os.Exit(1)
-		}
-	},
+	// Run: func(cmd *cobra.Command, args []string) { // Was used before the refactor
+	// 	mainProcess := tea.NewProgram(internal.NewRootModel(), tea.WithAltScreen())
+	// 	if _, err := mainProcess.Run(); err != nil {
+	// 		fmt.Println(err)
+	// 		os.Exit(1)
+	// 	}
+	// },
+	RunE: runTui,
 }
 
 func Execute() {

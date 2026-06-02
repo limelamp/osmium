@@ -41,4 +41,4 @@ whitelist.json
 .console_history
 
 # keep the config in internal/
-!internal/config
+!internal/tui/config
