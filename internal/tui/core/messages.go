@@ -11,11 +11,24 @@ type ChangePageMsg struct {
 	Target string
 }
 
+// SwitchActionMsg is emitted when a component wants to swap the actions panel
+type SwitchActionMsg struct {
+	NewAction Action
+}
+
 // Helper functions to generate the commands
 func RouteTo(target string) tea.Cmd {
 	//? returns a message to be catched by a parent tea.Model
 	return func() tea.Msg {
 		return ChangePageMsg{Target: target}
+	}
+}
+
+// Doesn't work really, might be needing "m"
+func SwitchAction(action Action) tea.Cmd {
+	//? returns a message to be catched by a parent tea.Model
+	return func() tea.Msg {
+		return SwitchActionMsg{NewAction: action}
 	}
 }
 

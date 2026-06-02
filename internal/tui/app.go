@@ -24,7 +24,6 @@ type appModel struct {
 	activePage Page        // active page
 	layout     core.Layout // dimensions of the window
 
-	dashboard     pages.DashboardModel
 	home          pages.HomeModel
 	createServer  pages.CreateServerModel
 	manageServers pages.ManageServersModel
@@ -39,7 +38,6 @@ func NewAppModel(store *storage.ServerStore) appModel {
 
 	return appModel{
 		activePage:    home,
-		dashboard:     pages.NewDashboardModel(),
 		home:          home,
 		createServer:  pages.NewCreateServerModel(),
 		manageServers: pages.NewManageServersModel(store),
@@ -108,9 +106,6 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case core.ChangePageMsg:
 		switch msg.Target {
-		case "Dashboard":
-			return m.switchPage(m.dashboard)
-
 		case "Home":
 			return m.switchPage(m.home)
 
