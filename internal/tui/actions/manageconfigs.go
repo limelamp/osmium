@@ -397,7 +397,7 @@ func GetConfigFiles() []configFile {
 
 // additional methods
 func (m ManageConfigsModel) Title() string {
-	return "Remove Files"
+	return "Manage Configs"
 }
 
 func (m ManageConfigsModel) SetLayout(l core.Layout) core.Action {

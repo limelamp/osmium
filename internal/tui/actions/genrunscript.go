@@ -6,6 +6,7 @@ import (
 	"runtime"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/limelamp/osmium/internal/tui/core"
 	"github.com/limelamp/osmium/internal/tui/styles"
 )
@@ -93,14 +94,23 @@ func (m GenRunScriptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // RunScript View
 func (m GenRunScriptModel) View() tea.View {
 	content := ""
+	if m.err != nil {
+		errorStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FF0000")).
+			Bold(true)
+		content += errorStyle.Render("Error: "+m.err.Error()) + "\n\n"
+	}
+
 	// Create a simple list
 	for i := 0; i < len(m.options); i++ {
 		cursor := "  "
 		if m.cursor == i {
 			cursor = "> "
 		}
-		content += "\n" + cursor + m.options[i]
+		content += fmt.Sprintf("%s %s\n", cursor, m.options[i])
 	}
+
+	content += "\n\n" + "Navigate using arrow keys. Press 'q' to exit, 'backspace' to go back.\n\n"
 
 	return tea.NewView(styles.Container(
 		m.layout.Width,
