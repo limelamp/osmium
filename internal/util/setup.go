@@ -106,7 +106,7 @@ func getWithStatus(url string) (*http.Response, error) {
 
 // General functions ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 func GetMinecraftVersionsManifest() (*vanillaVersionManifest, error) {
-	resp, err := getWithStatus("https://launchermeta.mojang.com/mc/game/version_manifest.json")
+	resp, err := getWithStatus("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json")
 	if err != nil {
 		return nil, err
 	}
