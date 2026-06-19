@@ -49,7 +49,7 @@ func NewCreateServerModel() CreateServerModel {
 
 func (m *CreateServerModel) initSteps() {
 	m.steps = []tea.Model{
-		NewLocationStep("Select Location", []string{"Here", "There", "Whereever"}, func(v string) {
+		NewLocationStep("Step 1: Select Location to Create the Server in", []string{"Current folder", "Choose a folder", "Default folder"}, func(v string) {
 			m.config.RAM = v
 		}),
 
