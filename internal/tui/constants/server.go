@@ -41,4 +41,4 @@ func GetVersions(software string) []string {
 	}
 }
 
-var RamOptions = []string{"2 GB", "4 GB", "6 GB", "8 GB", "12 GB", "16 GB"}
+var RamOptions = []string{"2 GB", "3 GB", "4 GB", "5 GB", "6 GB", "8 GB", "12 GB", "16 GB"}

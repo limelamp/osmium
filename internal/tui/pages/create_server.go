@@ -10,6 +10,7 @@ import (
 	"github.com/limelamp/osmium/internal/tui/core"
 	"github.com/limelamp/osmium/internal/tui/styles"
 	"github.com/limelamp/osmium/internal/tui/theme"
+	"github.com/limelamp/osmium/internal/util"
 )
 
 type NextStepMsg struct{}
@@ -48,13 +49,17 @@ func NewCreateServerModel() CreateServerModel {
 
 func (m *CreateServerModel) initSteps() {
 	m.steps = []tea.Model{
+		NewLocationStep("Select Location", []string{"Here", "There", "Whereever"}, func(v string) {
+			m.config.RAM = v
+		}),
+
 		CategoryEngineStep{config: m.config},
 
-		NewSelectStep("Step 2: Select Version", []string{}, func(v string) {
+		NewSelectStep("Step 3: Select Version", []string{}, func(v string) {
 			m.config.Version = v
 		}),
 
-		NewSelectStep("Step 3: Allocate System Memory", constants.RamOptions, func(v string) {
+		NewSelectStep("Step 4: Allocate System Memory", constants.RamOptions, func(v string) {
 			m.config.RAM = v
 		}),
 
@@ -74,11 +79,11 @@ func (m CreateServerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		if msg.String() == "backspace" {
-			if m.active == 0 {
-				stepZero := m.steps[0].(CategoryEngineStep)
+			if m.active == 1 {
+				stepZero := m.steps[1].(CategoryEngineStep)
 				if stepZero.selectingSub {
 					var cmd tea.Cmd
-					m.steps[0], cmd = m.steps[0].Update(msg)
+					m.steps[1], cmd = m.steps[1].Update(msg)
 					return m, cmd
 				}
 			}
@@ -93,10 +98,14 @@ func (m CreateServerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case NextStepMsg:
 		if m.active < len(m.steps)-1 {
 			m.active++
-			if m.active == 1 {
-				m.steps[1] = NewSelectStep(
+			if m.active == 2 {
+				versions, err := util.GetVersionStrings("release")
+				if err != nil {
+				}
+
+				m.steps[2] = NewSelectStep(
 					fmt.Sprintf("Step 2: Select Version for %s", m.config.Software),
-					constants.GetVersions(m.config.Software),
+					versions,
 					func(v string) { m.config.Version = v },
 				)
 			}
@@ -146,7 +155,7 @@ func (m CreateServerModel) View() tea.View {
 }
 
 func (m CreateServerModel) renderProgressBar() string {
-	steps := []string{"Engine", "Version", "Specs", "Rules", "Confirm"}
+	steps := []string{"Location", "Engine", "Version", "Specs", "Finilazing", "Confirm"}
 	var renderedSteps []string
 
 	for i, name := range steps {
@@ -173,6 +182,71 @@ func (m CreateServerModel) SetLayout(l core.Layout) tea.Model {
 	m.layout = l
 	return m
 }
+
+// ==========================================
+// subcomponent LocationStep (Step 0)
+// ==========================================
+type LocationStep struct {
+	title    string
+	options  []string
+	cursor   int
+	onSelect func(string)
+}
+
+func NewLocationStep(title string, options []string, onSelect func(string)) LocationStep {
+	return LocationStep{
+		title:    title,
+		options:  options,
+		onSelect: onSelect,
+	}
+}
+
+func (s LocationStep) Init() tea.Cmd { return nil }
+
+func (s LocationStep) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyPressMsg:
+		switch msg.String() {
+		case "up", "k":
+			if s.cursor > 0 {
+				s.cursor--
+			}
+
+		case "down", "j":
+			if s.cursor < len(s.options)-1 {
+				s.cursor++
+			}
+
+		case "enter", " ":
+			if len(s.options) > 0 {
+				s.onSelect(s.options[s.cursor])
+				return s, func() tea.Msg { return NextStepMsg{} }
+			}
+		}
+	}
+	return s, nil
+}
+
+func (s LocationStep) View() tea.View {
+	var b strings.Builder
+	b.WriteString(lipgloss.NewStyle().Bold(true).Render(s.title))
+	b.WriteString("\n\n")
+
+	for i, opt := range s.options {
+		if i == s.cursor {
+			b.WriteString(lipgloss.NewStyle().Foreground(theme.Primary).Bold(true).Render(
+				fmt.Sprintf("  ➔ %s", opt)))
+			b.WriteString("\n\n")
+		} else {
+			b.WriteString(fmt.Sprintf("    %s\n\n", opt))
+		}
+	}
+	return tea.NewView(b.String())
+}
+
+// ==========================================
+// subcomponent CategoryEngineStep (Steps 2)
+// ==========================================
 
 type CategoryEngineStep struct {
 	config       *ServerConfig
@@ -308,7 +382,7 @@ func (s CategoryEngineStep) View() tea.View {
 }
 
 // ==========================================
-// subcomponent SelectStep (Steps 1, 2)
+// subcomponent SelectStep (Steps 3, 4)
 // ==========================================
 
 type SelectStep struct {
@@ -370,7 +444,7 @@ func (s SelectStep) View() tea.View {
 }
 
 // ==========================================
-// subcomponent EulaStep (Step 3)
+// subcomponent EulaStep (Step 5)
 // ==========================================
 
 type EulaStep struct {
@@ -416,7 +490,7 @@ func (e EulaStep) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (e EulaStep) View() tea.View {
 	var b strings.Builder
-	b.WriteString(lipgloss.NewStyle().Bold(true).Render("Step 4: Agreements & Configurations"))
+	b.WriteString(lipgloss.NewStyle().Bold(true).Render("Step 5: Agreements & Configurations"))
 	b.WriteString("\n\n")
 
 	eulaCheck := "[ ]"
@@ -462,7 +536,7 @@ func (e EulaStep) View() tea.View {
 }
 
 // ==========================================
-// subcomponent ConfirmStep (Step 4)
+// subcomponent ConfirmStep (Step 5)
 // ==========================================
 
 type ConfirmStep struct {
@@ -522,7 +596,7 @@ func (c ConfirmStep) View() tea.View {
 }
 
 // ==========================================
-// subcomponent SuccessStep (Step 5)
+// subcomponent SuccessStep (Step 6)
 // ==========================================
 
 type SuccessStep struct {
