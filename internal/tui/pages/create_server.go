@@ -390,6 +390,9 @@ type SelectStep struct {
 	options  []string
 	cursor   int
 	onSelect func(string)
+
+	offset  int // index of first visible item
+	visible int // how many items to show at once
 }
 
 func NewSelectStep(title string, options []string, onSelect func(string)) SelectStep {
@@ -397,6 +400,7 @@ func NewSelectStep(title string, options []string, onSelect func(string)) Select
 		title:    title,
 		options:  options,
 		onSelect: onSelect,
+		visible:  10,
 	}
 }
 
@@ -409,11 +413,17 @@ func (s SelectStep) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "up", "k":
 			if s.cursor > 0 {
 				s.cursor--
+				if s.cursor < s.offset {
+					s.offset--
+				}
 			}
 
 		case "down", "j":
 			if s.cursor < len(s.options)-1 {
 				s.cursor++
+				if s.cursor >= s.offset+s.visible {
+					s.offset++
+				}
 			}
 
 		case "enter", " ":
@@ -431,8 +441,14 @@ func (s SelectStep) View() tea.View {
 	b.WriteString(lipgloss.NewStyle().Bold(true).Render(s.title))
 	b.WriteString("\n\n")
 
-	for i, opt := range s.options {
-		if i == s.cursor {
+	end := s.offset + s.visible
+	if end > len(s.options) {
+		end = len(s.options)
+	}
+
+	for i, opt := range s.options[s.offset:end] {
+		actualIdx := s.offset + i
+		if actualIdx == s.cursor {
 			b.WriteString(lipgloss.NewStyle().Foreground(theme.Primary).Bold(true).Render(
 				fmt.Sprintf("  ➔ %s", opt)))
 			b.WriteString("\n\n")
