@@ -5,8 +5,8 @@ import (
 	"os"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/limelamp/osmium/internal/config"
 	"github.com/limelamp/osmium/internal/tui"
-	"github.com/limelamp/osmium/internal/tui/config"
 	"github.com/limelamp/osmium/internal/tui/storage"
 	"github.com/limelamp/osmium/internal/tui/theme"
 	"github.com/spf13/cobra"

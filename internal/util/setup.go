@@ -546,23 +546,47 @@ func getQuiltInstallerURL() (string, string, error) {
 // 	return nil
 // }
 
-func downloadFile(url string, filename string) error {
-	resp, err := getWithStatus(url)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	out, err := os.Create(filename)
+func downloadFile(url string, filepath string) error {
+	// Create the output file
+	out, err := os.Create(filepath)
 	if err != nil {
 		return err
 	}
 	defer out.Close()
 
+	// Create a custom HTTP client with NO timeout (0 means no timeout limit)
+	// This prevents the "context deadline exceeded" error on large files
+	client := &http.Client{
+		Timeout: 0 * time.Second,
+	}
+
+	// Create the request
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return err
+	}
+
+	// Add a generic user agent just in case APIs block default Go clients
+	req.Header.Set("User-Agent", "Osmium-Server-Manager/1.0")
+
+	// Execute the request
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	// Check for a valid response code
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("failed to download file: bad status %s (url: %s)", resp.Status, url)
+	}
+
+	// Stream the download into the file
 	_, err = io.Copy(out, resp.Body)
 	if err != nil {
 		return err
 	}
+
 	return nil
 }
 

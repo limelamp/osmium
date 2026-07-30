@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/limelamp/osmium/internal/tui/config"
+	"github.com/limelamp/osmium/internal/config"
 )
 
 const ServersFileName = "servers.json"
