@@ -583,11 +583,12 @@ func (c ConfirmStep) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				// 2. Write Osmium config file
 				osmiumConf := config.OsmiumConfig{
-					Category: c.config.Category,
-					Loader:   c.config.Software,
-					Version:  c.config.Version,
-					Mods:     make(map[string]config.Project),
-					Plugins:  make(map[string]config.Project),
+					Category:     c.config.Category,
+					Loader:       c.config.Software,
+					Version:      c.config.Version,
+					AllocatedRAM: c.config.RAM,
+					Mods:         make(map[string]config.Project),
+					Plugins:      make(map[string]config.Project),
 				}
 				if err := config.WriteConfig(&osmiumConf); err != nil {
 					c.err = err

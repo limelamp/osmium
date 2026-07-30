@@ -14,11 +14,12 @@ type Project struct {
 }
 
 type OsmiumConfig struct {
-	Category string             `json:"category"`
-	Loader   string             `json:"loader"`
-	Version  string             `json:"version"`
-	Mods     map[string]Project `json:"mods"`
-	Plugins  map[string]Project `json:"plugins"`
+	Category     string             `json:"category"`
+	Loader       string             `json:"loader"`
+	Version      string             `json:"version"`
+	AllocatedRAM string             `json:"ram"`
+	Mods         map[string]Project `json:"mods"`
+	Plugins      map[string]Project `json:"plugins"`
 }
 
 func WriteConfig(config *OsmiumConfig) error {

@@ -79,7 +79,8 @@ func (m ActivityModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		javaPath, args := util.GetServerRunCommand(osmiumConf.Loader)
+		javaPath, args := util.GetServerRunCommand(osmiumConf.Loader, osmiumConf.AllocatedRAM)
+		// 										   feed the appopriate loader and ram into the func
 
 		m.javaCMD = exec.Command(javaPath, args...)
 

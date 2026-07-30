@@ -722,13 +722,34 @@ func RunModLoaderInstaller(loaderType string, installerFile string, mcVersion ..
 	return nil
 }
 
+// Unnecessarily complicated function to append some text to a file
+func appendToFile(filepath string, line string) error {
+	// Open the file in Append mode, Create it if it doesn't exist, and open as Write-Only.
+	// 0644 are standard file permissions (readable by all, writable by owner).
+	file, err := os.OpenFile(filepath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	// Write the string to the file
+	_, err = file.WriteString(line)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // GetServerRunCommand returns the command needed to run the server for a given jar type
-func GetServerRunCommand(jarType string) (string, []string) {
+func GetServerRunCommand(jarType string, ram string) (string, []string) {
 	switch jarType {
 	case "NeoForge", "Forge":
+		// Since NeoForge & Forge both accept arguments only through writing to a specific text file, here it is.
+		appendToFile("user_jvm_args.txt", "\n"+"-Xms"+ram+"\n"+"-Xmx"+ram+"\n")
 		// NeoForge and Forge create run.bat/run.sh after installation - use those directly
 		switch runtime.GOOS {
-		case "windows": // On Windows, run the batch file
+		case "windows": // On Windows specifically, run the batch file
 			return "cmd", []string{"/c", "run.bat", "nogui"}
 		case "linux":
 			return "bash", []string{"run.sh", "nogui"}
@@ -742,9 +763,9 @@ func GetServerRunCommand(jarType string) (string, []string) {
 		}
 	case "Quilt":
 		// Quilt creates quilt-server-launch.jar after installation
-		return "java", []string{"-jar", "./server/server.jar", "nogui"}
+		return "java", []string{"-jar", "-Xms" + ram, "-Xmx" + ram, "./server/server.jar", "nogui"}
 	default:
 		// Standard server.jar execution
-		return "java", []string{"-jar", "-Xms4G", "server.jar", "nogui"}
+		return "java", []string{"-jar", "-Xms" + ram, "-Xmx" + ram, "server.jar", "nogui"}
 	}
 }
