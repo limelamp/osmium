@@ -6,9 +6,10 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/textinput"
+	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/limelamp/osmium/internal/config"
@@ -18,6 +19,15 @@ import (
 	"github.com/limelamp/osmium/internal/util"
 )
 
+// Used to poll the buffer for new log lines automatically
+type tickMsg time.Time
+
+func tickCmd() tea.Cmd {
+	return tea.Tick(time.Millisecond*100, func(t time.Time) tea.Msg {
+		return tickMsg(t)
+	})
+}
+
 // RunServer Model
 type ActivityModel struct {
 	layout  core.Layout
@@ -25,6 +35,8 @@ type ActivityModel struct {
 
 	cursor        int
 	textInput     textinput.Model
+	viewport      viewport.Model
+	lastLogLength int
 	firstRun      bool
 	javaCMD       *exec.Cmd
 	output        *bytes.Buffer // The "bucket" for logs
@@ -43,9 +55,16 @@ func NewActivityModel() ActivityModel {
 	ti.CharLimit = 500
 	ti.SetWidth(500)
 
+	vp := viewport.New()
+
+	// Disable the default horizontal scrolling of the viewport
+	vp.KeyMap.Left.SetEnabled(false)
+	vp.KeyMap.Right.SetEnabled(false)
+
 	return ActivityModel{
 		cursor:    0,
 		textInput: ti,
+		viewport:  vp,
 		firstRun:  true,
 		output:    &bytes.Buffer{},
 		GoBack:    false,
@@ -58,6 +77,8 @@ func (m ActivityModel) Init() tea.Cmd {
 }
 
 func (m ActivityModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmds []tea.Cmd
+
 	if m.firstRun {
 
 		osmiumConf, err := config.ReadConfig()
@@ -116,9 +137,25 @@ func (m ActivityModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}(m.javaCMD)
 
 		m.firstRun = false
+		cmds = append(cmds, tickCmd())
 	}
 
 	switch msg := msg.(type) {
+	case tickMsg:
+		newLogs := m.output.String()         // Get java's logs
+		if len(newLogs) != m.lastLogLength { // Check in order to not waste cpu usage by redrawing constantly
+			isAtBottom := m.viewport.AtBottom()
+
+			m.viewport.SetContent(newLogs) // Set the viewport's text to that of the java logs
+
+			if isAtBottom || m.lastLogLength == 0 {
+				m.viewport.GotoBottom()
+				// Basically, if the 'cursor' was at the bottom this forces it to stay at the bottom after lines get added
+			}
+			m.lastLogLength = len(newLogs)
+		}
+		cmds = append(cmds, tickCmd())
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c":
@@ -133,14 +170,7 @@ func (m ActivityModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			return m, tea.Quit
-		case "up":
-			if m.cursor > 0 {
-				m.cursor--
-			}
-		case "down":
-		// case "backspace":
-		// 	m.GoBack = true
-		// 	return m, nil
+
 		case "enter":
 			// 1. Get the command from the input
 			command := m.textInput.Value()
@@ -157,9 +187,15 @@ func (m ActivityModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	var cmd tea.Cmd
-	m.textInput, cmd = m.textInput.Update(msg)
-	return m, cmd
+	var tiCmd tea.Cmd
+	m.textInput, tiCmd = m.textInput.Update(msg)
+	cmds = append(cmds, tiCmd)
+
+	var vpCmd tea.Cmd
+	m.viewport, vpCmd = m.viewport.Update(msg)
+	cmds = append(cmds, vpCmd)
+
+	return m, tea.Batch(cmds...)
 }
 
 // RunServer View
@@ -179,17 +215,10 @@ func (m ActivityModel) View() tea.View {
 		content += errorStyle.Render("Error: "+m.err.Error()) + "\n\n"
 	}
 
-	// Get everything in the bucket
-	allLogs := m.output.String()
+	// Replaced the old manual line splitting loop with the new shiny viewport
+	content += m.viewport.View() + "\n"
 
-	// Split into lines
-	lines := strings.Split(allLogs, "\n")
-
-	for i := 0; i < len(lines); i++ {
-		content += lines[i] + "\n"
-	}
-
-	content += "> " + m.textInput.View()
+	content += "> " + m.textInput.View() + "\n"
 	content += statusStyle.Render(m.statusMessage)
 	// s += "\n\n" + "Navigate using arrow keys. Press 'q' to exit, 'backspace' to go back.\n\n"
 
@@ -210,6 +239,11 @@ func (m ActivityModel) Title() string {
 
 func (m ActivityModel) SetLayout(l core.Layout) ActivityModel {
 	m.layout = l
+
+	// Dynamically size viewport based on window size
+	m.viewport.SetWidth(l.Width - 4)
+	m.viewport.SetHeight(l.Height - 6)
+
 	return m
 }
 
