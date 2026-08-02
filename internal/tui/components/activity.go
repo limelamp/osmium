@@ -61,6 +61,19 @@ func NewActivityModel() ActivityModel {
 	vp.KeyMap.Left.SetEnabled(false)
 	vp.KeyMap.Right.SetEnabled(false)
 
+	// DISABLING VIM SCROLLING SHORTCUTS (annoying when used for typing):
+	// Force Up and Down to ONLY use the arrow keys (removes 'k' and 'j')
+	vp.KeyMap.Up.SetKeys("up")
+	vp.KeyMap.Down.SetKeys("down")
+
+	// Force PageUp and PageDown to ONLY use the actual PgUp/PgDn keys (removes 'b', 'f', and spacebar)
+	vp.KeyMap.PageUp.SetKeys("pgup")
+	vp.KeyMap.PageDown.SetKeys("pgdown")
+
+	// Disable the page other jumping letters ('d', 'u')
+	vp.KeyMap.HalfPageUp.SetEnabled(false)
+	vp.KeyMap.HalfPageDown.SetEnabled(false)
+
 	return ActivityModel{
 		cursor:    0,
 		textInput: ti,
