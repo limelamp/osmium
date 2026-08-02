@@ -146,7 +146,12 @@ func (m ActivityModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(newLogs) != m.lastLogLength { // Check in order to not waste cpu usage by redrawing constantly
 			isAtBottom := m.viewport.AtBottom()
 
-			m.viewport.SetContent(newLogs) // Set the viewport's text to that of the java logs
+			// Using Lipgloss to force the text to wrap exactly at the edge of the viewport
+			wrappedLogs := lipgloss.NewStyle().Width(m.viewport.Width()).Render(newLogs)
+
+			// Give the wrapped version to the viewport instead of the raw logs
+			m.viewport.SetContent(wrappedLogs)
+			// m.viewport.SetContent(newLogs) // Set the viewport's text to that of the java logs (no text wrapping, pure)
 
 			if isAtBottom || m.lastLogLength == 0 {
 				m.viewport.GotoBottom()
