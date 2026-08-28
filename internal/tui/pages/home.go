@@ -1,6 +1,8 @@
 package pages
 
 import (
+	"strings"
+
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/limelamp/osmium/internal/assets"
@@ -23,6 +25,7 @@ func NewHomeModel() HomeModel {
 		nav: components.NewNavigationModel([]components.Choice{
 			{Page: "Create server", Key: "c"},
 			{Page: "Manage servers", Key: "m"},
+			{Page: "Migrate server", Key: "g"},
 			{Page: "Settings", Key: "s"},
 			{Page: "Quit", Key: "q"},
 		}),
@@ -49,6 +52,9 @@ func (m HomeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "Manage servers":
 			return m, core.RouteTo("ManageServers")
 
+		case "Migrate server":
+			return m, core.RouteTo("Migrate")
+
 		case "Settings":
 			return m, core.RouteTo("Settings")
 		}
@@ -60,6 +66,9 @@ func (m HomeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "m":
 			return m, core.RouteTo("ManageServers")
+
+		case "g":
+			return m, core.RouteTo("Migrate")
 
 		case "s":
 			return m, core.RouteTo("Settings")
@@ -74,14 +83,34 @@ func (m HomeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m HomeModel) View() tea.View {
 	logo, _ := styles.Logo(assets.Logo2)
 
+	// The spacer is built from logoGap so the rows the menu is drawn on and the
+	// rows SetLayout tells it to expect can never drift apart: a literal "\n"
+	// here is two rows, and the menu then answers clicks one entry low.
 	content := lipgloss.JoinVertical(
 		0.5,
 		logo,
-		"\n",
+		strings.Repeat("\n", max(logoGap-1, 0)),
 		m.nav.View().Content,
 	)
 
 	return tea.NewView(lipgloss.PlaceHorizontal(m.layout.Width, lipgloss.Center, content))
+}
+
+// Help lists the menu's keys, including the letter shortcuts that jump
+// straight to a page.
+func (m HomeModel) Help() []core.HelpSection {
+	return []core.HelpSection{{
+		Title: "Home",
+		Hints: []styles.Hint{
+			{Key: "↑/↓", Desc: "move"},
+			{Key: "enter", Desc: "open"},
+			{Key: "c", Desc: "create server"},
+			{Key: "m", Desc: "manage servers"},
+			{Key: "g", Desc: "migrate server"},
+			{Key: "s", Desc: "settings"},
+			{Key: "q", Desc: "quit"},
+		},
+	}}
 }
 
 // additional methods

@@ -183,6 +183,7 @@ func (m ManageConfigsModel) activate() (tea.Model, tea.Cmd) {
 		}
 		m.editing = m.list.Cursor
 		m.textInput.SetValue(m.configOptionValues[m.list.Cursor])
+		m.textInput.CursorEnd()
 		return m, m.textInput.Focus()
 	}
 
@@ -272,10 +273,7 @@ func (m ManageConfigsModel) View() tea.View {
 
 	switch m.step {
 	case stepEditFile:
-		return m.listView(m.Title()+" · "+filepath.Base(m.fileName), m.editRow,
-			styles.Hint{Key: "enter", Desc: "edit value"},
-			styles.Hint{Key: "backspace", Desc: "back to files"},
-		)
+		return m.listView(m.Title()+" · "+filepath.Base(m.fileName), m.editRow, m.Hints()...)
 
 	default:
 		if len(m.options) == 0 {
@@ -285,10 +283,33 @@ func (m ManageConfigsModel) View() tea.View {
 
 		return m.listView(m.Title(), func(i int) string {
 			return m.row(i, m.options[i].entry.Name(), m.relativeDir(m.options[i].path))
-		},
-			styles.Hint{Key: "enter", Desc: "open"},
-			styles.Hint{Key: "backspace", Desc: "back"},
-		)
+		}, m.Hints()...)
+	}
+}
+
+// Hints are the keys this panel responds to, which depend on whether a file is
+// open and whether a value is being typed into.
+func (m ManageConfigsModel) Hints() []styles.Hint {
+	switch {
+	case m.editing >= 0:
+		return []styles.Hint{
+			{Key: "enter", Desc: "save"},
+			{Key: "esc", Desc: "cancel"},
+		}
+
+	case m.step == stepEditFile:
+		return []styles.Hint{
+			{Key: "↑/↓", Desc: "move"},
+			{Key: "enter", Desc: "edit value"},
+			{Key: "backspace", Desc: "back to files"},
+		}
+
+	default:
+		return []styles.Hint{
+			{Key: "↑/↓", Desc: "move"},
+			{Key: "enter", Desc: "open"},
+			{Key: "backspace", Desc: "back"},
+		}
 	}
 }
 

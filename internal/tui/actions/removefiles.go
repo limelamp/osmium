@@ -63,13 +63,11 @@ func (m RemoveFilesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "backspace":
 			return m, core.CloseAction()
 
-		case " ":
+		case "space":
 			return m.toggle(), nil
 
 		case "ctrl+a":
-			for i := range m.options {
-				m.selected[i] = true
-			}
+			return m.toggleAll(len(m.options)), nil
 
 		case "enter":
 			return m.removeSelected()
@@ -83,6 +81,21 @@ func (m RemoveFilesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m RemoveFilesModel) toggle() RemoveFilesModel {
 	if len(m.options) > 0 {
 		m.selected[m.list.Cursor] = !m.selected[m.list.Cursor]
+	}
+	return m
+}
+
+// toggleAll marks every row, or clears them all when they already are.
+func (m RemoveFilesModel) toggleAll(count int) RemoveFilesModel {
+	marked := 0
+	for i := range count {
+		if m.selected[i] {
+			marked++
+		}
+	}
+
+	for i := range count {
+		m.selected[i] = marked < count
 	}
 	return m
 }
@@ -132,12 +145,17 @@ func (m RemoveFilesModel) View() tea.View {
 			label = "  " + label
 		}
 		return m.row(i, label, "")
-	},
-		styles.Hint{Key: "space", Desc: "mark"},
-		styles.Hint{Key: "ctrl+a", Desc: "mark all"},
-		styles.Hint{Key: "enter", Desc: "delete marked"},
-		styles.Hint{Key: "backspace", Desc: "back"},
-	)
+	}, m.Hints()...)
+}
+
+// Hints are the keys this panel responds to.
+func (m RemoveFilesModel) Hints() []styles.Hint {
+	return []styles.Hint{
+		{Key: "space", Desc: "mark"},
+		{Key: "ctrl+a", Desc: "mark all"},
+		{Key: "enter", Desc: "delete marked"},
+		{Key: "backspace", Desc: "back"},
+	}
 }
 
 // additional methods

@@ -5,35 +5,53 @@ package cmd
 
 import (
 	"fmt"
+	"time"
 
+	"github.com/limelamp/osmium/internal/supervisor"
 	"github.com/spf13/cobra"
 )
 
 // restartCmd represents the restart command
 var restartCmd = &cobra.Command{
 	Use:   "restart",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
+	Short: "Restart a Minecraft server.",
+	Long: `Stops a running server, waits for it to finish saving, and starts it again.
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("restart called")
+A server that is not running is simply started.
+
+Examples:
+  osmium restart
+  osmium restart --server survival`,
+	Args: cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		dir, err := requireServerDir()
+		if err != nil {
+			return err
+		}
+
+		if supervisor.Running(dir) {
+			if err := supervisor.Stop(dir, false); err != nil {
+				return err
+			}
+			fmt.Printf("%s is shutting down", serverName(dir))
+			waitUntilStopped(dir, 90*time.Second)
+		}
+
+		if supervisor.Running(dir) {
+			return fmt.Errorf("%s did not stop in time; it was not restarted", serverName(dir))
+		}
+
+		if err := supervisor.Start(dir, serverName(dir)); err != nil {
+			return err
+		}
+
+		fmt.Printf("Started %s.\n", serverName(dir))
+		return nil
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(restartCmd)
 
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// restartCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// restartCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	registerServerFlag(restartCmd)
 }

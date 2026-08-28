@@ -71,17 +71,7 @@ func (s *BuildStep) Init() tea.Cmd {
 	s.server = nil
 	s.events = make(chan buildEvent, 64)
 
-	target := TargetDir(s.config)
-	server := &storage.Server{
-		ID:      slug(s.config.Name),
-		Name:    s.config.Name,
-		Path:    target,
-		Version: s.config.Version,
-		Type:    strings.ToLower(s.config.Software),
-		Memory:  s.config.RAM,
-	}
-
-	go s.build(target, server)
+	go s.build()
 
 	return waitForBuildEvent(s.events)
 }
@@ -94,61 +84,88 @@ func waitForBuildEvent(events chan buildEvent) tea.Cmd {
 	}
 }
 
-// build performs the whole creation sequence and reports through the channel.
-func (s *BuildStep) build(target string, server *storage.Server) {
-	emit := func(line string) { s.events <- buildEvent{line: line} }
-	fail := func(err error) { s.events <- buildEvent{done: true, err: err} }
-
-	emit("Creating " + target)
-	if err := os.MkdirAll(target, 0755); err != nil {
-		fail(err)
-		return
-	}
-
-	sc := scope.Scope{Dir: target, Log: emit}
-
-	// 1. Download the server jar
-	if err := util.DownloadJarInto(sc, s.config.Software, s.config.Version); err != nil {
-		fail(err)
-		return
-	}
-
-	// 2. Write Osmium config file
-	emit("Writing osmium.json")
-	osmiumConf := config.OsmiumConfig{
-		Category:     s.config.Category,
-		Loader:       s.config.Software,
-		Version:      s.config.Version,
-		AllocatedRAM: s.config.RAM,
-		Mods:         make(map[string]config.Project),
-		Plugins:      make(map[string]config.Project),
-	}
-	if err := config.WriteConfigIn(target, &osmiumConf); err != nil {
-		fail(err)
-		return
-	}
-
-	// 3. EULA Agreement creation
-	if s.config.Eula {
-		emit("Accepting the EULA")
-		content := "#By changing the setting below to TRUE you are indicating your agreement to our EULA (https://aka.ms/MinecraftEULA).\n"
-		content += "eula=true\n"
-
-		if err := os.WriteFile(filepath.Join(target, "eula.txt"), []byte(content), 0644); err != nil {
-			fail(err)
-			return
-		}
-	}
-
-	// 4. Register the server so it shows up in Manage Servers
-	emit("Registering the server")
-	if err := s.register(server); err != nil {
-		fail(err)
+// build runs the creation sequence and reports it through the channel.
+func (s *BuildStep) build() {
+	server, err := Build(s.config, s.store, func(line string) {
+		s.events <- buildEvent{line: line}
+	})
+	if err != nil {
+		s.events <- buildEvent{done: true, err: err}
 		return
 	}
 
 	s.server = server
 	s.events <- buildEvent{done: true}
+}
+
+// Build creates the server a Config describes: it downloads the jar, writes the
+// manifest and the EULA, and registers the result. Progress is reported line by
+// line through log.
+//
+// The wizard runs this in a goroutine and streams the lines into a panel; the
+// CLI runs it in the foreground and prints them. Both get the same server built
+// the same way, which is the point of it living here rather than in either.
+func Build(cfg *Config, store *storage.ServerStore, log func(line string)) (*storage.Server, error) {
+	emit := func(line string) {
+		if log != nil {
+			log(line)
+		}
+	}
+
+	target := TargetDir(cfg)
+	server := &storage.Server{
+		ID:      slug(cfg.Name),
+		Name:    cfg.Name,
+		Path:    target,
+		Version: cfg.Version,
+		Type:    strings.ToLower(cfg.Software),
+		Memory:  cfg.RAM,
+	}
+
+	emit("Creating " + target)
+	if err := os.MkdirAll(target, 0755); err != nil {
+		return nil, err
+	}
+
+	sc := scope.Scope{Dir: target, Log: emit}
+
+	// 1. Download the server jar
+	if err := util.DownloadJarInto(sc, cfg.Software, cfg.Version); err != nil {
+		return nil, err
+	}
+
+	// 2. Write Osmium config file
+	emit("Writing osmium.json")
+	osmiumConf := config.OsmiumConfig{
+		Category:     cfg.Category,
+		Loader:       cfg.Software,
+		Version:      cfg.Version,
+		AllocatedRAM: cfg.RAM,
+		Mods:         make(map[string]config.Project),
+		Plugins:      make(map[string]config.Project),
+	}
+	if err := config.WriteConfigIn(target, &osmiumConf); err != nil {
+		return nil, err
+	}
+
+	// 3. EULA Agreement creation
+	if cfg.Eula {
+		emit("Accepting the EULA")
+		content := "#By changing the setting below to TRUE you are indicating your agreement to our EULA (https://aka.ms/MinecraftEULA).\n"
+		content += "eula=true\n"
+
+		if err := os.WriteFile(filepath.Join(target, "eula.txt"), []byte(content), 0644); err != nil {
+			return nil, err
+		}
+	}
+
+	// 4. Register the server so it shows up in Manage Servers
+	emit("Registering the server")
+	if err := register(store, server); err != nil {
+		return nil, err
+	}
+
+	return server, nil
 }
 
 // register records the new server in servers.json.
@@ -157,8 +174,8 @@ func (s *BuildStep) build(target string, server *storage.Server) {
 // already registered updates that entry rather than adding a second row for the
 // same files. Only a genuinely new folder gets appended, with its id made
 // unique against the ones already in use.
-func (s *BuildStep) register(server *storage.Server) error {
-	servers, err := s.store.LoadAll()
+func register(store *storage.ServerStore, server *storage.Server) error {
+	servers, err := store.LoadAll()
 	if err != nil {
 		return err
 	}
@@ -168,7 +185,7 @@ func (s *BuildStep) register(server *storage.Server) error {
 		if existing.Path == server.Path {
 			server.ID = existing.ID
 			servers[i] = *server
-			return s.store.SaveAll(servers)
+			return store.SaveAll(servers)
 		}
 		taken[existing.ID] = true
 	}
@@ -178,7 +195,7 @@ func (s *BuildStep) register(server *storage.Server) error {
 		server.ID = fmt.Sprintf("%s-%d", base, i)
 	}
 
-	return s.store.SaveAll(append(servers, *server))
+	return store.SaveAll(append(servers, *server))
 }
 
 func (s *BuildStep) Title() string {

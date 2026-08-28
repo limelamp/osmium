@@ -4,6 +4,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/limelamp/osmium/internal/scope"
+	"github.com/limelamp/osmium/internal/supervisor"
 	"github.com/limelamp/osmium/internal/tui/core"
 	"github.com/limelamp/osmium/internal/tui/storage"
 	"github.com/limelamp/osmium/internal/tui/styles"
@@ -59,7 +60,7 @@ func (b base) setCount(n int) base {
 // handleMouse applies wheel scrolling and click-to-select, reporting whether
 // the click activated the row the cursor already sat on.
 func (b base) handleMouse(msg tea.MouseMsg) (base, bool) {
-	list, activated := b.list.HandleMouse(msg, b.layout, 0)
+	list, activated := b.list.HandleMouse(msg, b.layout.Inner(), 0)
 	b.list = list
 	return b, activated
 }
@@ -75,7 +76,7 @@ func (b base) footer(hints ...styles.Hint) string {
 
 // panelView draws an arbitrary body with the footer pinned to the bottom.
 func (b base) panelView(title string, body string, hints ...styles.Hint) tea.View {
-	content := styles.Body(body, b.layout.ContentHeight()-1)
+	content := styles.Body(body, b.layout.ContentWidth(), b.layout.ContentHeight()-1)
 
 	return tea.NewView(styles.Container(styles.ContainerOpts{
 		Width:         b.layout.Width,
@@ -106,18 +107,27 @@ func (b base) row(index int, label string, suffix string) string {
 	return styles.ListRow(b.layout.ContentWidth(), index == b.list.Cursor, label, suffix)
 }
 
-// run executes a scoped operation in the background, collecting its progress
+// run executes a scoped operation in the panel's server directory.
+func (b base) run(label string, op func(scope.Scope) error) tea.Cmd {
+	return Run(b.dir(), label, op)
+}
+
+// Run executes a scoped operation in the background, collecting its progress
 // lines into a single message so they land in the Activity panel instead of on
 // the raw terminal.
-func (b base) run(label string, op func(scope.Scope) error) tea.Cmd {
-	dir := b.dir()
-
+//
+// It is exported because the Actions menu runs the whole-server operations —
+// installing everything tracked, updating everything — without opening a panel
+// of its own, and those must report exactly the way a panel's operations do.
+func Run(dir string, label string, op func(scope.Scope) error) tea.Cmd {
 	return func() tea.Msg {
-		lines := []string{label}
-		sc := scope.Scope{Dir: dir, Log: func(line string) { lines = append(lines, line) }}
+		lines := []supervisor.Line{{Tag: supervisor.TagMod, Text: label}}
+		sc := scope.Scope{Dir: dir, Log: func(line string) {
+			lines = append(lines, supervisor.Line{Tag: supervisor.TagMod, Text: line})
+		}}
 
 		if err := op(sc); err != nil {
-			lines = append(lines, "error: "+err.Error())
+			lines = append(lines, supervisor.Line{Tag: supervisor.TagError, Text: err.Error()})
 		}
 		return core.LogMsg{Lines: lines}
 	}

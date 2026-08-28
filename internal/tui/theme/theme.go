@@ -34,10 +34,55 @@ var Themes = map[string]Theme{
 		Inactive: lipgloss.Color("#4C566A"), // Polar Night
 		Accent:   lipgloss.Color("#EBCB8B"), // Nord Yellow
 	},
+	"Catppuccin": {
+		Name:     "Catppuccin",
+		Primary:  lipgloss.Color("#89B4FA"), // Mocha Blue
+		Inactive: lipgloss.Color("#585B70"), // Surface 2
+		Accent:   lipgloss.Color("#F5C2E7"), // Pink
+	},
+	"Tokyo Night": {
+		Name:     "Tokyo Night",
+		Primary:  lipgloss.Color("#7AA2F7"), // Blue
+		Inactive: lipgloss.Color("#414868"), // Storm Grey
+		Accent:   lipgloss.Color("#BB9AF7"), // Purple
+	},
+	"Gruvbox": {
+		Name:     "Gruvbox",
+		Primary:  lipgloss.Color("#83A598"), // Faded Blue
+		Inactive: lipgloss.Color("#504945"), // Dark Grey
+		Accent:   lipgloss.Color("#FABD2F"), // Bright Yellow
+	},
+	"Rosé Pine": {
+		Name:     "Rosé Pine",
+		Primary:  lipgloss.Color("#9CCFD8"), // Foam
+		Inactive: lipgloss.Color("#403D52"), // Highlight Med
+		Accent:   lipgloss.Color("#EBBCBA"), // Rose
+	},
+	"Everforest": {
+		Name:     "Everforest",
+		Primary:  lipgloss.Color("#A7C080"), // Green
+		Inactive: lipgloss.Color("#4F5B58"), // Grey 1
+		Accent:   lipgloss.Color("#DBBC7F"), // Yellow
+	},
+	"Kanagawa": {
+		Name:     "Kanagawa",
+		Primary:  lipgloss.Color("#7E9CD8"), // Crystal Blue
+		Inactive: lipgloss.Color("#54546D"), // Sumi Ink 4
+		Accent:   lipgloss.Color("#FFA066"), // Surimi Orange
+	},
+	"Solarized": {
+		Name:     "Solarized",
+		Primary:  lipgloss.Color("#268BD2"), // Blue
+		Inactive: lipgloss.Color("#586E75"), // Base 01
+		Accent:   lipgloss.Color("#B58900"), // Yellow
+	},
 }
 
 // ThemeNames provides an ordered list for UI navigation.
-var ThemeNames = []string{"Teal", "Dracula", "Nord"}
+var ThemeNames = []string{
+	"Teal", "Dracula", "Nord", "Catppuccin", "Tokyo Night",
+	"Gruvbox", "Rosé Pine", "Everforest", "Kanagawa", "Solarized",
+}
 
 // Mutable package-level styling hooks.
 // Because your rendering helpers retrieve these at runtime, modifying them changes the UI.

@@ -42,6 +42,7 @@ const (
 
 type ManageServersModel struct {
 	layout core.Layout
+	store  *storage.ServerStore
 
 	servers      components.ServersModel
 	activity     components.ActivityModel
@@ -52,8 +53,18 @@ type ManageServersModel struct {
 	// instead of dropping another server's panel on it.
 	actions map[string]core.Action
 
+	// menus remembers where the cursor was in each server's root menu, so
+	// backing out of a panel returns to the entry that opened it rather than
+	// to the top of the list.
+	menus map[string]components.ActionsModel
+
 	// selected is the server every panel on the page currently acts on.
 	selected *storage.Server
+
+	// collapsed hides the servers pane, giving the whole width to the action
+	// and activity panes. The selected server is still named in their titles,
+	// so nothing is lost but the list.
+	collapsed bool
 
 	focus int
 }
@@ -61,10 +72,12 @@ type ManageServersModel struct {
 // NewManageServersModel accepts the ServerStore and passes it down to the child components
 func NewManageServersModel(store *storage.ServerStore) ManageServersModel {
 	return ManageServersModel{
+		store:        store,
 		servers:      components.NewServersModel(store).SetFocus(true),
-		activeAction: components.NewActionsModel().SetFocus(false), // Set it to default action "dashboard"'s model
+		activeAction: components.NewActionsModel(store).SetFocus(false), // Set it to default action "dashboard"'s model
 		activity:     components.NewActivityModel().SetFocus(false),
 		actions:      make(map[string]core.Action),
+		menus:        make(map[string]components.ActionsModel),
 	}
 }
 
@@ -75,6 +88,29 @@ func (m ManageServersModel) Init() tea.Cmd {
 		m.activeAction.Init(),
 		m.activity.Init(),
 	)
+}
+
+// focusNext moves focus by one pane, stepping over the servers pane while it is
+// collapsed — focus must never land on something that is not on screen.
+func (m ManageServersModel) focusNext(delta int) ManageServersModel {
+	pane := (m.focus + delta + paneCount) % paneCount
+	if m.collapsed && pane == paneServers {
+		pane = (pane + delta + paneCount) % paneCount
+	}
+	return m.setFocus(pane)
+}
+
+// toggleServers shows or hides the servers pane.
+func (m ManageServersModel) toggleServers() ManageServersModel {
+	m.collapsed = !m.collapsed
+
+	// Focus cannot stay on a pane that just went away.
+	if m.collapsed && m.focus == paneServers {
+		return m.setFocus(paneAction)
+	}
+
+	// Re-flow: the remaining panes have a different width now.
+	return m.setFocus(m.focus)
 }
 
 // setFocus moves keyboard focus to a pane and tells every child about it.
@@ -113,7 +149,7 @@ func (m ManageServersModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// Sent when an action panel wants to hand control back to the root menu.
 	case core.CloseActionMsg:
-		return m.swapAction(components.NewActionsModel())
+		return m.swapAction(m.menu())
 
 	case core.SelectServerMsg:
 		// Panels reload from disk when they are handed a server, so only a real
@@ -125,9 +161,9 @@ func (m ManageServersModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		return m.selectServer(msg.Server)
 
-	// Process control, log output and shutdown all belong to the Activity
-	// panel, which owns the running server process.
-	case core.ServerControlMsg, core.LogMsg, core.ShutdownMsg:
+	// Process control and log output belong to the Activity panel, which is
+	// what talks to the servers' supervisors.
+	case core.ServerControlMsg, core.LogMsg, core.RestartReadyMsg:
 		updated, cmd := m.activity.Update(msg)
 		m.activity = updated.(components.ActivityModel)
 		return m, cmd
@@ -146,21 +182,26 @@ func (m ManageServersModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.forwardToPane(msg, pane)
 
 	case tea.KeyPressMsg:
-		// An action panel with an open text field keeps every key, including
-		// the ones the page would otherwise claim for navigation.
-		if m.focus == paneAction && m.activeAction.Editing() {
-			return m.forwardToPane(msg, paneAction)
+		// A pane with an open text field keeps the two keys the page would
+		// otherwise claim for navigation, so esc can cancel the edit and
+		// backspace can delete a character. Tab is never taken: focus must be
+		// able to leave a pane whatever it is in the middle of.
+		if key := msg.String(); (key == "esc" || key == "backspace") && m.editingPane() {
+			return m.forwardToPane(msg, m.focus)
 		}
 
 		switch msg.String() {
 		case "esc":
 			return m, core.RouteTo("Home")
 
+		case "ctrl+b":
+			return m.toggleServers(), nil
+
 		case "tab":
-			return m.setFocus(m.focus + 1), nil
+			return m.focusNext(1), nil
 
 		case "shift+tab":
-			return m.setFocus(m.focus - 1), nil
+			return m.focusNext(-1), nil
 		}
 
 		//! inside the case tea.KeyPressMsg after all msg.String() switch/cases
@@ -177,6 +218,18 @@ func (m ManageServersModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.activity = updatedActivity.(components.ActivityModel)
 
 	return m, tea.Batch(cmd1, cmd2, cmd3)
+}
+
+// editingPane reports whether the focused pane currently has a text field
+// mid-edit.
+func (m ManageServersModel) editingPane() bool {
+	switch m.focus {
+	case paneAction:
+		return m.activeAction.Editing()
+	case paneActivity:
+		return m.activity.Editing()
+	}
+	return false
 }
 
 // sameServer reports whether two selections point at the same server folder.
@@ -198,7 +251,7 @@ func (m ManageServersModel) selectServer(server *storage.Server) (tea.Model, tea
 
 	action, remembered := m.actions[serverKey(server)]
 	if !remembered {
-		action = components.NewActionsModel()
+		action = m.menu()
 	}
 
 	m.activeAction = action.
@@ -206,12 +259,21 @@ func (m ManageServersModel) selectServer(server *storage.Server) (tea.Model, tea
 		SetLayout(m.actionLayout()).
 		SetFocus(m.focus == paneAction)
 
-	m.activity = m.activity.SetServer(server)
+	activity, activityCmd := m.activity.SetServer(server)
+	m.activity = activity
 
 	if remembered {
-		return m, nil
+		return m, activityCmd
 	}
-	return m, m.activeAction.Init()
+	return m, tea.Batch(activityCmd, m.activeAction.Init())
+}
+
+// menu is the root Actions list for the selected server, as it was left.
+func (m ManageServersModel) menu() core.Action {
+	if remembered, ok := m.menus[serverKey(m.selected)]; ok {
+		return remembered
+	}
+	return components.NewActionsModel(m.store)
 }
 
 // swapAction replaces the action panel, handing the new one the page's current
@@ -219,6 +281,12 @@ func (m ManageServersModel) selectServer(server *storage.Server) (tea.Model, tea
 // live panel is filed under its server by selectServer on the way out, so it is
 // still open when the user comes back to that server.
 func (m ManageServersModel) swapAction(action core.Action) (tea.Model, tea.Cmd) {
+	// The root menu is filed away as it leaves, so the panel it opened returns
+	// to the entry it was opened from.
+	if menu, ok := m.activeAction.(components.ActionsModel); ok {
+		m.menus[serverKey(m.selected)] = menu
+	}
+
 	m.activeAction = action.
 		SetServer(m.selected).
 		SetLayout(m.actionLayout()).
@@ -260,21 +328,29 @@ func (m ManageServersModel) View() tea.View {
 		return tea.NewView("loading...")
 	}
 
-	content := lipgloss.JoinHorizontal(
-		lipgloss.Top,
-		m.servers.View().Content,
-		lipgloss.JoinVertical(
-			lipgloss.Left,
-			m.activeAction.View().Content,
-			m.activity.View().Content,
-		),
+	right := lipgloss.JoinVertical(
+		lipgloss.Left,
+		m.activeAction.View().Content,
+		m.activity.View().Content,
 	)
 
-	return tea.NewView(content)
+	if m.collapsed {
+		return tea.NewView(right)
+	}
+
+	return tea.NewView(lipgloss.JoinHorizontal(
+		lipgloss.Top,
+		m.servers.View().Content,
+		right,
+	))
 }
 
 // Pane rectangles, derived from the page layout and the focused pane.
 func (m ManageServersModel) serversWidth() int {
+	if m.collapsed {
+		return 0
+	}
+
 	ratio := serversWidthRatio
 	if m.focus == paneServers {
 		ratio = serversFocusedWidthRatio
@@ -333,6 +409,24 @@ func (m ManageServersModel) activityLayout() core.Layout {
 		Width:  action.Width,
 		Height: m.layout.Height - action.Height,
 	}
+}
+
+// Help describes the keys of whichever pane holds focus, so the modal lists
+// what works here and now rather than everything the page can do.
+func (m ManageServersModel) Help() []core.HelpSection {
+	section := core.HelpSection{Title: "Manage Servers — Servers", Hints: m.servers.Hints()}
+
+	switch m.focus {
+	case paneAction:
+		section = core.HelpSection{
+			Title: "Manage Servers — " + m.activeAction.Title(),
+			Hints: m.activeAction.Hints(),
+		}
+	case paneActivity:
+		section = core.HelpSection{Title: "Manage Servers — Activity", Hints: m.activity.Hints()}
+	}
+
+	return []core.HelpSection{section}
 }
 
 // additional methods

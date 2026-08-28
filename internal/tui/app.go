@@ -25,6 +25,7 @@ type appModel struct {
 	home          pages.HomeModel
 	createServer  pages.CreateServerModel
 	manageServers pages.ManageServersModel
+	migrate       pages.MigrateModel
 	settings      pages.SettingsModel
 
 	// help modal overlay component
@@ -39,8 +40,9 @@ func NewAppModel(store *storage.ServerStore) appModel {
 		home:          home,
 		createServer:  pages.NewCreateServerModel(store),
 		manageServers: pages.NewManageServersModel(store),
+		migrate:       pages.NewMigrateModel(store),
 		settings:      pages.NewSettingsModel(),
-		help:          components.NewHelpModel(components.DefaultKeys),
+		help:          components.NewHelpModel(),
 	}
 }
 
@@ -70,9 +72,12 @@ func (m appModel) switchPage(p Page) (tea.Model, tea.Cmd) {
 	return m, m.activePage.Init()
 }
 
-// quit shuts down anything the pages own before leaving.
+// quit leaves the app. Running servers are deliberately left alone: each one
+// belongs to its own supervisor process, so quitting Osmium is not the same as
+// stopping a server, and a server started here is still running — and still
+// takes commands — the next time Osmium is opened.
 func (m appModel) quit() tea.Cmd {
-	return tea.Sequence(core.Shutdown(), tea.Quit)
+	return tea.Quit
 }
 
 func (m appModel) Init() tea.Cmd {
@@ -119,13 +124,6 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-	// Manage Servers owns the running server process, so it is told to shut
-	// down wherever the user happens to be when they quit.
-	case core.ShutdownMsg:
-		updated, _ := m.manageServers.Update(msg)
-		m.manageServers = updated.(pages.ManageServersModel)
-		return m, nil
-
 	case core.ChangePageMsg:
 		switch msg.Target {
 		case "Home":
@@ -136,6 +134,12 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "ManageServers":
 			return m.switchPage(m.manageServers)
+
+		case "Migrate":
+			// The routing request carries the server when there is one, so the
+			// page skips its own picker.
+			m.migrate = m.migrate.SetServer(msg.Server)
+			return m.switchPage(m.migrate)
 
 		case "Settings":
 			return m.switchPage(m.settings)
@@ -163,6 +167,8 @@ func (m *appModel) retain(page Page) {
 		m.createServer = p
 	case pages.ManageServersModel:
 		m.manageServers = p
+	case pages.MigrateModel:
+		m.migrate = p
 	case pages.SettingsModel:
 		m.settings = p
 	}
@@ -182,8 +188,14 @@ func (m appModel) View() tea.View {
 		pageView.Content,
 	)
 
-	// Delegate compositing and rendering logic entirely to the help component
-	viewContent := m.help.Render(baseContent)
+	// The page describes the keys that work where the user actually is, so the
+	// modal lists those rather than one fixed set for the whole app.
+	var sections []core.HelpSection
+	if helper, ok := m.activePage.(core.Helper); ok {
+		sections = helper.Help()
+	}
+
+	viewContent := m.help.Render(baseContent, sections)
 
 	view := tea.NewView(viewContent)
 	view.AltScreen = true

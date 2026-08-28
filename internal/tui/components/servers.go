@@ -7,7 +7,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/limelamp/osmium/internal/shared"
+	"github.com/limelamp/osmium/internal/supervisor"
 	"github.com/limelamp/osmium/internal/tui/core"
 	"github.com/limelamp/osmium/internal/tui/storage"
 	"github.com/limelamp/osmium/internal/tui/styles"
@@ -84,22 +84,25 @@ func (m ServersModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.MouseMsg:
 		before := m.list.Cursor
-		list, _ := m.list.HandleMouse(msg, m.layout, 0)
+		list, _ := m.list.HandleMouse(msg, m.layout.Inner(), 0)
 		m.list = list
 		if m.list.Cursor != before {
-			return m, core.SelectServer(m.Selected())
+			return m, m.selectCmd()
 		}
 		return m, nil
 
 	case tea.KeyPressMsg:
 		if list, handled := m.list.HandleKey(msg.String()); handled {
 			m.list = list
-			return m, core.SelectServer(m.Selected())
+			return m, m.selectCmd()
 		}
 
 		if msg.String() == "r" {
 			return m, core.LoadServersCmd(m.store)
 		}
+
+	case core.ReloadServersMsg:
+		return m, core.LoadServersCmd(m.store)
 
 	case statusTickMsg:
 		return m.refreshStatus(), statusTick()
@@ -112,7 +115,14 @@ func (m ServersModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = nil
 		m.servers = msg.Servers
 		m.list = m.list.Resize(len(m.servers), m.rows())
-		return m.refreshStatus(), core.SelectServer(m.Selected())
+
+		// In order: the selection first, so the notice about what was pruned
+		// lands in the console the user is now looking at rather than in
+		// whichever one happened to be showing beforehand.
+		return m.refreshStatus(), tea.Sequence(
+			core.SelectServer(m.Selected()),
+			reportMissing(msg.Missing),
+		)
 
 	case core.SavedServersMsg:
 		if msg.Err != nil {
@@ -122,6 +132,31 @@ func (m ServersModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+// selectCmd announces the highlighted server to the rest of the page. A server
+// whose folder has been deleted since the list was read is dropped instead:
+// reloading prunes it, which is the same thing that happens at startup.
+func (m ServersModel) selectCmd() tea.Cmd {
+	server := m.Selected()
+	if server != nil && !server.Exists() {
+		return core.LoadServersCmd(m.store)
+	}
+	return core.SelectServer(server)
+}
+
+// reportMissing tells the console which stale entries were dropped, so servers
+// never disappear from the list without a word.
+func reportMissing(missing []string) tea.Cmd {
+	if len(missing) == 0 {
+		return nil
+	}
+
+	lines := make([]string, 0, len(missing))
+	for _, name := range missing {
+		lines = append(lines, "removed "+name+" from the list — its folder is gone")
+	}
+	return core.Log(lines...)
 }
 
 func (m ServersModel) View() tea.View {
@@ -144,12 +179,9 @@ func (m ServersModel) View() tea.View {
 		body = lipgloss.JoinVertical(lipgloss.Left, rows...)
 	}
 
-	body = styles.Body(body, m.layout.ContentHeight()-1)
+	body = styles.Body(body, m.layout.ContentWidth(), m.layout.ContentHeight()-1)
 
-	hints := styles.Hints(m.layout.ContentWidth(),
-		styles.Hint{Key: "↑/↓", Desc: "select"},
-		styles.Hint{Key: "r", Desc: "refresh"},
-	)
+	hints := styles.Hints(m.layout.ContentWidth(), m.Hints()...)
 
 	// 3. Render the list inside the layout container style
 	return tea.NewView(styles.Container(styles.ContainerOpts{
@@ -162,6 +194,16 @@ func (m ServersModel) View() tea.View {
 		ScrollTotal:   m.list.Scroll.Total,
 		ScrollVisible: m.list.Scroll.Visible,
 	}))
+}
+
+// Hints are the keys this panel responds to.
+func (m ServersModel) Hints() []styles.Hint {
+	return []styles.Hint{
+		{Key: "↑/↓", Desc: "select"},
+		{Key: "r", Desc: "refresh"},
+		{Key: "ctrl+b", Desc: "hide pane"},
+		{Key: "tab", Desc: "switch pane"},
+	}
 }
 
 // serverRow renders one server: its name, a running indicator, and the engine
@@ -183,13 +225,9 @@ func (m ServersModel) serverRow(i int) string {
 	)
 }
 
-// isServerRunning reports whether a server directory holds a live process lock.
+// isServerRunning reports whether a server directory has a live supervisor.
 func isServerRunning(dir string) bool {
-	pid, err := shared.ReadLockPIDIn(dir)
-	if err != nil {
-		return false
-	}
-	return shared.IsPIDRunning(pid)
+	return supervisor.Running(dir)
 }
 
 // additional methods

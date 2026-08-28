@@ -84,9 +84,10 @@ func (s *MemoryStep) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "tab":
 			s.typing = true
 			s.input.SetValue(s.config.RAM)
+			s.input.CursorEnd()
 			return s, s.input.Focus()
 
-		case "enter", " ":
+		case "enter", "space":
 			return s, s.confirm(constants.RamOptions[s.list.Cursor])
 		}
 	}

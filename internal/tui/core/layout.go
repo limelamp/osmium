@@ -32,16 +32,21 @@ func (l Layout) Hit(x, y int) bool {
 	return x >= l.X && x < l.X+l.Width && y >= l.Y && y < l.Y+l.Height
 }
 
-// ContentRow maps an absolute terminal Y to a zero-based row index inside a
-// styles.Container drawn at this layout, or -1 when the point is on the border
-// rather than on content. Every container shares the same one-cell border, so
-// every component can translate clicks the same way.
-func (l Layout) ContentRow(y int) int {
-	row := y - l.Y - 1
-	if row < 0 || row >= l.Height-2 {
-		return -1
+// Inner is the rectangle inside a styles.Container's border, which is where
+// that container's rows are actually drawn.
+//
+// Hit-testing is always done against the rectangle the rows occupy, never
+// against the layout a component was given: a panel drawn through
+// styles.Container passes Inner(), and a component that draws bare content —
+// a wizard step, say — passes its layout unchanged. Getting this wrong is what
+// makes a click land one row off.
+func (l Layout) Inner() Layout {
+	return Layout{
+		X:      l.X + 1,
+		Y:      l.Y + 1,
+		Width:  max(0, l.Width-2),
+		Height: max(0, l.Height-2),
 	}
-	return row
 }
 
 // ContentWidth is the number of columns available to a container's content,

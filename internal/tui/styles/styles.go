@@ -205,6 +205,53 @@ func ListRow(width int, selected bool, label string, suffix string) string {
 	return left + strings.Repeat(" ", gap) + right
 }
 
+// logTagWidth is the width of the log's source column, sized to the longest
+// tag so every line's text starts in the same place.
+const logTagWidth = 6
+
+// LogRow renders one line of the Activity console: its source in a fixed-width
+// coloured column, then the line itself. Wrapped text is indented to the column
+// so a long line still reads as belonging to one source.
+func LogRow(width int, tag string, text string) string {
+	var tagColor, textColor color.Color = theme.Inactive, nil
+
+	switch tag {
+	case "server":
+		tagColor = theme.Primary
+	case "you":
+		tagColor, textColor = theme.Accent, theme.Accent
+	case "mod":
+		tagColor = theme.Accent
+	case "error":
+		tagColor, textColor = errorColor, errorColor
+	}
+
+	label := lipgloss.NewStyle().
+		Foreground(tagColor).
+		Width(logTagWidth).
+		MaxWidth(logTagWidth).
+		Render(tag)
+
+	gutter := label + lipgloss.NewStyle().Foreground(theme.Inactive).Render(" │ ")
+	indent := strings.Repeat(" ", logTagWidth+3)
+
+	bodyStyle := lipgloss.NewStyle().Width(max(width-logTagWidth-3, 1))
+	if textColor != nil {
+		bodyStyle = bodyStyle.Foreground(textColor)
+	}
+
+	lines := strings.Split(bodyStyle.Render(text), "\n")
+	for i, line := range lines {
+		if i == 0 {
+			lines[i] = gutter + line
+			continue
+		}
+		lines[i] = indent + line
+	}
+
+	return strings.Join(lines, "\n")
+}
+
 // StepHeading renders a wizard step heading. The step number carries the
 // theme's accent, the title its primary colour, and the subtitle explains the
 // step in the muted tone.
@@ -230,9 +277,19 @@ func StepHeading(step int, title string, subtitle string) string {
 // Body fits a panel's main content to exactly height rows: padded when it is
 // short, clipped when it is long. Panels use it so whatever they pin below —
 // a hint bar, a command prompt — is never pushed out of the frame.
-func Body(content string, height int) string {
-	height = max(height, 0)
-	return lipgloss.NewStyle().Height(height).MaxHeight(height).Render(content)
+//
+// The width matters as much as the height: a line wider than the panel is
+// wrapped by the container when it is drawn, and a line that becomes two after
+// the height was counted pushes the bottom row out of the frame. Wrapping here
+// means the rows counted are the rows drawn.
+func Body(content string, width int, height int) string {
+	width, height = max(width, 1), max(height, 0)
+
+	return lipgloss.NewStyle().
+		Width(width).
+		Height(height).
+		MaxHeight(height).
+		Render(content)
 }
 
 // Hint is a single key/description pair shown in a hint bar.
@@ -266,13 +323,17 @@ func Hints(width int, hints ...Hint) string {
 	return bar
 }
 
+// errorColor is the one alarming colour in the app: it stays the same whatever
+// theme is active, because a failure should not be mistakable for decoration.
+var errorColor = lipgloss.Color("#FF5555")
+
 // Error renders an error line in a consistently alarming colour.
 func Error(err error) string {
 	if err == nil {
 		return ""
 	}
 	return lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#FF5555")).
+		Foreground(errorColor).
 		Bold(true).
 		Render("Error: " + err.Error())
 }

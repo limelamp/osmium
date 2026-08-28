@@ -1,41 +1,54 @@
-// /*
-// Copyright © 2026 LIMELAMP <EMAIL ADDRESS>
-// */
+/*
+Copyright © 2026 LIMELAMP <EMAIL ADDRESS>
+*/
 package cmd
 
-// import (
-// 	"fmt"
-// 	"os"
+import (
+	"fmt"
 
-// 	tea "github.com/charmbracelet/bubbletea"
-// 	tui "github.com/limelamp/osmium/internal/tui/old_pages"
-// 	"github.com/spf13/cobra"
-// )
+	"github.com/limelamp/osmium/internal/supervisor"
+	"github.com/spf13/cobra"
+)
 
-// // startCmd represents the start command
-// var startCmd = &cobra.Command{
-// 	Use:   "start",
-// 	Short: "Start the Minecraft server.",
-// 	Long:  `Starts the \"Run Server\" page inside Osmium, which then starts the Minecraft server.`,
-// 	Run: func(cmd *cobra.Command, args []string) {
-// 		mainProcess := tea.NewProgram(tui.NewRunServerModel(), tea.WithAltScreen())
-// 		if _, err := mainProcess.Run(); err != nil {
-// 			fmt.Println(err)
-// 			os.Exit(1)
-// 		}
-// 	},
-// }
+var startFollow bool
 
-// func init() {
-// 	rootCmd.AddCommand(startCmd)
+// startCmd represents the start command
+var startCmd = &cobra.Command{
+	Use:   "start",
+	Short: "Start a Minecraft server.",
+	Long: `Starts a server under a supervisor process of its own.
 
-// 	// Here you will define your flags and configuration settings.
+The server keeps running after this command returns, and after Osmium's TUI is
+closed. Send it commands with 'osmium exec', watch it with 'osmium logs -f',
+and stop it with 'osmium stop'.
 
-// 	// Cobra supports Persistent Flags which will work for this command
-// 	// and all subcommands, e.g.:
-// 	// startCmd.PersistentFlags().String("foo", "", "A help for foo")
+Examples:
+  osmium start
+  osmium start --server survival --follow`,
+	Args: cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		dir, err := requireServerDir()
+		if err != nil {
+			return err
+		}
 
-// 	// Cobra supports local flags which will only run when this command
-// 	// is called directly, e.g.:
-// 	// startCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
-// }
+		if err := supervisor.Start(dir, serverName(dir)); err != nil {
+			return err
+		}
+		fmt.Printf("Started %s.\n", serverName(dir))
+
+		if startFollow {
+			return followLog(dir, defaultLogLines)
+		}
+
+		fmt.Println("Follow its output with 'osmium logs -f'.")
+		return nil
+	},
+}
+
+func init() {
+	rootCmd.AddCommand(startCmd)
+
+	registerServerFlag(startCmd)
+	startCmd.Flags().BoolVarP(&startFollow, "follow", "f", false, "Follow the server log after starting")
+}

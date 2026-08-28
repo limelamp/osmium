@@ -3,6 +3,7 @@ package core
 import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/limelamp/osmium/internal/tui/storage"
+	"github.com/limelamp/osmium/internal/tui/styles"
 )
 
 // Action is a swappable panel hosted by the Manage Servers page. Every action
@@ -28,6 +29,11 @@ type Action interface {
 	// host page stops claiming keys such as esc and tab while it does, so the
 	// field can use them itself.
 	Editing() bool
+
+	// Hints are the keys the panel responds to in whatever state it is in.
+	// They are drawn in the panel's hint bar and listed in the help modal, so
+	// a panel states its keys exactly once.
+	Hints() []styles.Hint
 
 	Title() string
 }

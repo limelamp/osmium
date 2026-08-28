@@ -4,9 +4,6 @@ Copyright © 2026 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
-	"fmt"
-	"os"
-
 	"github.com/limelamp/osmium/internal/scope"
 	"github.com/limelamp/osmium/internal/shared"
 	"github.com/spf13/cobra"
@@ -35,18 +32,24 @@ Example:
   osmium migrate -l Paper -v 1.21.1
   osmium migrate -l Fabric -v 1.20.4`,
 	Args: cobra.NoArgs,
-	Run: func(cmd *cobra.Command, args []string) {
-		if err := shared.MigrateServer(scope.For("."), migrateflags.loader, migrateflags.version); err != nil {
-			fmt.Printf("Error: %v\n", err)
-			os.Exit(1)
+	RunE: func(cmd *cobra.Command, args []string) error {
+		dir, err := requireServerDir()
+		if err != nil {
+			return err
 		}
+		return shared.MigrateServer(scope.For(dir), migrateflags.loader, migrateflags.version)
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(migrateCmd)
+
+	registerServerFlag(migrateCmd)
 	migrateCmd.Flags().StringVarP(&migrateflags.loader, "loader", "l", "", "Minecraft mod or plugin loader")
 	migrateCmd.Flags().StringVarP(&migrateflags.version, "version", "v", "", "Minecraft version")
 	migrateCmd.MarkFlagRequired("loader")
 	migrateCmd.MarkFlagRequired("version")
+
+	_ = migrateCmd.RegisterFlagCompletionFunc("loader", completeLoaders)
+	_ = migrateCmd.RegisterFlagCompletionFunc("version", completeVersions)
 }

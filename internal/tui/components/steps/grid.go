@@ -205,7 +205,7 @@ func (g Grid) Update(msg tea.Msg) (Grid, bool) {
 			return g.moveRow(-1), false
 		case "down", "j":
 			return g.moveRow(1), false
-		case "enter", " ":
+		case "enter", "space":
 			return g, true
 		}
 	}

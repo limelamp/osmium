@@ -109,7 +109,7 @@ func (s *LocationStep) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch msg.String() {
-		case "enter", " ", "right", "l":
+		case "enter", "space", "right", "l":
 			return s.choose()
 		}
 	}
@@ -178,6 +178,7 @@ func (s *LocationStep) updateBrowser(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "tab":
 			s.pathFocused = true
 			s.pathIn.SetValue(s.dir)
+			s.pathIn.CursorEnd()
 			return s, s.pathIn.Focus()
 
 		case "enter", "right", "l":
@@ -190,7 +191,7 @@ func (s *LocationStep) updateBrowser(msg tea.Msg) (tea.Model, tea.Cmd) {
 			s.config.Dir = s.dir
 			return s, Next()
 
-		case "backspace":
+		case "backspace", "esc":
 			// Nested navigation: leave the browser before leaving the step.
 			s.browsing = false
 			s.list = s.list.Resize(locationCount, locationCount)

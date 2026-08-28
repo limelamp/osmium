@@ -768,8 +768,11 @@ func MigrateServer(sc scope.Scope, loader string, version string) error {
 		Category: oldConf.Category,
 		Loader:   loader,
 		Version:  version,
-		Mods:     make(map[string]config.Project),
-		Plugins:  make(map[string]config.Project),
+		// The allocation is the server's, not the loader's: migrating must not
+		// quietly reset it and leave the JVM without a heap size.
+		AllocatedRAM: oldConf.AllocatedRAM,
+		Mods:         make(map[string]config.Project),
+		Plugins:      make(map[string]config.Project),
 	}
 
 	// Copy existing mods and plugins to new config (will be updated during migration)

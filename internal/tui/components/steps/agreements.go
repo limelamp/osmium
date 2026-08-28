@@ -66,7 +66,7 @@ func (s *AgreementsStep) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return s, nil
 		}
 
-		if msg.String() == "enter" || msg.String() == " " {
+		if msg.String() == "enter" || msg.String() == "space" {
 			return s.toggle()
 		}
 	}

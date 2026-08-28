@@ -164,6 +164,10 @@ func (m ProjectsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				return m.activate()
 			case "esc":
+				if m.queryInput.Value() != "" {
+					m.queryInput.Reset()
+					return m, nil
+				}
 				return m.gotoState(stateOperations), nil
 
 			case "backspace":
@@ -191,9 +195,14 @@ func (m ProjectsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, core.CloseAction()
 
-		case " ":
+		case "space":
 			if m.state == stateRemove && len(m.installed) > 0 {
 				m.selected[m.list.Cursor] = !m.selected[m.list.Cursor]
+			}
+
+		case "ctrl+a":
+			if m.state == stateRemove {
+				return m.toggleAll(), nil
 			}
 
 		case "enter":
@@ -272,6 +281,17 @@ func (m ProjectsModel) activate() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// toggleAll marks every installed project, or clears them all when they
+// already are.
+func (m ProjectsModel) toggleAll() ProjectsModel {
+	marked := len(m.markedSlugs())
+
+	for i := range m.installed {
+		m.selected[i] = marked < len(m.installed)
+	}
+	return m
+}
+
 // markedSlugs collects the projects the user ticked on the remove screen.
 func (m ProjectsModel) markedSlugs() []string {
 	var slugs []string
@@ -297,11 +317,7 @@ func (m ProjectsModel) View() tea.View {
 			"",
 			m.queryInput.View(),
 		)
-		return m.panelView(m.Title()+" · Add",
-			body,
-			styles.Hint{Key: "enter", Desc: "install"},
-			styles.Hint{Key: "esc", Desc: "back"},
-		)
+		return m.panelView(m.Title()+" · Add", body, m.Hints()...)
 
 	case stateRemove:
 		if len(m.installed) == 0 {
@@ -314,11 +330,7 @@ func (m ProjectsModel) View() tea.View {
 				label = lipgloss.NewStyle().Foreground(theme.Accent).Render("✓ " + m.installed[i])
 			}
 			return m.row(i, label, "")
-		},
-			styles.Hint{Key: "space", Desc: "mark"},
-			styles.Hint{Key: "enter", Desc: "remove marked"},
-			styles.Hint{Key: "backspace", Desc: "back"},
-		)
+		}, m.Hints()...)
 
 	case stateUpdate:
 		return m.listView(m.Title()+" · Update", func(i int) string {
@@ -326,19 +338,47 @@ func (m ProjectsModel) View() tea.View {
 				return m.row(i, "All "+m.kind.noun+"s", "")
 			}
 			return m.row(i, m.installed[i-1], "")
-		},
-			styles.Hint{Key: "enter", Desc: "update"},
-			styles.Hint{Key: "backspace", Desc: "back"},
-		)
+		}, m.Hints()...)
 
 	default:
 		labels := m.operations()
 		return m.listView(m.Title(), func(i int) string {
 			return m.row(i, labels[i], "")
-		},
-			styles.Hint{Key: "enter", Desc: "select"},
-			styles.Hint{Key: "backspace", Desc: "back"},
-		)
+		}, m.Hints()...)
+	}
+}
+
+// Hints are the keys this panel responds to, which depend on which of its
+// nested screens is showing.
+func (m ProjectsModel) Hints() []styles.Hint {
+	switch m.state {
+	case stateAdd:
+		return []styles.Hint{
+			{Key: "enter", Desc: "install"},
+			{Key: "esc", Desc: "clear / back"},
+		}
+
+	case stateRemove:
+		return []styles.Hint{
+			{Key: "space", Desc: "mark"},
+			{Key: "ctrl+a", Desc: "mark all"},
+			{Key: "enter", Desc: "remove marked"},
+			{Key: "backspace", Desc: "back"},
+		}
+
+	case stateUpdate:
+		return []styles.Hint{
+			{Key: "↑/↓", Desc: "move"},
+			{Key: "enter", Desc: "update"},
+			{Key: "backspace", Desc: "back"},
+		}
+
+	default:
+		return []styles.Hint{
+			{Key: "↑/↓", Desc: "move"},
+			{Key: "enter", Desc: "select"},
+			{Key: "backspace", Desc: "back"},
+		}
 	}
 }
 

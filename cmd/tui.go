@@ -14,13 +14,13 @@ import (
 
 var tuiCmd = &cobra.Command{
 	Use:   "tui",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
+	Short: "Open the full-screen interface.",
+	Long: `Opens Osmium's terminal interface, which is also what running 'osmium' with no
+arguments does.
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+Example:
+  osmium tui`,
+	Args: cobra.NoArgs,
 	RunE: runTui,
 }
 

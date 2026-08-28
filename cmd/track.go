@@ -4,9 +4,6 @@ Copyright © 2026 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
-	"fmt"
-
-	"github.com/limelamp/osmium/internal/scope"
 	"github.com/limelamp/osmium/internal/shared"
 	"github.com/spf13/cobra"
 )
@@ -21,14 +18,17 @@ and adds missing entries to osmium.json.
 Example:
   osmium track`,
 	Args: cobra.NoArgs,
-	Run: func(cmd *cobra.Command, args []string) {
-		err := shared.TrackProjects(scope.For("."))
+	RunE: func(cmd *cobra.Command, args []string) error {
+		sc, err := resolveScope()
 		if err != nil {
-			fmt.Println(err)
+			return err
 		}
+		return shared.TrackProjects(sc)
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(trackCmd)
+
+	registerServerFlag(trackCmd)
 }

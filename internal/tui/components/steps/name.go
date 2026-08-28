@@ -54,6 +54,14 @@ func (s *NameStep) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return s, Next()
 
 		case "esc":
+			// The field is always focused, so esc undoes the typing first and
+			// only leaves the wizard once there is nothing left to undo.
+			if strings.TrimSpace(s.input.Value()) != s.config.Name {
+				s.input.SetValue(s.config.Name)
+				s.input.CursorEnd()
+				s.warn = ""
+				return s, nil
+			}
 			return s, core.RouteTo("Home")
 		}
 	}

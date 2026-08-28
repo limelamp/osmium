@@ -6,7 +6,6 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/limelamp/osmium/internal/scope"
 	"github.com/limelamp/osmium/internal/shared"
 	"github.com/spf13/cobra"
 )
@@ -28,30 +27,32 @@ Use --mod for mods or --plugin for plugins.
 Examples:
   osmium add --mod sodium
   osmium add --plugin luckperms viaversion`,
-	Args: cobra.MinimumNArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
-		var projectType string
-
-		switch {
-		case addflags.modFlag:
-			projectType = "mods"
-		case addflags.pluginFlag:
+	Args:              cobra.MinimumNArgs(1),
+	ValidArgsFunction: completeModrinth,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		projectType := "mods"
+		if addflags.pluginFlag {
 			projectType = "plugins"
-		default:
-			fmt.Println("Error: you must specify either --mod or --plugin")
-			return
+		}
+
+		sc, err := resolveScope()
+		if err != nil {
+			return err
 		}
 
 		for _, projectID := range args {
-			if err := shared.AddProjectByID(scope.For("."), projectID, projectType); err != nil {
+			if err := shared.AddProjectByID(sc, projectID, projectType); err != nil {
 				fmt.Println(err)
 			}
 		}
+		return nil
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(addCmd)
+
+	registerServerFlag(addCmd)
 
 	addCmd.Flags().BoolVarP(&addflags.modFlag, "mod", "m", false, "Download as mod")
 	addCmd.Flags().BoolVarP(&addflags.pluginFlag, "plugin", "p", false, "Download as plugin")

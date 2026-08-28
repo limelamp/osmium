@@ -21,6 +21,44 @@ type Server struct {
 	Memory  string `json:"memory"`  // e.g., "2G" or "4G"
 }
 
+// Exists reports whether the server's folder is still on disk. An entry whose
+// folder has been deleted outside Osmium is stale and is dropped from the list
+// rather than shown as something that could be started.
+func (s Server) Exists() bool {
+	if s.Path == "" {
+		return false
+	}
+	info, err := os.Stat(s.Path)
+	return err == nil && info.IsDir()
+}
+
+// Present splits a server list into the entries worth keeping and the names of
+// those that were dropped.
+//
+// An entry is dropped when its folder is gone, and when an earlier entry
+// already points at the same folder: a server is its folder, so two rows for
+// one folder are one row and a leftover from before registration was keyed on
+// the path.
+func Present(servers []Server) (present []Server, missing []string) {
+	present = make([]Server, 0, len(servers))
+	seen := make(map[string]bool, len(servers))
+
+	for _, server := range servers {
+		switch {
+		case !server.Exists():
+			missing = append(missing, server.Name)
+
+		case seen[server.Path]:
+			missing = append(missing, server.Name+" (duplicate entry)")
+
+		default:
+			seen[server.Path] = true
+			present = append(present, server)
+		}
+	}
+	return present, missing
+}
+
 // ServerStore manages thread-safe JSON interactions for server data.
 type ServerStore struct {
 	mu sync.RWMutex

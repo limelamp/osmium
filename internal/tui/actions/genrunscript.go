@@ -99,10 +99,16 @@ func (m GenRunScriptModel) View() tea.View {
 
 	return m.listView(m.Title(), func(i int) string {
 		return m.row(i, m.options[i], "")
-	},
-		styles.Hint{Key: "enter", Desc: "generate"},
-		styles.Hint{Key: "backspace", Desc: "back"},
-	)
+	}, m.Hints()...)
+}
+
+// Hints are the keys this panel responds to.
+func (m GenRunScriptModel) Hints() []styles.Hint {
+	return []styles.Hint{
+		{Key: "↑/↓", Desc: "move"},
+		{Key: "enter", Desc: "generate"},
+		{Key: "backspace", Desc: "back"},
+	}
 }
 
 // additional methods

@@ -72,14 +72,16 @@ func (l List) HandleKey(key string) (List, bool) {
 }
 
 // HitRow maps a mouse position to the item index under it, or -1 when the
-// pointer is outside the list. headerRows is how many content rows the panel
-// draws above the first item.
-func (l List) HitRow(layout Layout, headerRows, x, y int) int {
-	if !layout.Hit(x, y) {
+// pointer is outside the list. rows is the rectangle the item rows are drawn
+// in — Layout.Inner() for a panel inside a container, the plain layout for a
+// component that draws bare content — and headerRows is how many of those rows
+// the panel spends above the first item.
+func (l List) HitRow(rows Layout, headerRows, x, y int) int {
+	if !rows.Hit(x, y) {
 		return -1
 	}
 
-	row := layout.ContentRow(y)
+	row := y - rows.Y
 	if row < headerRows {
 		return -1
 	}
@@ -94,12 +96,13 @@ func (l List) HitRow(layout Layout, headerRows, x, y int) int {
 // WheelStep is how many rows one notch of the mouse wheel scrolls.
 const WheelStep = 3
 
-// HandleMouse applies wheel scrolling and click-to-select. It returns the
-// updated list and whether the click activated the row the cursor was already
-// on, which panels treat exactly like pressing enter.
-func (l List) HandleMouse(msg tea.MouseMsg, layout Layout, headerRows int) (List, bool) {
+// HandleMouse applies wheel scrolling and click-to-select over the rectangle
+// the rows are drawn in. It returns the updated list and whether the click
+// activated the row the cursor was already on, which panels treat exactly like
+// pressing enter.
+func (l List) HandleMouse(msg tea.MouseMsg, rows Layout, headerRows int) (List, bool) {
 	mouse := msg.Mouse()
-	if !layout.Hit(mouse.X, mouse.Y) {
+	if !rows.Hit(mouse.X, mouse.Y) {
 		return l, false
 	}
 
@@ -117,7 +120,7 @@ func (l List) HandleMouse(msg tea.MouseMsg, layout Layout, headerRows int) (List
 		if mouse.Button != tea.MouseLeft {
 			return l, false
 		}
-		index := l.HitRow(layout, headerRows, mouse.X, mouse.Y)
+		index := l.HitRow(rows, headerRows, mouse.X, mouse.Y)
 		if index < 0 {
 			return l, false
 		}

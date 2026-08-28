@@ -4,9 +4,6 @@ Copyright © 2026 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
-	"fmt"
-
-	"github.com/limelamp/osmium/internal/scope"
 	"github.com/limelamp/osmium/internal/shared"
 	"github.com/spf13/cobra"
 )
@@ -27,14 +24,17 @@ var installCmd = &cobra.Command{
 Example:
   osmium install`,
 	Args: cobra.NoArgs,
-	Run: func(cmd *cobra.Command, args []string) {
-		if err := shared.InstallProjectsFromConfig(scope.For(".")); err != nil {
-			fmt.Println(err)
-			return
+	RunE: func(cmd *cobra.Command, args []string) error {
+		sc, err := resolveScope()
+		if err != nil {
+			return err
 		}
+		return shared.InstallProjectsFromConfig(sc)
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(installCmd)
+
+	registerServerFlag(installCmd)
 }

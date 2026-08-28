@@ -129,8 +129,18 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		key := msg.String()
-		if key == "esc" {
+		switch key {
+		case "esc":
 			return m, core.RouteTo("Home")
+
+		// Focus moves between the two containers with tab, exactly as it does
+		// between the panes of Manage Servers. The arrow keys only ever move
+		// the cursor inside the container that already has focus.
+		case "tab", "shift+tab":
+			if m.settingsCount() > 0 {
+				m.inSection = !m.inSection
+			}
+			return m, nil
 		}
 
 		if !m.inSection {
@@ -140,10 +150,8 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.syncSettings(), nil
 			}
 
-			if key == "enter" || key == "right" || key == "l" {
-				if m.settingsCount() > 0 {
-					m.inSection = true
-				}
+			if key == "enter" && m.settingsCount() > 0 {
+				m.inSection = true
 			}
 			return m, nil
 		}
@@ -154,11 +162,7 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch key {
-		case "left", "h", "backspace":
-			m.inSection = false
-			return m, nil
-
-		case "enter", " ":
+		case "enter", "space":
 			return m.activate()
 		}
 	}
@@ -224,11 +228,13 @@ func (m SettingsModel) activate() (tea.Model, tea.Cmd) {
 		case defaultServerDir:
 			m.editing = fieldDir
 			m.dirIn.SetValue(m.cfg.ServersDir())
+			m.dirIn.CursorEnd()
 			return m, m.dirIn.Focus()
 
 		case defaultRAM:
 			m.editing = fieldRAM
 			m.ramIn.SetValue(m.cfg.DefaultRAM)
+			m.ramIn.CursorEnd()
 			return m, m.ramIn.Focus()
 		}
 	}
@@ -249,7 +255,7 @@ func (m SettingsModel) handleMouse(msg tea.MouseMsg) SettingsModel {
 	mouse := msg.Mouse()
 
 	if sections := m.sectionsLayout(); sections.Hit(mouse.X, mouse.Y) {
-		row := sections.ContentRow(mouse.Y)
+		row := mouse.Y - sections.Inner().Y
 		if row >= 0 && row < len(settingsSections) {
 			m.sections = m.sections.MoveTo(row)
 			m.settings.Cursor = 0
@@ -264,7 +270,7 @@ func (m SettingsModel) handleMouse(msg tea.MouseMsg) SettingsModel {
 		return m
 	}
 
-	if index, ok := m.settingRows()[detail.ContentRow(mouse.Y)]; ok {
+	if index, ok := m.settingRows()[mouse.Y-detail.Inner().Y]; ok {
 		m.settings = m.settings.MoveTo(index)
 		m.inSection = true
 	}
@@ -279,8 +285,9 @@ func (m SettingsModel) settingRows() map[int]int {
 
 	switch m.sections.Cursor {
 	case sectionAppearance:
-		for i := range theme.ThemeNames {
-			rows[i] = i
+		start, end := m.settings.Window()
+		for i := start; i < end; i++ {
+			rows[i-start] = i
 		}
 	case sectionDefaults:
 		rows[0] = defaultServerDir
@@ -309,48 +316,66 @@ func (m SettingsModel) View() tea.View {
 		Focused: !m.inSection,
 		Title:   "Settings",
 		Content: styles.Body(lipgloss.JoinVertical(lipgloss.Left, sectionRows...),
-			sections.ContentHeight()-1) + "\n" +
-			styles.Hints(sections.ContentWidth(), styles.Hint{Key: "↑/↓", Desc: "section"}),
+			sections.ContentWidth(), sections.ContentHeight()-1) + "\n" +
+			styles.Hints(sections.ContentWidth(), styles.Hint{Key: "tab", Desc: "switch pane"}),
 	})
 
 	detailPane := styles.Container(styles.ContainerOpts{
-		Width:    detail.Width,
-		Height:   detail.Height,
-		Focused:  m.inSection,
-		Title:    settingsSections[m.sections.Cursor],
-		Content:  styles.Body(m.detailView(), detail.ContentHeight()-1) + "\n" + m.hints(detail),
+		Width:   detail.Width,
+		Height:  detail.Height,
+		Focused: m.inSection,
+		Title:   settingsSections[m.sections.Cursor],
+		Content: styles.Body(m.detailView(), detail.ContentWidth(), detail.ContentHeight()-1) + "\n" +
+			m.hintBar(detail),
 		ShowHelp: true,
 	})
 
 	return tea.NewView(lipgloss.JoinHorizontal(lipgloss.Top, sectionsPane, detailPane))
 }
 
-// hints describe what the settings container responds to right now.
-func (m SettingsModel) hints(detail core.Layout) string {
+// hintBar renders the settings container's bottom line: the warning when there
+// is one, and the keys otherwise.
+func (m SettingsModel) hintBar(detail core.Layout) string {
 	if m.warn != "" {
 		return styles.Error(errText(m.warn))
 	}
+	return styles.Hints(detail.ContentWidth(), m.hints()...)
+}
 
-	if m.editing != fieldNone {
-		return styles.Hints(detail.ContentWidth(),
-			styles.Hint{Key: "enter", Desc: "save"},
-			styles.Hint{Key: "esc", Desc: "cancel"},
-		)
+// hints describe what the settings container responds to right now.
+func (m SettingsModel) hints() []styles.Hint {
+	switch {
+	case m.editing != fieldNone:
+		return []styles.Hint{
+			{Key: "enter", Desc: "save"},
+			{Key: "esc", Desc: "cancel"},
+		}
+
+	case !m.inSection:
+		return []styles.Hint{
+			{Key: "↑/↓", Desc: "section"},
+			{Key: "tab", Desc: "settings"},
+			{Key: "esc", Desc: "home"},
+		}
+
+	default:
+		return []styles.Hint{
+			{Key: "↑/↓", Desc: "move"},
+			{Key: "enter", Desc: "apply"},
+			{Key: "tab", Desc: "sections"},
+			{Key: "esc", Desc: "home"},
+		}
+	}
+}
+
+// Help lists the keys of the container that holds focus.
+func (m SettingsModel) Help() []core.HelpSection {
+	pane := "Sections"
+	if m.inSection {
+		pane = settingsSections[m.sections.Cursor]
 	}
 
-	if !m.inSection {
-		return styles.Hints(detail.ContentWidth(),
-			styles.Hint{Key: "→/enter", Desc: "edit section"},
-			styles.Hint{Key: "esc", Desc: "home"},
-		)
-	}
-
-	return styles.Hints(detail.ContentWidth(),
-		styles.Hint{Key: "↑/↓", Desc: "move"},
-		styles.Hint{Key: "enter", Desc: "apply"},
-		styles.Hint{Key: "←", Desc: "sections"},
-		styles.Hint{Key: "esc", Desc: "home"},
-	)
+	return []core.HelpSection{{Title: "Settings — " + pane, Hints: m.hints()}}
 }
 
 // detailView renders the selected section's settings.
@@ -365,16 +390,16 @@ func (m SettingsModel) detailView() string {
 	}
 }
 
-// appearanceView lists the themes with a live swatch of each palette.
+// appearanceView lists the themes with a live swatch of each palette. Only the
+// themes in the scroll window are drawn, so the list stays inside the container
+// however many themes are installed.
 func (m SettingsModel) appearanceView() string {
-	var rows []string
+	start, end := m.settings.Window()
 
-	for i, name := range theme.ThemeNames {
-		rows = append(rows, m.themeRow(i, name))
+	rows := make([]string, 0, end-start)
+	for i := start; i < end; i++ {
+		rows = append(rows, m.themeRow(i, theme.ThemeNames[i]))
 	}
-
-	rows = append(rows, "", lipgloss.NewStyle().Foreground(theme.Inactive).
-		Render("Applied immediately and saved to config.json."))
 
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
@@ -409,7 +434,6 @@ func (m SettingsModel) themeRow(index int, name string) string {
 // defaultsView edits the values the Create Server wizard starts from.
 func (m SettingsModel) defaultsView() string {
 	width := m.detailLayout().ContentWidth()
-	muted := lipgloss.NewStyle().Foreground(theme.Inactive)
 	value := lipgloss.NewStyle().Foreground(theme.Accent).PaddingLeft(4)
 
 	dir := value.Render(m.cfg.ServersDir())
@@ -431,8 +455,6 @@ func (m SettingsModel) defaultsView() string {
 		styles.ListRow(width, m.inSection && m.settings.Cursor == defaultRAM,
 			"Default memory", ""),
 		ram,
-		"",
-		muted.Render("The wizard starts from these; both accept a typed value."),
 	)
 }
 

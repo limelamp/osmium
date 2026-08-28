@@ -1,105 +1,25 @@
 package components
 
 import (
-	"charm.land/bubbles/v2/help"
-	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/limelamp/osmium/internal/tui/core"
 	"github.com/limelamp/osmium/internal/tui/theme"
 )
 
-// KeyMap defines the system-wide key bindings.
-type KeyMap struct {
-	Up     key.Binding
-	Down   key.Binding
-	Left   key.Binding
-	Right  key.Binding
-	Select key.Binding
-	Back   key.Binding
-	Pane   key.Binding
-	Home   key.Binding
-	Mouse  key.Binding
-	Help   key.Binding
-	Quit   key.Binding
-}
-
-// ShortHelp returns keybindings to be shown in the mini help view.
-func (k KeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Help, k.Quit}
-}
-
-// FullHelp returns keybindings to be shown in the expanded help menu.
-func (k KeyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{
-		{k.Up, k.Down, k.Left, k.Right},
-		{k.Select, k.Back, k.Pane, k.Home},
-		{k.Mouse, k.Help, k.Quit},
-	}
-}
-
-// DefaultKeys represents the global system-wide keybindings.
-var DefaultKeys = KeyMap{
-	Up: key.NewBinding(
-		key.WithKeys("up", "k"),
-		key.WithHelp("↑/k", "move up"),
-	),
-	Down: key.NewBinding(
-		key.WithKeys("down", "j"),
-		key.WithHelp("↓/j", "move down"),
-	),
-	Left: key.NewBinding(
-		key.WithKeys("left", "h"),
-		key.WithHelp("←/h", "move left"),
-	),
-	Right: key.NewBinding(
-		key.WithKeys("right", "l"),
-		key.WithHelp("→/l", "move right"),
-	),
-	Select: key.NewBinding(
-		key.WithKeys("enter"),
-		key.WithHelp("enter", "select"),
-	),
-	Back: key.NewBinding(
-		key.WithKeys("backspace"),
-		key.WithHelp("backspace", "back"),
-	),
-	Pane: key.NewBinding(
-		key.WithKeys("tab", "shift+tab"),
-		key.WithHelp("tab", "switch pane"),
-	),
-	Home: key.NewBinding(
-		key.WithKeys("esc"),
-		key.WithHelp("esc", "home"),
-	),
-	Mouse: key.NewBinding(
-		key.WithKeys(""),
-		key.WithHelp("mouse", "click / wheel"),
-	),
-	Help: key.NewBinding(
-		key.WithKeys("?"),
-		key.WithHelp("?", "toggle help"),
-	),
-	Quit: key.NewBinding(
-		key.WithKeys("q", "ctrl+c"),
-		key.WithHelp("ctrl+c", "quit"),
-	),
-}
-
-// HelpModel encapsulates the layout, state, and rendering of the help overlay modal.
+// HelpModel is the help overlay. It draws whatever the active page says is
+// live right now, so the keys it lists are the keys that actually work — down
+// to the pane and the nested screen in front of the user — rather than one
+// fixed list for the whole app.
 type HelpModel struct {
-	help     help.Model
-	keys     KeyMap
 	showHelp bool
 	width    int
 	height   int
 }
 
-// NewHelpModel returns an initialized HelpModel with specified key mappings.
-func NewHelpModel(keys KeyMap) HelpModel {
-	return HelpModel{
-		help: help.New(),
-		keys: keys,
-	}
+// NewHelpModel returns an initialised HelpModel.
+func NewHelpModel() HelpModel {
+	return HelpModel{}
 }
 
 // Init initializes the help component.
@@ -113,17 +33,13 @@ func (m HelpModel) Update(msg tea.Msg) (HelpModel, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.help.SetWidth(msg.Width)
 
 	case tea.KeyPressMsg:
-		if m.showHelp {
-			if key.Matches(msg, m.keys.Help) || msg.String() == "esc" {
-				m.showHelp = false
-			}
-		} else {
-			if key.Matches(msg, m.keys.Help) {
-				m.showHelp = true
-			}
+		switch key := msg.String(); {
+		case m.showHelp && (key == "?" || key == "esc"):
+			m.showHelp = false
+		case !m.showHelp && key == "?":
+			m.showHelp = true
 		}
 	}
 	return m, nil
@@ -140,19 +56,15 @@ func (m HelpModel) IsVisible() bool {
 	return m.showHelp
 }
 
-// Render takes the background text content and composites the help modal centered over it, if visible.
-func (m HelpModel) Render(baseView string) string {
+// helpColumns is how many key/description pairs are put on one row.
+const helpColumns = 2
+
+// Render composites the help modal over the page, listing the sections the page
+// reported plus the keys that work everywhere.
+func (m HelpModel) Render(baseView string, sections []core.HelpSection) string {
 	if !m.showHelp {
 		return baseView
 	}
-
-	// 1. Build and configure dynamic theme elements based on the active theme
-	titleStyle := lipgloss.NewStyle().
-		Foreground(theme.Accent).
-		Bold(true)
-
-	footerStyle := lipgloss.NewStyle().
-		Foreground(theme.Inactive)
 
 	modalWidth := min(max(m.width-8, 20), 76)
 
@@ -162,43 +74,64 @@ func (m HelpModel) Render(baseView string) string {
 		Padding(1, 2).
 		Width(modalWidth)
 
-	// The bindings must be laid out for the modal's inner width, not the
-	// terminal's, or the columns wrap over each other.
-	help := m.help
-	help.SetWidth(modalWidth - 4)
+	sections = append(sections, core.HelpSection{Title: "Anywhere", Hints: core.GlobalHints})
 
-	// 2. Generate the formatted content inside the modal
-	helpContent := lipgloss.JoinVertical(
-		lipgloss.Left,
-		titleStyle.Render("Help Menu"),
-		"",
-		help.FullHelpView(m.keys.FullHelp()),
-		"",
-		footerStyle.Render("Press ? or ESC to close"),
-	)
-
-	modal := modalStyle.Render(helpContent)
-
-	// 3. Compute structural horizontal and vertical centering coordinates
-	x := (m.width - lipgloss.Width(modal)) / 2
-	y := (m.height - lipgloss.Height(modal)) / 2
-	if x < 0 {
-		x = 0
-	}
-	if y < 0 {
-		y = 0
+	blocks := make([]string, 0, len(sections)*2)
+	for i, section := range sections {
+		if i > 0 {
+			blocks = append(blocks, "")
+		}
+		blocks = append(blocks, m.section(section, modalWidth-4))
 	}
 
-	// Normalize the size of the base background layer to guarantee proper positioning
-	baseStyledContent := lipgloss.NewStyle().
-		Width(m.width).
-		Height(m.height).
-		Render(baseView)
+	blocks = append(blocks, "",
+		lipgloss.NewStyle().Foreground(theme.Inactive).Render("Press ? or esc to close"))
 
-	// 4. Composite the base layout and centered modal layer
-	baseLayer := lipgloss.NewLayer(baseStyledContent)
-	modalLayer := lipgloss.NewLayer(modal).X(x).Y(y).Z(1)
+	modal := modalStyle.Render(lipgloss.JoinVertical(lipgloss.Left, blocks...))
 
-	comp := lipgloss.NewCompositor(baseLayer, modalLayer)
-	return comp.Render()
+	// Centre the modal over a background normalised to the terminal size, so it
+	// lands in the same place whatever the page under it drew.
+	x := max((m.width-lipgloss.Width(modal))/2, 0)
+	y := max((m.height-lipgloss.Height(modal))/2, 0)
+
+	base := lipgloss.NewStyle().Width(m.width).Height(m.height).Render(baseView)
+
+	return lipgloss.NewCompositor(
+		lipgloss.NewLayer(base),
+		lipgloss.NewLayer(modal).X(x).Y(y).Z(1),
+	).Render()
+}
+
+// section renders one titled block of bindings in even columns.
+func (m HelpModel) section(section core.HelpSection, width int) string {
+	title := lipgloss.NewStyle().Foreground(theme.Accent).Bold(true).Render(section.Title)
+	if len(section.Hints) == 0 {
+		return title
+	}
+
+	keyStyle := lipgloss.NewStyle().Foreground(theme.Primary).Bold(true)
+	descStyle := lipgloss.NewStyle().Foreground(theme.Inactive)
+
+	// Every key column is as wide as the widest key, so the descriptions line
+	// up down the modal instead of stepping in and out.
+	keyWidth := 0
+	for _, hint := range section.Hints {
+		keyWidth = max(keyWidth, lipgloss.Width(hint.Key))
+	}
+
+	cellWidth := max(width/helpColumns, 12)
+
+	rows := make([]string, 0, (len(section.Hints)+helpColumns-1)/helpColumns)
+	for i := 0; i < len(section.Hints); i += helpColumns {
+		cells := make([]string, 0, helpColumns)
+
+		for _, hint := range section.Hints[i:min(i+helpColumns, len(section.Hints))] {
+			cell := keyStyle.Width(keyWidth+2).Render(hint.Key) + descStyle.Render(hint.Desc)
+			cells = append(cells, lipgloss.NewStyle().Width(cellWidth).MaxWidth(cellWidth).Render(cell))
+		}
+
+		rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, cells...))
+	}
+
+	return lipgloss.JoinVertical(lipgloss.Left, append([]string{title}, rows...)...)
 }

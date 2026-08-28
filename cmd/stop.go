@@ -5,9 +5,9 @@ package cmd
 
 import (
 	"fmt"
-	"os"
+	"time"
 
-	"github.com/limelamp/osmium/internal/shared"
+	"github.com/limelamp/osmium/internal/supervisor"
 	"github.com/spf13/cobra"
 )
 
@@ -16,61 +16,58 @@ var forceFlag bool
 // stopCmd represents the stop command
 var stopCmd = &cobra.Command{
 	Use:   "stop",
-	Short: "Stop the Minecraft server.",
-	Long:  `Stops the Minecraft server that is currently running with Osmium.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		pid, err := shared.ReadLockPID()
+	Short: "Stop a Minecraft server.",
+	Long: `Stops a server that is running under Osmium.
+
+The server is asked to shut down the way the console 'stop' command does, so it
+saves its world on the way out. --force kills it instead, which does not.
+
+Examples:
+  osmium stop
+  osmium stop --server survival
+  osmium stop --force`,
+	Args: cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		dir, err := runningDir()
 		if err != nil {
-			fmt.Println("No active lock file found. Server may already be stopped.")
-			return
+			return err
 		}
 
-		if !shared.IsPIDRunning(pid) {
-			if err := shared.RemoveLockFile(); err != nil {
-				fmt.Println(err)
-				return
-			}
-			fmt.Printf("Found stale lock file for PID %d. Lock file removed.\n", pid)
-			return
+		if err := supervisor.Stop(dir, forceFlag); err != nil {
+			return err
 		}
 
-		// Check if the process with that pid actually exists
-		process, err := os.FindProcess(pid)
-		if err != nil {
-			fmt.Printf("failed to find process: %v\n", err)
-			return
+		if forceFlag {
+			fmt.Printf("%s was killed.\n", serverName(dir))
+			return nil
 		}
 
-		if forceFlag { // .Kill() is equivalent to SIGKILL (force quit)
-			err = process.Kill()
-			if err != nil {
-				fmt.Printf("failed to kill process: %v\n", err)
-				return
-			}
-			fmt.Printf("Server process %d has been force-killed.\n", pid)
-
-			// Remove the .lock file once the process is killed.
-			if err := shared.RemoveLockFile(); err != nil {
-				fmt.Println(err)
-			}
-		} else { // process.Signal(os.Interrupt) for a cleaner exit(?)
-			err = process.Signal(os.Interrupt)
-			if err != nil {
-				fmt.Printf("failed to stop process: %v\n", err)
-				return
-			}
-			fmt.Printf("Server process %d has been asked to stop gracefully.\n", pid)
-
-			// Remove the .lock file once the process is stopped.
-			if err := shared.RemoveLockFile(); err != nil {
-				fmt.Println(err)
-			}
-		}
+		fmt.Printf("%s is shutting down", serverName(dir))
+		waitUntilStopped(dir, 60*time.Second)
+		return nil
 	},
+}
+
+// waitUntilStopped follows a shutdown to its end, so the command does not
+// return while the world is still being saved.
+func waitUntilStopped(dir string, limit time.Duration) {
+	deadline := time.Now().Add(limit)
+
+	for time.Now().Before(deadline) {
+		if !supervisor.Running(dir) {
+			fmt.Println("\nStopped.")
+			return
+		}
+		fmt.Print(".")
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	fmt.Println("\nStill shutting down; it will finish on its own.")
 }
 
 func init() {
 	rootCmd.AddCommand(stopCmd)
 
-	stopCmd.Flags().BoolVarP(&forceFlag, "force", "f", false, "Force the server to be killed (SIGKILL)")
+	registerServerFlag(stopCmd)
+	stopCmd.Flags().BoolVarP(&forceFlag, "force", "f", false, "Kill the server instead of asking it to stop")
 }

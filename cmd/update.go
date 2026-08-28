@@ -6,7 +6,6 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/limelamp/osmium/internal/scope"
 	"github.com/limelamp/osmium/internal/shared"
 	"github.com/spf13/cobra"
 )
@@ -30,39 +29,40 @@ Examples:
   osmium update
   osmium update --mod
   osmium update --plugin luckperms`,
-	Run: func(cmd *cobra.Command, args []string) {
-		var projectType string
-
+	ValidArgsFunction: completeInstalled,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		projectType := "all"
 		switch {
 		case updateflags.modFlag:
 			projectType = "mods"
 		case updateflags.pluginFlag:
 			projectType = "plugins"
-		default:
-			if len(args) != 0 {
-				fmt.Println("Error: you must specify either --mod or --plugin")
-				return
-			}
-			projectType = "all"
+		case len(args) != 0:
+			return fmt.Errorf("you must specify either --mod or --plugin")
+		}
+
+		sc, err := resolveScope()
+		if err != nil {
+			return err
 		}
 
 		if len(args) == 0 {
-			if err := shared.UpdateAllProjects(scope.For("."), projectType); err != nil {
-				fmt.Println(err)
-			}
-			return
+			return shared.UpdateAllProjects(sc, projectType)
 		}
 
 		for _, projectID := range args {
-			if err := shared.UpdateProject(scope.For("."), projectID, projectType); err != nil {
+			if err := shared.UpdateProject(sc, projectID, projectType); err != nil {
 				fmt.Println(err)
 			}
 		}
+		return nil
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(updateCmd)
+
+	registerServerFlag(updateCmd)
 
 	updateCmd.Flags().BoolVarP(&updateflags.modFlag, "mod", "m", false, "Download as mod")
 	updateCmd.Flags().BoolVarP(&updateflags.pluginFlag, "plugin", "p", false, "Download as plugin")

@@ -2,13 +2,23 @@ package core
 
 import (
 	tea "charm.land/bubbletea/v2"
+	"github.com/limelamp/osmium/internal/supervisor"
 	"github.com/limelamp/osmium/internal/tui/storage"
 )
 
 // ChangePageMsg is sent by child pages to request routing.
+//
+// Server is optional: a page that acts on one server — Migrate — is handed it
+// with the routing request, so there is still exactly one way to change page
+// rather than a second mechanism for pages that need an argument.
 type ChangePageMsg struct {
 	Target string
+	Server *storage.Server
 }
+
+// ReloadServersMsg asks the servers list to re-read servers.json, after
+// something outside it changed what is registered.
+type ReloadServersMsg struct{}
 
 // SwitchActionMsg is emitted when a component wants to swap the actions panel.
 type SwitchActionMsg struct {
@@ -20,14 +30,17 @@ type SwitchActionMsg struct {
 // that owns that list, so they ask for it by message instead.
 type CloseActionMsg struct{}
 
-// ShutdownMsg is delivered just before the program quits, so a page holding a
-// child process can shut it down instead of orphaning it.
-type ShutdownMsg struct{}
-
 // LogMsg carries progress lines from a background operation to the panel that
-// displays them.
+// displays them. Each line is tagged with where it came from so the console can
+// keep Osmium's own output apart from a server's.
 type LogMsg struct {
-	Lines []string
+	Lines []supervisor.Line
+}
+
+// RestartReadyMsg says a server asked to restart has finally exited and may be
+// started again.
+type RestartReadyMsg struct {
+	Dir string
 }
 
 // SelectServerMsg announces which server the rest of the page should act on.
@@ -60,6 +73,20 @@ func RouteTo(target string) tea.Cmd {
 	}
 }
 
+// RouteToServer switches page and tells the page which server to act on.
+func RouteToServer(target string, server *storage.Server) tea.Cmd {
+	return func() tea.Msg {
+		return ChangePageMsg{Target: target, Server: server}
+	}
+}
+
+// ReloadServers asks the servers list to re-read what is registered.
+func ReloadServers() tea.Cmd {
+	return func() tea.Msg {
+		return ReloadServersMsg{}
+	}
+}
+
 // SwitchAction asks the host page to replace its active action panel.
 func SwitchAction(action Action) tea.Cmd {
 	//? returns a message to be catched by a parent tea.Model
@@ -75,17 +102,21 @@ func CloseAction() tea.Cmd {
 	}
 }
 
-// Shutdown asks the pages to release anything they own before the app quits.
-func Shutdown() tea.Cmd {
-	return func() tea.Msg {
-		return ShutdownMsg{}
-	}
+// Log sends Osmium's own progress lines to the Activity panel.
+func Log(lines ...string) tea.Cmd {
+	return LogAs(supervisor.TagOsmium, lines...)
 }
 
-// Log sends progress lines to the Activity panel.
-func Log(lines ...string) tea.Cmd {
+// LogAs sends progress lines that came from somewhere in particular — a mod
+// operation, a failure — so the console can label them.
+func LogAs(tag supervisor.Tag, lines ...string) tea.Cmd {
+	tagged := make([]supervisor.Line, 0, len(lines))
+	for _, line := range lines {
+		tagged = append(tagged, supervisor.Line{Tag: tag, Text: line})
+	}
+
 	return func() tea.Msg {
-		return LogMsg{Lines: lines}
+		return LogMsg{Lines: tagged}
 	}
 }
 
@@ -106,7 +137,12 @@ func SelectServer(server *storage.Server) tea.Cmd {
 // LoadedServersMsg is dispatched once servers are read from disk.
 type LoadedServersMsg struct {
 	Servers []storage.Server
-	Err     error
+
+	// Missing names the servers dropped from the list because their folder is
+	// no longer there, so the panel can report what it removed.
+	Missing []string
+
+	Err error
 }
 
 // SavedServersMsg is dispatched after write operations complete.
@@ -114,11 +150,25 @@ type SavedServersMsg struct {
 	Err error
 }
 
-// LoadServersCmd creates a Bubble Tea command to read servers asynchronously.
+// LoadServersCmd creates a Bubble Tea command to read servers asynchronously,
+// dropping any whose folder has been deleted behind Osmium's back.
 func LoadServersCmd(store *storage.ServerStore) tea.Cmd {
 	return func() tea.Msg {
 		servers, err := store.LoadAll()
-		return LoadedServersMsg{Servers: servers, Err: err}
+		if err != nil {
+			return LoadedServersMsg{Err: err}
+		}
+
+		present, missing := storage.Present(servers)
+		if len(missing) == 0 {
+			return LoadedServersMsg{Servers: present}
+		}
+
+		return LoadedServersMsg{
+			Servers: present,
+			Missing: missing,
+			Err:     store.SaveAll(present),
+		}
 	}
 }
 
