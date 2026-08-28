@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/limelamp/osmium/internal/config"
+	"github.com/limelamp/osmium/internal/scope"
 	"github.com/limelamp/osmium/internal/tui/constants"
 	"github.com/limelamp/osmium/internal/util"
 )
@@ -96,19 +97,19 @@ func getProjectInfo(projectID string) (projectInfo, error) {
 }
 
 // isProjectInstalled checks if a project is already installed in the config
-func isProjectInstalled(slug, folder string, conf *config.OsmiumConfig) bool {
+func isProjectInstalled(sc scope.Scope, slug, folder string, conf *config.OsmiumConfig) bool {
 	switch folder {
 	case "mods", "optional_mods":
 		project, ok := conf.Mods[slug]
 		// check if the file exists in mods folder
-		if _, err := os.Stat(filepath.Join("mods", project.FileName)); os.IsNotExist(err) {
+		if _, err := os.Stat(sc.Path("mods", project.FileName)); os.IsNotExist(err) {
 			return false
 		}
 		return ok
 	case "plugins", "optional_plugins":
 		project, ok := conf.Plugins[slug]
 		// check if the file exists in plugins folder
-		if _, err := os.Stat(filepath.Join("plugins", project.FileName)); os.IsNotExist(err) {
+		if _, err := os.Stat(sc.Path("plugins", project.FileName)); os.IsNotExist(err) {
 			return false
 		}
 		return ok
@@ -170,7 +171,7 @@ func getProjectVersions(slug string, conf *config.OsmiumConfig) ([]modrinthVersi
 }
 
 // downloadFile downloads a file from URL to the specified folder
-func downloadFile(url, folder, filename string) error {
+func downloadFile(sc scope.Scope, url, folder, filename string) error {
 	resp, err := modrinthHTTPClient.Get(url)
 	if err != nil {
 		return fmt.Errorf("failed to download file: %w", err)
@@ -182,11 +183,11 @@ func downloadFile(url, folder, filename string) error {
 	}
 
 	// Ensure folder exists
-	if err := os.MkdirAll(folder, 0755); err != nil {
+	if err := os.MkdirAll(sc.Path(folder), 0755); err != nil {
 		return fmt.Errorf("failed to create %s folder: %w", folder, err)
 	}
 
-	filePath := filepath.Join(folder, filename)
+	filePath := sc.Path(folder, filename)
 	out, err := os.Create(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to create file: %w", err)
@@ -202,7 +203,7 @@ func downloadFile(url, folder, filename string) error {
 }
 
 // updateConfigWithProject adds the project to the appropriate section in config
-func updateConfigWithProject(slug, folder string, version modrinthVersion, conf *config.OsmiumConfig) error {
+func updateConfigWithProject(sc scope.Scope, slug, folder string, version modrinthVersion, conf *config.OsmiumConfig) error {
 	if len(version.Files) == 0 {
 		return fmt.Errorf("no files found in version")
 	}
@@ -223,7 +224,7 @@ func updateConfigWithProject(slug, folder string, version modrinthVersion, conf 
 		// optional folders don't get tracked in config
 	}
 
-	return config.WriteConfig(conf)
+	return config.WriteConfigIn(sc.Dir, conf)
 }
 
 // getDependencyFolder determines the correct folder for a dependency
@@ -245,17 +246,17 @@ func getDependencyFolder(parentFolder string, depType string) (string, error) {
 }
 
 // installDependencies recursively installs all dependencies
-func installDependencies(deps []dependency, parentFolder string) error {
+func installDependencies(sc scope.Scope, deps []dependency, parentFolder string) error {
 	for _, dep := range deps {
 		depFolder, err := getDependencyFolder(parentFolder, dep.DependencyType)
 		if err != nil {
 			return err
 		}
 
-		fmt.Printf("Installing dependency %s (%s) in %s\n",
+		sc.Logf("Installing dependency %s (%s) in %s",
 			dep.ProjectID, dep.DependencyType, depFolder)
 
-		if err := AddProjectByID(dep.ProjectID, depFolder); err != nil {
+		if err := AddProjectByID(sc, dep.ProjectID, depFolder); err != nil {
 			return fmt.Errorf("failed to install dependency %s: %w", dep.ProjectID, err)
 		}
 	}
@@ -265,7 +266,7 @@ func installDependencies(deps []dependency, parentFolder string) error {
 //# --- Main Public Functions ---
 
 // AddProjectByID downloads and installs a mod/plugin from Modrinth by project ID
-func AddProjectByID(projectID string, folder string) error {
+func AddProjectByID(sc scope.Scope, projectID string, folder string) error {
 	// 1. Get project info
 	info, err := getProjectInfo(projectID)
 	if err != nil {
@@ -273,13 +274,13 @@ func AddProjectByID(projectID string, folder string) error {
 	}
 
 	// 2. Check if already installed
-	osmiumConf, err := config.ReadConfig()
+	osmiumConf, err := config.ReadConfigIn(sc.Dir)
 	if err != nil {
 		return fmt.Errorf("failed to read osmium.json: %w", err)
 	}
 
-	if isProjectInstalled(info.Slug, folder, osmiumConf) {
-		fmt.Printf("%s already installed\n\n", info.Slug)
+	if isProjectInstalled(sc, info.Slug, folder, osmiumConf) {
+		sc.Logf("%s already installed", info.Slug)
 		return nil
 	}
 
@@ -296,27 +297,27 @@ func AddProjectByID(projectID string, folder string) error {
 	}
 
 	fileInfo := latestVersion.Files[0]
-	fmt.Printf("Downloading %s...\n\n", fileInfo.Filename)
+	sc.Logf("Downloading %s...", fileInfo.Filename)
 
-	if err := downloadFile(fileInfo.URL, folder, fileInfo.Filename); err != nil {
+	if err := downloadFile(sc, fileInfo.URL, folder, fileInfo.Filename); err != nil {
 		return err
 	}
 
 	// 5. Update config
-	if err := updateConfigWithProject(info.Slug, folder, latestVersion, osmiumConf); err != nil {
+	if err := updateConfigWithProject(sc, info.Slug, folder, latestVersion, osmiumConf); err != nil {
 		return fmt.Errorf("failed to update osmium.json: %w", err)
 	}
 
 	// 6. Install dependencies
-	if err := installDependencies(latestVersion.Dependencies, folder); err != nil {
+	if err := installDependencies(sc, latestVersion.Dependencies, folder); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func RemoveProjectByID(projectID string, folder string) error {
-	osmiumConf, err := config.ReadConfig()
+func RemoveProjectByID(sc scope.Scope, projectID string, folder string) error {
+	osmiumConf, err := config.ReadConfigIn(sc.Dir)
 	if err != nil {
 		return fmt.Errorf("failed to read osmium.json: %w", err)
 	}
@@ -338,12 +339,12 @@ func RemoveProjectByID(projectID string, folder string) error {
 	default: // optional_mods or optional_plugins
 	}
 
-	filePath := filepath.Join(folder, project.FileName)
+	filePath := sc.Path(folder, project.FileName)
 	if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to remove project file: %w", err)
 	}
 
-	if err := config.WriteConfig(osmiumConf); err != nil {
+	if err := config.WriteConfigIn(sc.Dir, osmiumConf); err != nil {
 		return fmt.Errorf("failed to update osmium.json: %w", err)
 	}
 
@@ -388,12 +389,12 @@ func getProjectByHash(hash string) (modrinthVersion, error) {
 }
 
 // processDirectory reads a directory and calculates SHA1 for each file
-func processDirectory(folder string) error {
-	if _, err := os.Stat(folder); os.IsNotExist(err) {
+func processDirectory(sc scope.Scope, folder string) error {
+	if _, err := os.Stat(sc.Path(folder)); os.IsNotExist(err) {
 		return nil
 	}
 
-	entries, err := os.ReadDir(folder)
+	entries, err := os.ReadDir(sc.Path(folder))
 	if err != nil {
 		return fmt.Errorf("failed to read directory %s: %w", folder, err)
 	}
@@ -403,7 +404,7 @@ func processDirectory(folder string) error {
 			continue // skip subdirectories
 		}
 
-		filePath := filepath.Join(folder, entry.Name())
+		filePath := sc.Path(folder, entry.Name())
 
 		// filter .jar files
 		if !strings.HasSuffix(strings.ToLower(entry.Name()), ".jar") {
@@ -412,41 +413,41 @@ func processDirectory(folder string) error {
 
 		checksum, err := calculateSHA1(filePath)
 		if err != nil {
-			fmt.Printf("failed to calculate checksum for %s: %v\n", filePath, err)
+			sc.Logf("failed to calculate checksum for %s: %v", filePath, err)
 			continue
 		}
 
 		project, err := getProjectByHash(checksum)
 		if err != nil {
-			fmt.Printf("failed to fetch project metadata for %s: %v\n", filePath, err)
+			sc.Logf("failed to fetch project metadata for %s: %v", filePath, err)
 			continue
 		}
 
 		// 1. Get project info
 		info, err := getProjectInfo(project.ProjectID)
 		if err != nil {
-			fmt.Println(err)
+			sc.Logf("%v", err)
 			continue
 		}
 
 		// 2. Check if already installed
-		osmiumConf, err := config.ReadConfig()
+		osmiumConf, err := config.ReadConfigIn(sc.Dir)
 		if err != nil {
 			return fmt.Errorf("failed to read osmium.json: %w", err)
 		}
 
-		if isProjectInstalled(info.Slug, folder, osmiumConf) {
-			fmt.Println(info.Slug, "already in osmium.json")
+		if isProjectInstalled(sc, info.Slug, folder, osmiumConf) {
+			sc.Logf("%s already in osmium.json", info.Slug)
 			continue
 		}
 
 		// 3. Update config
 		if len(project.Files) == 0 {
-			fmt.Println("no files found in the latest version for", info.Slug)
+			sc.Logf("no files found in the latest version for %s", info.Slug)
 			continue
 		}
 
-		if err := updateConfigWithProject(info.Slug, folder, project, osmiumConf); err != nil {
+		if err := updateConfigWithProject(sc, info.Slug, folder, project, osmiumConf); err != nil {
 			return fmt.Errorf("failed to update osmium.json: %w", err)
 		}
 
@@ -455,35 +456,35 @@ func processDirectory(folder string) error {
 		// 	return err
 		// }
 
-		fmt.Println("Tracked", info.Slug)
+		sc.Logf("Tracked %s", info.Slug)
 	}
 
 	return nil
 }
 
 // trackProjects reads the plugins and mods directories and calculates SHA
-func TrackProjects() error {
+func TrackProjects(sc scope.Scope) error {
 	// Process plugins directory
-	if err := processDirectory("plugins"); err != nil {
+	if err := processDirectory(sc, "plugins"); err != nil {
 		return err
 	}
 
 	// Process mods directory
-	if err := processDirectory("mods"); err != nil {
+	if err := processDirectory(sc, "mods"); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func UpdateProject(projectID string, folder string) error {
+func UpdateProject(sc scope.Scope, projectID string, folder string) error {
 	// 1. Check if already installed
-	osmiumConf, err := config.ReadConfig()
+	osmiumConf, err := config.ReadConfigIn(sc.Dir)
 	if err != nil {
 		return fmt.Errorf("failed to read osmium.json: %w", err)
 	}
 
-	if !isProjectInstalled(projectID, folder, osmiumConf) {
+	if !isProjectInstalled(sc, projectID, folder, osmiumConf) {
 		return fmt.Errorf("%s is not installed", projectID)
 	}
 
@@ -511,33 +512,33 @@ func UpdateProject(projectID string, folder string) error {
 	}
 
 	if currentProject.SHA1 == fileInfo.Hashes.SHA1 {
-		fmt.Println(projectID, "is the latest version")
+		sc.Logf("%s is the latest version", projectID)
 		return nil
 	}
 
-	fmt.Printf("Updating %s...\n\n", fileInfo.Filename)
+	sc.Logf("Updating %s...", fileInfo.Filename)
 
-	os.Remove(filepath.Join(folder, currentProject.FileName))
+	os.Remove(sc.Path(folder, currentProject.FileName))
 
-	if err := downloadFile(fileInfo.URL, folder, fileInfo.Filename); err != nil {
+	if err := downloadFile(sc, fileInfo.URL, folder, fileInfo.Filename); err != nil {
 		return err
 	}
 
 	// 5. Update config
-	if err := updateConfigWithProject(projectID, folder, latestVersion, osmiumConf); err != nil {
+	if err := updateConfigWithProject(sc, projectID, folder, latestVersion, osmiumConf); err != nil {
 		return fmt.Errorf("failed to update osmium.json: %w", err)
 	}
 
 	// 6. Install dependencies
-	if err := installDependencies(latestVersion.Dependencies, folder); err != nil {
+	if err := installDependencies(sc, latestVersion.Dependencies, folder); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func UpdateAllProjects(folder string) error {
-	osmiumConf, err := config.ReadConfig()
+func UpdateAllProjects(sc scope.Scope, folder string) error {
+	osmiumConf, err := config.ReadConfigIn(sc.Dir)
 	if err != nil {
 		return fmt.Errorf("failed to read osmium.json: %w", err)
 	}
@@ -545,25 +546,25 @@ func UpdateAllProjects(folder string) error {
 	switch folder {
 	case "mods":
 		for mod := range osmiumConf.Mods {
-			if err := UpdateProject(mod, "mods"); err != nil {
-				fmt.Println(err)
+			if err := UpdateProject(sc, mod, "mods"); err != nil {
+				sc.Logf("%v", err)
 			}
 		}
 	case "plugins":
 		for plugin := range osmiumConf.Plugins {
-			if err := UpdateProject(plugin, "plugins"); err != nil {
-				fmt.Println(err)
+			if err := UpdateProject(sc, plugin, "plugins"); err != nil {
+				sc.Logf("%v", err)
 			}
 		}
 	case "all":
 		for mod := range osmiumConf.Mods {
-			if err := UpdateProject(mod, "mods"); err != nil {
-				fmt.Println(err)
+			if err := UpdateProject(sc, mod, "mods"); err != nil {
+				sc.Logf("%v", err)
 			}
 		}
 		for plugin := range osmiumConf.Plugins {
-			if err := UpdateProject(plugin, "plugins"); err != nil {
-				fmt.Println(err)
+			if err := UpdateProject(sc, plugin, "plugins"); err != nil {
+				sc.Logf("%v", err)
 			}
 		}
 	default:
@@ -573,15 +574,15 @@ func UpdateAllProjects(folder string) error {
 	return nil
 }
 
-func InstallProjectByID(projectID string, folder string) error {
+func InstallProjectByID(sc scope.Scope, projectID string, folder string) error {
 	// 1. Check if already installed
-	osmiumConf, err := config.ReadConfig()
+	osmiumConf, err := config.ReadConfigIn(sc.Dir)
 	if err != nil {
 		return fmt.Errorf("failed to read osmium.json: %w", err)
 	}
 
-	if isProjectInstalled(projectID, folder, osmiumConf) {
-		fmt.Printf("%s already installed\n\n", projectID)
+	if isProjectInstalled(sc, projectID, folder, osmiumConf) {
+		sc.Logf("%s already installed", projectID)
 		return nil
 	}
 
@@ -598,34 +599,34 @@ func InstallProjectByID(projectID string, folder string) error {
 	}
 
 	fileInfo := latestVersion.Files[0]
-	fmt.Printf("Downloading %s...\n\n", fileInfo.Filename)
+	sc.Logf("Downloading %s...", fileInfo.Filename)
 
-	if err := downloadFile(fileInfo.URL, folder, fileInfo.Filename); err != nil {
+	if err := downloadFile(sc, fileInfo.URL, folder, fileInfo.Filename); err != nil {
 		return err
 	}
 
 	// 5. Install dependencies
-	if err := installDependencies(latestVersion.Dependencies, folder); err != nil {
+	if err := installDependencies(sc, latestVersion.Dependencies, folder); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func InstallProjectsFromConfig() error {
-	osmiumConf, err := config.ReadConfig()
+func InstallProjectsFromConfig(sc scope.Scope) error {
+	osmiumConf, err := config.ReadConfigIn(sc.Dir)
 	if err != nil {
 		return fmt.Errorf("failed to read osmium.json: %w", err)
 	}
 
 	for mod := range osmiumConf.Mods {
-		if err := InstallProjectByID(mod, "mods"); err != nil {
-			fmt.Println(err)
+		if err := InstallProjectByID(sc, mod, "mods"); err != nil {
+			sc.Logf("%v", err)
 		}
 	}
 	for plugin := range osmiumConf.Plugins {
-		if err := InstallProjectByID(plugin, "plugins"); err != nil {
-			fmt.Println(err)
+		if err := InstallProjectByID(sc, plugin, "plugins"); err != nil {
+			sc.Logf("%v", err)
 		}
 	}
 
@@ -634,7 +635,7 @@ func InstallProjectsFromConfig() error {
 
 // migrateProject attempts to migrate a single project to new loader/version
 // Returns true if migrated successfully, false if incompatible (needs backup)
-func migrateProject(slug string, folder string, newConf *config.OsmiumConfig) (bool, error) {
+func migrateProject(sc scope.Scope, slug string, folder string, newConf *config.OsmiumConfig) (bool, error) {
 	// Get compatible versions for the new loader/version
 	versions, err := getProjectVersions(slug, newConf)
 	if err != nil {
@@ -647,7 +648,7 @@ func migrateProject(slug string, folder string, newConf *config.OsmiumConfig) (b
 	}
 
 	// Get current project to delete old file
-	oldConf, err := config.ReadConfig()
+	oldConf, err := config.ReadConfigIn(sc.Dir)
 	if err != nil {
 		return false, err
 	}
@@ -669,45 +670,45 @@ func migrateProject(slug string, folder string, newConf *config.OsmiumConfig) (b
 	}
 
 	fileInfo := latestVersion.Files[0]
-	fmt.Printf("Migrating %s to %s...\n", slug, fileInfo.Filename)
+	sc.Logf("Migrating %s to %s...", slug, fileInfo.Filename)
 
-	if err := downloadFile(fileInfo.URL, folder, fileInfo.Filename); err != nil {
+	if err := downloadFile(sc, fileInfo.URL, folder, fileInfo.Filename); err != nil {
 		return false, err
 	}
 
 	// Remove old file if it exists and is different
 	if exists && oldProject.FileName != fileInfo.Filename {
-		oldPath := filepath.Join(folder, oldProject.FileName)
+		oldPath := sc.Path(folder, oldProject.FileName)
 		if err := os.Remove(oldPath); err != nil && !os.IsNotExist(err) {
-			fmt.Printf("Warning: failed to remove old file %s: %v\n", oldPath, err)
+			sc.Logf("Warning: failed to remove old file %s: %v", oldPath, err)
 		}
 	}
 
 	// Update config (only for tracked folders)
 	if folder == "mods" || folder == "plugins" {
-		if err := updateConfigWithProject(slug, folder, latestVersion, newConf); err != nil {
+		if err := updateConfigWithProject(sc, slug, folder, latestVersion, newConf); err != nil {
 			return false, err
 		}
 	}
 
 	// Install dependencies
-	if err := installDependencies(latestVersion.Dependencies, folder); err != nil {
-		fmt.Printf("Warning: failed to install dependencies for %s: %v\n", slug, err)
+	if err := installDependencies(sc, latestVersion.Dependencies, folder); err != nil {
+		sc.Logf("Warning: failed to install dependencies for %s: %v", slug, err)
 	}
 
 	return true, nil
 }
 
 // processProjectsForMigration processes all projects in a folder for migration
-func processProjectsForMigration(folder string, projects map[string]config.Project, newConf *config.OsmiumConfig) error {
-	backupFolder := filepath.Join("migration_backup", folder)
+func processProjectsForMigration(sc scope.Scope, folder string, projects map[string]config.Project, newConf *config.OsmiumConfig) error {
+	backupFolder := sc.Path("migration_backup", folder)
 
 	for slug := range projects {
-		migrated, err := migrateProject(slug, folder, newConf)
+		migrated, err := migrateProject(sc, slug, folder, newConf)
 		if !migrated {
 			// Project is not compatible, move to backup
-			fmt.Printf("⚠ Warning: %s is not available for %s %s\n", slug, newConf.Loader, newConf.Version)
-			fmt.Printf("Moving to backup folder: %s\n", backupFolder)
+			sc.Logf("⚠ Warning: %s is not available for %s %s", slug, newConf.Loader, newConf.Version)
+			sc.Logf("Moving to backup folder: %s", backupFolder)
 
 			// Create backup folder
 			if err := os.MkdirAll(backupFolder, 0755); err != nil {
@@ -715,7 +716,7 @@ func processProjectsForMigration(folder string, projects map[string]config.Proje
 			}
 
 			// Get the project to find its filename
-			oldConf, err := config.ReadConfig()
+			oldConf, err := config.ReadConfigIn(sc.Dir)
 			if err != nil {
 				return err
 			}
@@ -728,11 +729,11 @@ func processProjectsForMigration(folder string, projects map[string]config.Proje
 			}
 
 			// Move file to backup
-			srcPath := filepath.Join(folder, project.FileName)
+			srcPath := sc.Path(folder, project.FileName)
 			dstPath := filepath.Join(backupFolder, project.FileName)
 
 			if err := os.Rename(srcPath, dstPath); err != nil && !os.IsNotExist(err) {
-				fmt.Printf("Warning: failed to move %s to backup: %v\n", srcPath, err)
+				sc.Logf("Warning: failed to move %s to backup: %v", srcPath, err)
 			}
 
 			// Remove from config
@@ -743,24 +744,24 @@ func processProjectsForMigration(folder string, projects map[string]config.Proje
 				delete(newConf.Plugins, slug)
 			}
 		} else if err != nil {
-			fmt.Printf("Warning: error migrating %s: %v\n", slug, err)
+			sc.Logf("Warning: error migrating %s: %v", slug, err)
 		}
 	}
 
 	return nil
 }
 
-func MigrateServer(loader string, version string) error {
-	fmt.Printf("\n=== Starting server migration to %s %s ===\n\n", loader, version)
+func MigrateServer(sc scope.Scope, loader string, version string) error {
+	sc.Logf("\n=== Starting server migration to %s %s ===", loader, version)
 
 	// Read current config
-	oldConf, err := config.ReadConfig()
+	oldConf, err := config.ReadConfigIn(sc.Dir)
 	if err != nil {
 		return fmt.Errorf("failed to read osmium.json: %w", err)
 	}
 
-	fmt.Printf("Current: %s %s\n", oldConf.Loader, oldConf.Version)
-	fmt.Printf("Target:  %s %s\n\n", loader, version)
+	sc.Logf("Current: %s %s", oldConf.Loader, oldConf.Version)
+	sc.Logf("Target:  %s %s", loader, version)
 
 	// Create new config with updated loader and version
 	newConf := &config.OsmiumConfig{
@@ -781,15 +782,15 @@ func MigrateServer(loader string, version string) error {
 
 	// Step 1: Migrate mods (if any)
 	if len(oldConf.Mods) > 0 {
-		fmt.Println("\n--- Migrating mods ---")
-		if err := processProjectsForMigration("mods", oldConf.Mods, newConf); err != nil {
+		sc.Logf("--- Migrating mods ---")
+		if err := processProjectsForMigration(sc, "mods", oldConf.Mods, newConf); err != nil {
 			return err
 		}
 
 		// Process optional_mods if the folder exists
-		if _, err := os.Stat("optional_mods"); err == nil {
-			fmt.Println("\n--- Migrating optional mods ---")
-			if err := processProjectsForMigration("optional_mods", oldConf.Mods, newConf); err != nil {
+		if _, err := os.Stat(sc.Path("optional_mods")); err == nil {
+			sc.Logf("--- Migrating optional mods ---")
+			if err := processProjectsForMigration(sc, "optional_mods", oldConf.Mods, newConf); err != nil {
 				return err
 			}
 		}
@@ -797,44 +798,44 @@ func MigrateServer(loader string, version string) error {
 
 	// Step 2: Migrate plugins (if any)
 	if len(oldConf.Plugins) > 0 {
-		fmt.Println("\n--- Migrating plugins ---")
-		if err := processProjectsForMigration("plugins", oldConf.Plugins, newConf); err != nil {
+		sc.Logf("--- Migrating plugins ---")
+		if err := processProjectsForMigration(sc, "plugins", oldConf.Plugins, newConf); err != nil {
 			return err
 		}
 
 		// Process optional_plugins if the folder exists
-		if _, err := os.Stat("optional_plugins"); err == nil {
-			fmt.Println("\n--- Migrating optional plugins ---")
-			if err := processProjectsForMigration("optional_plugins", oldConf.Plugins, newConf); err != nil {
+		if _, err := os.Stat(sc.Path("optional_plugins")); err == nil {
+			sc.Logf("--- Migrating optional plugins ---")
+			if err := processProjectsForMigration(sc, "optional_plugins", oldConf.Plugins, newConf); err != nil {
 				return err
 			}
 		}
 	}
 
 	// Step 3: Update config file with new loader and version
-	fmt.Println("\n--- Updating osmium.json ---")
-	if err := config.WriteConfig(newConf); err != nil {
+	sc.Logf("--- Updating osmium.json ---")
+	if err := config.WriteConfigIn(sc.Dir, newConf); err != nil {
 		return fmt.Errorf("failed to update osmium.json: %w", err)
 	}
-	fmt.Println("✓ Config updated")
+	sc.Logf("✓ Config updated")
 
 	// Step 4: Download and install new server.jar (only if loader or version changed)
 	if strings.EqualFold(oldConf.Loader, loader) && oldConf.Version == version {
-		fmt.Println("\n--- Server.jar unchanged ---")
-		fmt.Println("✓ Same loader and version, skipping server.jar download")
+		sc.Logf("--- Server.jar unchanged ---")
+		sc.Logf("✓ Same loader and version, skipping server.jar download")
 	} else {
-		fmt.Println("\n--- Installing new server.jar ---")
-		if err := util.DownloadJar(loader, version); err != nil {
+		sc.Logf("--- Installing new server.jar ---")
+		if err := util.DownloadJarInto(sc, loader, version); err != nil {
 			return fmt.Errorf("failed to download new server.jar: %w", err)
 		}
-		fmt.Println("✓ Server files downloaded")
+		sc.Logf("✓ Server files downloaded")
 	}
 
-	fmt.Printf("\n=== Migration completed! ===\n")
-	fmt.Printf("Server migrated from %s %s to %s %s\n", oldConf.Loader, oldConf.Version, loader, version)
-	fmt.Println("\nNote: World folders, server.properties, and other config files remain intact.")
-	if _, err := os.Stat("migration_backup"); err == nil {
-		fmt.Println("Incompatible mods/plugins have been moved to 'migration_backup' folder.")
+	sc.Logf("\n=== Migration completed! ===")
+	sc.Logf("Server migrated from %s %s to %s %s", oldConf.Loader, oldConf.Version, loader, version)
+	sc.Logf("Note: World folders, server.properties, and other config files remain intact.")
+	if _, err := os.Stat(sc.Path("migration_backup")); err == nil {
+		sc.Logf("Incompatible mods/plugins have been moved to 'migration_backup' folder.")
 	}
 
 	return nil

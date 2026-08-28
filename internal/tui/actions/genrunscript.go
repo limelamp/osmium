@@ -1,125 +1,108 @@
 package actions
 
 import (
-	"fmt"
 	"os"
 	"runtime"
 
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
+	"github.com/limelamp/osmium/internal/config"
 	"github.com/limelamp/osmium/internal/tui/core"
+	"github.com/limelamp/osmium/internal/tui/storage"
 	"github.com/limelamp/osmium/internal/tui/styles"
 )
 
-// RunScript Model
+// GenRunScriptModel writes a start script into the selected server's folder.
 type GenRunScriptModel struct {
-	layout  core.Layout
-	isFocus bool
+	base
 
-	cursor  int
 	options []string
-	GoBack  bool
-	err     error
 }
 
 func NewGenRunScriptModel() GenRunScriptModel {
-	return GenRunScriptModel{
-		cursor:  0,
+	m := GenRunScriptModel{
 		options: []string{"Recommended settings", "Detailed"},
-		GoBack:  false,
 	}
+	m.base = m.setCount(len(m.options))
+	return m
 }
 
-// RunScript State
 func (m GenRunScriptModel) Init() tea.Cmd {
 	return nil
 }
 
 func (m GenRunScriptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c", "q":
-			return m, tea.Quit
-		case "up":
-			if m.cursor > 0 {
-				m.cursor--
-			}
-		case "down":
-			if m.cursor < len(m.options)-1 {
-				m.cursor++
-			}
-		case "backspace":
-			m.GoBack = true
+	case tea.MouseMsg:
+		updated, activated := m.handleMouse(msg)
+		m.base = updated
+		if activated {
+			return m.generate()
+		}
+		return m, nil
+
+	case tea.KeyPressMsg:
+		if list, handled := m.list.HandleKey(msg.String()); handled {
+			m.list = list
 			return m, nil
+		}
+
+		switch msg.String() {
+		case "backspace":
+			return m, core.CloseAction()
+
 		case "enter":
-			switch m.cursor {
-			case 0: // Recommended settings
-				const globalContent = "java -jar -Xms4G server.jar nogui"
-				var content []byte
-				var outputFile string
-				// Create a very basic bash script
-				switch runtime.GOOS { // Create different files and contents for different OS
-				case "linux":
-					content = []byte("#!/bin/bash\n\n" + globalContent)
-					outputFile = "run_server.sh"
-				case "windows":
-					content = []byte(globalContent)
-					outputFile = "run_server.bat"
-				case "darwin":
-					content = []byte("#!/bin/sh\n\n" + globalContent)
-					outputFile = "run_server.sh"
-				case "freebsd":
-					content = []byte("#!/bin/bash\n\n" + globalContent)
-					outputFile = "run_server.sh"
-				default:
-					fmt.Println("Unsupported OS!")
-					return m, nil
-				}
-
-				// Create the file
-				err := os.WriteFile(outputFile, content, 0755)
-				if err != nil {
-					m.err = err
-					return m, nil
-				}
-
-				fmt.Println("File Created!")
-			}
+			return m.generate()
 		}
 	}
+
 	return m, nil
 }
 
-// RunScript View
+// generate writes the run script for the cursor's option.
+func (m GenRunScriptModel) generate() (tea.Model, tea.Cmd) {
+	if m.needsServer() {
+		return m, nil
+	}
+
+	ram := "4G"
+	if conf, err := config.ReadConfigIn(m.dir()); err == nil && conf.AllocatedRAM != "" {
+		ram = conf.AllocatedRAM
+	}
+
+	command := "java -jar -Xms" + ram + " -Xmx" + ram + " server.jar nogui"
+
+	var content []byte
+	var outputFile string
+	switch runtime.GOOS { // Create different files and contents for different OS
+	case "windows":
+		content = []byte(command)
+		outputFile = "run_server.bat"
+	default:
+		content = []byte("#!/bin/bash\n\n" + command)
+		outputFile = "run_server.sh"
+	}
+
+	path := m.scope(nil).Path(outputFile)
+	if err := os.WriteFile(path, content, 0755); err != nil {
+		m.err = err
+		return m, nil
+	}
+
+	m.err = nil
+	return m, core.Log("Created " + path)
+}
+
 func (m GenRunScriptModel) View() tea.View {
-	content := ""
-	if m.err != nil {
-		errorStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#FF0000")).
-			Bold(true)
-		content += errorStyle.Render("Error: "+m.err.Error()) + "\n\n"
+	if m.needsServer() {
+		return m.noServerView(m.Title())
 	}
 
-	// Create a simple list
-	for i := 0; i < len(m.options); i++ {
-		cursor := "  "
-		if m.cursor == i {
-			cursor = "> "
-		}
-		content += fmt.Sprintf("%s %s\n", cursor, m.options[i])
-	}
-
-	content += "\n\n" + "Navigate using arrow keys. Press 'q' to exit, 'backspace' to go back.\n\n"
-
-	return tea.NewView(styles.Container(
-		m.layout.Width,
-		m.layout.Height,
-		m.isFocus,
-		m.Title(),
-		content,
-		false,
-	))
+	return m.listView(m.Title(), func(i int) string {
+		return m.row(i, m.options[i], "")
+	},
+		styles.Hint{Key: "enter", Desc: "generate"},
+		styles.Hint{Key: "backspace", Desc: "back"},
+	)
 }
 
 // additional methods
@@ -129,10 +112,16 @@ func (m GenRunScriptModel) Title() string {
 
 func (m GenRunScriptModel) SetLayout(l core.Layout) core.Action {
 	m.layout = l
+	m.base = m.setCount(len(m.options))
 	return m
 }
 
 func (m GenRunScriptModel) SetFocus(focused bool) core.Action {
 	m.isFocus = focused
+	return m
+}
+
+func (m GenRunScriptModel) SetServer(server *storage.Server) core.Action {
+	m.server = server
 	return m
 }

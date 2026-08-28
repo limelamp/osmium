@@ -4,7 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 )
+
+// OsmiumFileName is the per-server manifest Osmium writes next to the jar.
+const OsmiumFileName = "osmium.json"
 
 type Project struct {
 	VersionNumber string `json:"version_number"`
@@ -22,22 +26,25 @@ type OsmiumConfig struct {
 	Plugins      map[string]Project `json:"plugins"`
 }
 
-func WriteConfig(config *OsmiumConfig) error {
+// WriteConfigIn writes the manifest into the given server directory.
+func WriteConfigIn(dir string, config *OsmiumConfig) error {
 	bytes, err := json.MarshalIndent(config, "", " ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal Osmium config: %w", err)
 	}
 
-	if err := os.WriteFile("osmium.json", bytes, 0644); err != nil {
-		return fmt.Errorf("failed to write Osmium config to osmium.json: %w", err)
+	path := filepath.Join(dir, OsmiumFileName)
+	if err := os.WriteFile(path, bytes, 0644); err != nil {
+		return fmt.Errorf("failed to write Osmium config to %s: %w", path, err)
 	}
 
 	return nil
 }
 
-func ReadConfig() (*OsmiumConfig, error) {
+// ReadConfigIn reads the manifest from the given server directory.
+func ReadConfigIn(dir string) (*OsmiumConfig, error) {
 	// Read entire file
-	data, err := os.ReadFile("osmium.json")
+	data, err := os.ReadFile(filepath.Join(dir, OsmiumFileName))
 	if err != nil {
 		return nil, err
 	}
@@ -51,4 +58,15 @@ func ReadConfig() (*OsmiumConfig, error) {
 	}
 
 	return &config, nil
+}
+
+// WriteConfig writes the manifest into the process working directory. The CLI
+// commands run from inside a server folder, so this is what they want.
+func WriteConfig(config *OsmiumConfig) error {
+	return WriteConfigIn(".", config)
+}
+
+// ReadConfig reads the manifest from the process working directory.
+func ReadConfig() (*OsmiumConfig, error) {
+	return ReadConfigIn(".")
 }

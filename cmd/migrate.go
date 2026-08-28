@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/limelamp/osmium/internal/scope"
 	"github.com/limelamp/osmium/internal/shared"
 	"github.com/spf13/cobra"
 )
@@ -35,7 +36,7 @@ Example:
   osmium migrate -l Fabric -v 1.20.4`,
 	Args: cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := shared.MigrateServer(migrateflags.loader, migrateflags.version); err != nil {
+		if err := shared.MigrateServer(scope.For("."), migrateflags.loader, migrateflags.version); err != nil {
 			fmt.Printf("Error: %v\n", err)
 			os.Exit(1)
 		}

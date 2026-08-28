@@ -9,6 +9,9 @@ import (
 	"github.com/limelamp/osmium/internal/tui/styles"
 )
 
+// logoGap is the blank space between the logo and the menu.
+const logoGap = 1
+
 type HomeModel struct {
 	layout core.Layout
 
@@ -52,12 +55,6 @@ func (m HomeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyPressMsg:
 		switch msg.String() {
-		case "d":
-			return m, core.RouteTo("Dashboard") // send a ChangePageMsg
-
-		// case "h", "backspace":
-		// 	return m, core.RouteTo("Home")
-
 		case "c":
 			return m, core.RouteTo("CreateServer")
 
@@ -94,5 +91,17 @@ func (m HomeModel) Title() string {
 
 func (m HomeModel) SetLayout(l core.Layout) tea.Model {
 	m.layout = l
+
+	// The menu is centred under the logo; telling it exactly where it lands is
+	// what lets it respond to clicks.
+	logo, logoWidth := styles.Logo(assets.Logo2)
+
+	m.nav = m.nav.SetLayout(core.Layout{
+		X:      l.X + max(l.Width-logoWidth, 0)/2,
+		Y:      l.Y + lipgloss.Height(logo) + logoGap,
+		Width:  logoWidth,
+		Height: m.nav.Height(),
+	})
+
 	return m
 }

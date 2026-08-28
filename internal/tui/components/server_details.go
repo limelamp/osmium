@@ -43,14 +43,14 @@ func (m ServerDetailsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m ServerDetailsModel) View() tea.View {
 
-	return tea.NewView(styles.Container(
-		m.layout.Width,
-		m.layout.Height,
-		m.isFocus,
-		m.Title(),
-		fmt.Sprint(m.value),
-		true,
-	))
+	return tea.NewView(styles.Container(styles.ContainerOpts{
+		Width:    m.layout.Width,
+		Height:   m.layout.Height,
+		Focused:  m.isFocus,
+		Title:    m.Title(),
+		Content:  fmt.Sprint(m.value),
+		ShowHelp: true,
+	}))
 }
 
 // additional methods

@@ -1,8 +1,6 @@
 package tui
 
 import (
-	"fmt"
-
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/limelamp/osmium/internal/tui/components"
@@ -39,29 +37,42 @@ func NewAppModel(store *storage.ServerStore) appModel {
 	return appModel{
 		activePage:    home,
 		home:          home,
-		createServer:  pages.NewCreateServerModel(),
+		createServer:  pages.NewCreateServerModel(store),
 		manageServers: pages.NewManageServersModel(store),
 		settings:      pages.NewSettingsModel(),
 		help:          components.NewHelpModel(components.DefaultKeys),
 	}
 }
 
-func (m appModel) getPageLayout(p Page) core.Layout {
-	layout := m.layout
-
-	if p != nil && p.Title() != "Home" {
-		dummyTitle := styles.Title(layout.Width, "Measure", p.Title())
-		titleHeight := lipgloss.Height(dummyTitle)
-		layout.Height = max(0, layout.Height-titleHeight)
+// titleHeight is how many rows the page title bar takes, which every page below
+// it has to be shifted down by for mouse coordinates to line up.
+func (m appModel) titleHeight(p Page) int {
+	if p == nil || p.Title() == "Home" {
+		return 0
 	}
+	return lipgloss.Height(styles.Title(m.layout.Width, "Measure", p.Title()))
+}
 
-	return layout
+func (m appModel) getPageLayout(p Page) core.Layout {
+	height := m.titleHeight(p)
+
+	return core.Layout{
+		X:      m.layout.X,
+		Y:      m.layout.Y + height,
+		Width:  m.layout.Width,
+		Height: max(0, m.layout.Height-height),
+	}
 }
 
 func (m appModel) switchPage(p Page) (tea.Model, tea.Cmd) {
 	m.activePage = p.SetLayout(m.getPageLayout(p)).(Page) // settings window dimensions here, in case a page didn't receive the latest window layout
 
 	return m, m.activePage.Init()
+}
+
+// quit shuts down anything the pages own before leaving.
+func (m appModel) quit() tea.Cmd {
+	return tea.Sequence(core.Shutdown(), tea.Quit)
 }
 
 func (m appModel) Init() tea.Cmd {
@@ -81,8 +92,8 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// If help was visible beforehand, or has just been opened by this specific keypress (e.g., '?'),
 		// we intercept the event here to swallow it, preventing unwanted side effects in background views.
 		if wasVisible || m.help.IsVisible() {
-			if msg.String() == "q" || msg.String() == "ctrl+c" {
-				return m, tea.Quit
+			if msg.String() == "ctrl+c" {
+				return m, m.quit()
 			}
 			return m, helpCmd
 		}
@@ -97,12 +108,23 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyPressMsg:
 		switch msg.String() {
-		case "q", "ctrl+c":
-			return m, tea.Quit
+		case "ctrl+c":
+			return m, m.quit()
 
-		case "esc":
-			return m, core.RouteTo("Home")
+		// Only the home page can quit on a bare "q"; elsewhere it is an
+		// ordinary character that panels with text inputs need to receive.
+		case "q":
+			if m.activePage.Title() == "Home" {
+				return m, m.quit()
+			}
 		}
+
+	// Manage Servers owns the running server process, so it is told to shut
+	// down wherever the user happens to be when they quit.
+	case core.ShutdownMsg:
+		updated, _ := m.manageServers.Update(msg)
+		m.manageServers = updated.(pages.ManageServersModel)
+		return m, nil
 
 	case core.ChangePageMsg:
 		switch msg.Target {
@@ -124,7 +146,26 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	updated, cmd := m.activePage.Update(msg)
 	m.activePage = updated.(Page)
 
+	// Keep the stored copy of the page in step with the active one so state
+	// survives navigating away and back.
+	m.retain(m.activePage)
+
 	return m, tea.Batch(helpCmd, cmd)
+}
+
+// retain writes the active page back into its slot, so a page keeps its state
+// across navigation instead of being reset to the copy made at startup.
+func (m *appModel) retain(page Page) {
+	switch p := page.(type) {
+	case pages.HomeModel:
+		m.home = p
+	case pages.CreateServerModel:
+		m.createServer = p
+	case pages.ManageServersModel:
+		m.manageServers = p
+	case pages.SettingsModel:
+		m.settings = p
+	}
 }
 
 func (m appModel) View() tea.View {
@@ -132,15 +173,11 @@ func (m appModel) View() tea.View {
 
 	var title string
 	if m.activePage.Title() != "Home" {
-		title = styles.Title(
-			m.layout.Width,
-			fmt.Sprintf("Osmium %d", m.layout.Width),
-			m.activePage.Title(),
-		)
+		title = styles.Title(m.layout.Width, "Osmium", m.activePage.Title())
 	}
 
 	baseContent := lipgloss.JoinVertical(
-		0.5,
+		0,
 		title,
 		pageView.Content,
 	)
@@ -150,6 +187,10 @@ func (m appModel) View() tea.View {
 
 	view := tea.NewView(viewContent)
 	view.AltScreen = true
+
+	// Cell motion reports clicks and wheel events with coordinates, which is
+	// what the panels hit-test against.
+	view.MouseMode = tea.MouseModeCellMotion
 
 	return view
 }

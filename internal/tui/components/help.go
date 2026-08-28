@@ -10,12 +10,17 @@ import (
 
 // KeyMap defines the system-wide key bindings.
 type KeyMap struct {
-	Up    key.Binding
-	Down  key.Binding
-	Left  key.Binding
-	Right key.Binding
-	Help  key.Binding
-	Quit  key.Binding
+	Up     key.Binding
+	Down   key.Binding
+	Left   key.Binding
+	Right  key.Binding
+	Select key.Binding
+	Back   key.Binding
+	Pane   key.Binding
+	Home   key.Binding
+	Mouse  key.Binding
+	Help   key.Binding
+	Quit   key.Binding
 }
 
 // ShortHelp returns keybindings to be shown in the mini help view.
@@ -27,7 +32,8 @@ func (k KeyMap) ShortHelp() []key.Binding {
 func (k KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down, k.Left, k.Right},
-		{k.Help, k.Quit},
+		{k.Select, k.Back, k.Pane, k.Home},
+		{k.Mouse, k.Help, k.Quit},
 	}
 }
 
@@ -49,13 +55,33 @@ var DefaultKeys = KeyMap{
 		key.WithKeys("right", "l"),
 		key.WithHelp("→/l", "move right"),
 	),
+	Select: key.NewBinding(
+		key.WithKeys("enter"),
+		key.WithHelp("enter", "select"),
+	),
+	Back: key.NewBinding(
+		key.WithKeys("backspace"),
+		key.WithHelp("backspace", "back"),
+	),
+	Pane: key.NewBinding(
+		key.WithKeys("tab", "shift+tab"),
+		key.WithHelp("tab", "switch pane"),
+	),
+	Home: key.NewBinding(
+		key.WithKeys("esc"),
+		key.WithHelp("esc", "home"),
+	),
+	Mouse: key.NewBinding(
+		key.WithKeys(""),
+		key.WithHelp("mouse", "click / wheel"),
+	),
 	Help: key.NewBinding(
 		key.WithKeys("?"),
 		key.WithHelp("?", "toggle help"),
 	),
 	Quit: key.NewBinding(
-		key.WithKeys("q", "esc", "ctrl+c"),
-		key.WithHelp("q", "quit"),
+		key.WithKeys("q", "ctrl+c"),
+		key.WithHelp("ctrl+c", "quit"),
 	),
 }
 
@@ -128,18 +154,25 @@ func (m HelpModel) Render(baseView string) string {
 	footerStyle := lipgloss.NewStyle().
 		Foreground(theme.Inactive)
 
+	modalWidth := min(max(m.width-8, 20), 76)
+
 	modalStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(theme.Primary).
 		Padding(1, 2).
-		Width(45)
+		Width(modalWidth)
+
+	// The bindings must be laid out for the modal's inner width, not the
+	// terminal's, or the columns wrap over each other.
+	help := m.help
+	help.SetWidth(modalWidth - 4)
 
 	// 2. Generate the formatted content inside the modal
 	helpContent := lipgloss.JoinVertical(
 		lipgloss.Left,
 		titleStyle.Render("Help Menu"),
 		"",
-		m.help.FullHelpView(m.keys.FullHelp()),
+		help.FullHelpView(m.keys.FullHelp()),
 		"",
 		footerStyle.Render("Press ? or ESC to close"),
 	)
@@ -147,11 +180,8 @@ func (m HelpModel) Render(baseView string) string {
 	modal := modalStyle.Render(helpContent)
 
 	// 3. Compute structural horizontal and vertical centering coordinates
-	modalWidth := lipgloss.Width(modal)
-	modalHeight := lipgloss.Height(modal)
-
-	x := (m.width - modalWidth) / 2
-	y := (m.height - modalHeight) / 2
+	x := (m.width - lipgloss.Width(modal)) / 2
+	y := (m.height - lipgloss.Height(modal)) / 2
 	if x < 0 {
 		x = 0
 	}

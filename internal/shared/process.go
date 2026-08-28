@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -12,8 +13,26 @@ import (
 
 const LockFileName = ".osmium_process.lock"
 
-func ReadLockPID() (int, error) {
-	data, err := os.ReadFile(LockFileName)
+// LockPath is where a server directory keeps its process lock file.
+func LockPath(dir string) string {
+	if dir == "" {
+		dir = "."
+	}
+	return filepath.Join(dir, LockFileName)
+}
+
+// ReadLockPID reads the lock file of the process working directory.
+func ReadLockPID() (int, error) { return ReadLockPIDIn(".") }
+
+// WriteLockPID writes the lock file of the process working directory.
+func WriteLockPID(pid int) error { return WriteLockPIDIn(".", pid) }
+
+// RemoveLockFile removes the lock file of the process working directory.
+func RemoveLockFile() error { return RemoveLockFileIn(".") }
+
+// ReadLockPIDIn reads the PID recorded for a specific server directory.
+func ReadLockPIDIn(dir string) (int, error) {
+	data, err := os.ReadFile(LockPath(dir))
 	if err != nil {
 		return 0, err
 	}
@@ -26,30 +45,32 @@ func ReadLockPID() (int, error) {
 	return pid, nil
 }
 
-func WriteLockPID(pid int) error {
+// WriteLockPIDIn records a PID for a specific server directory.
+func WriteLockPIDIn(dir string, pid int) error {
 	if pid <= 0 {
 		return fmt.Errorf("invalid PID: %d", pid)
 	}
 
-	if existingPID, err := ReadLockPID(); err == nil {
+	if existingPID, err := ReadLockPIDIn(dir); err == nil {
 		if IsPIDRunning(existingPID) {
 			return fmt.Errorf("server already running with PID %d", existingPID)
 		}
 
-		if err := RemoveLockFile(); err != nil {
+		if err := RemoveLockFileIn(dir); err != nil {
 			return fmt.Errorf("failed to remove stale lock file: %w", err)
 		}
 	}
 
-	if err := os.WriteFile(LockFileName, []byte(strconv.Itoa(pid)), 0644); err != nil {
+	if err := os.WriteFile(LockPath(dir), []byte(strconv.Itoa(pid)), 0644); err != nil {
 		return fmt.Errorf("failed to write lock file: %w", err)
 	}
 
 	return nil
 }
 
-func RemoveLockFile() error {
-	if err := os.Remove(LockFileName); err != nil && !os.IsNotExist(err) {
+// RemoveLockFileIn clears the lock file of a specific server directory.
+func RemoveLockFileIn(dir string) error {
+	if err := os.Remove(LockPath(dir)); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to remove lock file: %w", err)
 	}
 	return nil

@@ -6,6 +6,7 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/limelamp/osmium/internal/scope"
 	"github.com/limelamp/osmium/internal/shared"
 	"github.com/spf13/cobra"
 )
@@ -46,14 +47,14 @@ Examples:
 		}
 
 		if len(args) == 0 {
-			if err := shared.UpdateAllProjects(projectType); err != nil {
+			if err := shared.UpdateAllProjects(scope.For("."), projectType); err != nil {
 				fmt.Println(err)
 			}
 			return
 		}
 
 		for _, projectID := range args {
-			if err := shared.UpdateProject(projectID, projectType); err != nil {
+			if err := shared.UpdateProject(scope.For("."), projectID, projectType); err != nil {
 				fmt.Println(err)
 			}
 		}

@@ -10,10 +10,20 @@ import (
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/x/term"
 	"github.com/limelamp/osmium/internal/tui/core"
+	"github.com/limelamp/osmium/internal/tui/storage"
 	"github.com/limelamp/osmium/internal/tui/styles"
+	"github.com/limelamp/osmium/internal/tui/theme"
+
+	"charm.land/lipgloss/v2"
+)
+
+// configStep is which of the panel's two nested screens is showing.
+type configStep int
+
+const (
+	stepPickFile configStep = iota
+	stepEditFile
 )
 
 type configFile struct {
@@ -21,303 +31,279 @@ type configFile struct {
 	entry os.DirEntry
 }
 
-// ManageConfigsModel
+// ManageConfigsModel browses the config files of the selected server and edits
+// their key/value pairs in place.
 type ManageConfigsModel struct {
-	layout  core.Layout
-	isFocus bool
+	base
 
-	cursor             int
-	fileType           string
-	fileName           string
-	step               int
-	selected           int
+	step     configStep
+	fileType string
+	fileName string
+
 	options            []configFile
 	configOptionKeys   []string
 	configOptionValues []string
-	textInput          textinput.Model
-	GoBack             bool
-	topItem            int // The index of the first item currently visible
-	viewHeight         int // How many items to show at once
-	err                error
+
+	// editing is the index of the row currently being typed into, or -1.
+	editing   int
+	textInput textinput.Model
 }
 
 func NewManageConfigsModel() ManageConfigsModel {
 	// textInput init
 	ti := textinput.New()
 	ti.Placeholder = "Enter a value..."
-	ti.Focus()     // Start with the cursor blinking inside it
 	ti.Prompt = "" // Remove the ">" out of the way
 	ti.CharLimit = 500
-	ti.SetWidth(20)
-
-	// terminal width, height
-	_, h, _ := term.GetSize(uintptr(os.Stdout.Fd()))
+	ti.SetWidth(30)
 
 	return ManageConfigsModel{
-		cursor:     0,
-		step:       0,
-		selected:   -1,
-		options:    GetConfigFiles(),
-		textInput:  ti,
-		GoBack:     false,
-		viewHeight: h - 10,
+		step:      stepPickFile,
+		editing:   -1,
+		textInput: ti,
 	}
 }
 
-// ManageConfigs State
+// Editing reports whether a config value is being typed into.
+func (m ManageConfigsModel) Editing() bool { return m.editing >= 0 }
+
 func (m ManageConfigsModel) Init() tea.Cmd {
 	return nil
 }
 
-func (m ManageConfigsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		// msg.Width and msg.Height are automatically provided
-		m.viewHeight = msg.Height - 10
-		return m, nil
-	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c", "q":
-			return m, tea.Quit
-		case "up":
-			if m.cursor > 0 {
-				m.cursor--
-			}
-
-			// If the cursor goes above the top, scroll up
-			if m.cursor < m.topItem {
-				m.topItem = m.cursor
-			}
-		case "down":
-			switch m.step {
-			case 0:
-				if m.cursor < len(m.options)-1 {
-					m.cursor++
-				}
-			case 1:
-				if m.cursor < len(m.configOptionKeys)-1 {
-					m.cursor++
-				}
-				// If the cursor goes below the bottom of the window, scroll down
-				if m.cursor >= m.topItem+m.viewHeight {
-					m.topItem = m.cursor - m.viewHeight + 1
-				}
-
-			}
-
-		case "ctrl+h": // ctrl + backspace
-			m.GoBack = true
-			m.cursor = 0
-			m.step = 0
-			m.selected = -1
-
-			// Reset the second step's keys and values option entries
-			m.configOptionKeys = nil
-			m.configOptionValues = nil
-
-			return m, nil
-		case "enter":
-			switch m.step {
-			case 0: // The file selecting step
-				currentFilePath := m.options[m.cursor].path
-
-				if strings.HasSuffix(currentFilePath, ".properties") { // server.properties
-					// Read the file
-					var keys []string
-					var values []string
-
-					file, err := os.Open(currentFilePath)
-					if err != nil {
-						m.err = err
-						return m, nil
-					}
-					defer file.Close()
-
-					scanner := bufio.NewScanner(file)
-					for scanner.Scan() {
-						line := strings.TrimSpace(scanner.Text())
-
-						// Skip comments and empty lines to keep the UI clean
-						if line == "" || strings.HasPrefix(line, "#") {
-							continue
-						}
-
-						// Split by the first "="
-						parts := strings.SplitN(line, "=", 2)
-						if len(parts) == 2 {
-							keys = append(keys, strings.TrimSpace(parts[0]))
-							values = append(values, strings.TrimSpace(parts[1]))
-						}
-					}
-
-					if err := scanner.Err(); err != nil {
-						m.err = err
-						return m, nil
-					}
-
-					m.fileType = "properties"
-					m.fileName = currentFilePath
-					m.configOptionKeys = keys
-					m.configOptionValues = values
-					m.step = 1
-				} else if strings.HasSuffix(currentFilePath, ".yml") {
-					if err := m.loadYamlConfig(currentFilePath); err != nil {
-						m.err = err
-						return m, nil
-					}
-				}
-			case 1: // The file editing step
-				if m.selected == m.cursor { // if this is true, then the same field was selected twice, meaning we can write smth
-					switch m.fileType {
-					case "properties":
-						// 1. Update the local data with the new value from the input
-						m.configOptionValues[m.cursor] = m.textInput.Value()
-
-						// 2. Prepare the file content
-						var lines []string
-						for i := range m.configOptionKeys {
-							line := fmt.Sprintf("%s=%s", m.configOptionKeys[i], m.configOptionValues[i])
-							lines = append(lines, line)
-						}
-
-						// 3. Write to file (0644 is standard permissions)
-						output := strings.Join(lines, "\n")
-						if err := os.WriteFile(m.fileName, []byte(output), 0644); err != nil {
-							m.err = err
-							return m, nil
-						}
-
-						// 4. Reset selection mode
-						m.selected = -1
-						m.textInput.Blur() // unfocus
-
-					case "yml":
-						// 1. Update the local data with the new value from the input
-						m.configOptionValues[m.cursor] = m.textInput.Value()
-
-						// 2. Prepare the file content
-						var lines []string
-						for i := range m.configOptionKeys {
-							key := m.configOptionKeys[i]
-							val := m.configOptionValues[i]
-
-							if val == "" {
-								// 1. It's a header or list item.
-								// Trim trailing spaces first to see what we're working with
-								line := strings.TrimRight(key, " ")
-
-								// Only add a colon if it doesn't have one AND isn't a list item
-								if !strings.HasSuffix(line, ":") && !strings.Contains(line, "- ") {
-									line += ":"
-								}
-								lines = append(lines, line)
-							} else {
-								// 2. It's a key-value pair.
-								// Make sure we don't have a colon at the end of the key
-								// because we are adding ": " manually.
-								cleanKey := strings.TrimRight(key, " ")
-								cleanKey = strings.TrimSuffix(cleanKey, ":")
-
-								lines = append(lines, fmt.Sprintf("%s: %s", cleanKey, val))
-							}
-						}
-
-						// 3. Write to file (0644 is standard permissions)
-						output := strings.Join(lines, "\n")
-						if err := os.WriteFile(m.fileName, []byte(output), 0644); err != nil {
-							m.err = err
-							return m, nil
-						}
-
-						// 4. Reset selection mode
-						m.selected = -1
-						m.textInput.Blur() // unfocus
-					}
-
-				} else { // Select another/new option
-					m.selected = m.cursor                                // set the selected variable for the view function
-					m.textInput.SetValue(m.configOptionValues[m.cursor]) // give the data of value to textInput
-					m.textInput.Focus()                                  // focus after the unfocus
-				}
-
-			}
-
-		}
-	}
-
-	var cmd tea.Cmd
-	m.textInput, cmd = m.textInput.Update(msg)
-	return m, cmd
+// reload rescans the selected server folder for editable config files.
+func (m ManageConfigsModel) reload() ManageConfigsModel {
+	m.step = stepPickFile
+	m.editing = -1
+	m.configOptionKeys = nil
+	m.configOptionValues = nil
+	m.options = configFilesIn(m.dir())
+	m.list = core.List{}
+	m.base = m.setCount(len(m.options))
+	return m
 }
 
-// ManageConfigs View
-func (m ManageConfigsModel) View() tea.View {
-	keyStyle := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("#2ae012ff"))
-		// Padding(0, 1)
-
-	valueStyle := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("#ce2614ff"))
-		// Padding(0, 1)
-
-	// Options
-	content := ""
-
-	switch m.step {
-	case 0:
-		// Create a simple list
-		for i := 0; i < len(m.options); i++ {
-			cursor := "  "
-			if m.cursor == i {
-				cursor = "> "
-			}
-			content += fmt.Sprintf("%s %s\n", cursor, m.options[i].entry.Name())
+func (m ManageConfigsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.MouseMsg:
+		updated, activated := m.handleMouse(msg)
+		m.base = updated
+		if activated {
+			return m.activate()
 		}
-	case 1:
-		end := m.topItem + m.viewHeight
+		return m, nil
 
-		// SAFETY CHECK: Cap 'end' at the slice length
-		if end > len(m.configOptionKeys) {
-			end = len(m.configOptionKeys)
-		}
-
-		for i := m.topItem; i < end; i++ {
-			cursor := "  "
-			if m.cursor == i {
-				cursor = "> "
+	case tea.KeyPressMsg:
+		// While a value is being typed the input owns every key except the two
+		// that end the edit, so navigation must not steal them.
+		if m.editing >= 0 {
+			switch msg.String() {
+			case "enter":
+				return m.commitEdit()
+			case "esc":
+				m.editing = -1
+				m.textInput.Blur()
+				return m, nil
 			}
 
-			switch m.fileType {
-			case "properties":
-				if m.selected == i {
-					content += fmt.Sprintf("%s %s=%s\n", cursor, keyStyle.Render(m.configOptionKeys[i]), valueStyle.Render(m.textInput.View()))
-				} else {
-					content += fmt.Sprintf("%s %s=%s\n", cursor, keyStyle.Render(m.configOptionKeys[i]), valueStyle.Render(m.configOptionValues[i]))
-				}
-			case "yml":
-				if m.selected == i {
-					content += fmt.Sprintf("%s %s: %s\n", cursor, keyStyle.Render(m.configOptionKeys[i]), valueStyle.Render(m.textInput.View()))
-				} else {
-					content += fmt.Sprintf("%s %s: %s\n", cursor, keyStyle.Render(m.configOptionKeys[i]), valueStyle.Render(m.configOptionValues[i]))
-				}
-			}
-
+			var cmd tea.Cmd
+			m.textInput, cmd = m.textInput.Update(msg)
+			return m, cmd
 		}
 
+		if list, handled := m.list.HandleKey(msg.String()); handled {
+			m.list = list
+			return m, nil
+		}
+
+		switch msg.String() {
+		case "backspace":
+			// Nested navigation: leave the editor before leaving the panel.
+			if m.step == stepEditFile {
+				return m.reload(), nil
+			}
+			return m, core.CloseAction()
+
+		case "enter":
+			return m.activate()
+		}
 	}
 
-	content += "\n\n" + "Navigate using arrow keys. Press 'q' to exit, 'ctrl+backspace' to go back.\n\n"
+	return m, nil
+}
 
-	return tea.NewView(styles.Container(
-		m.layout.Width,
-		m.layout.Height,
-		m.isFocus,
-		m.Title(),
-		content,
-		false,
-	))
+// activate opens the file under the cursor, or starts editing its value.
+func (m ManageConfigsModel) activate() (tea.Model, tea.Cmd) {
+	switch m.step {
+	case stepPickFile:
+		if len(m.options) == 0 {
+			return m, nil
+		}
+		return m.openFile(m.options[m.list.Cursor].path)
+
+	case stepEditFile:
+		if len(m.configOptionKeys) == 0 {
+			return m, nil
+		}
+		m.editing = m.list.Cursor
+		m.textInput.SetValue(m.configOptionValues[m.list.Cursor])
+		return m, m.textInput.Focus()
+	}
+
+	return m, nil
+}
+
+// openFile parses a config file into editable key/value rows.
+func (m ManageConfigsModel) openFile(path string) (tea.Model, tea.Cmd) {
+	var err error
+	switch {
+	case strings.HasSuffix(path, ".properties"):
+		err = m.loadPropertiesConfig(path)
+	case strings.HasSuffix(path, ".yml"):
+		err = m.loadYamlConfig(path)
+	default:
+		return m, nil
+	}
+
+	if err != nil {
+		m.err = err
+		return m, nil
+	}
+
+	m.err = nil
+	m.step = stepEditFile
+	m.list = core.List{}
+	m.base = m.setCount(len(m.configOptionKeys))
+	return m, nil
+}
+
+// commitEdit writes the edited value back to the file on disk.
+func (m ManageConfigsModel) commitEdit() (tea.Model, tea.Cmd) {
+	m.configOptionValues[m.editing] = m.textInput.Value()
+	m.editing = -1
+	m.textInput.Blur()
+
+	var lines []string
+	for i := range m.configOptionKeys {
+		key := m.configOptionKeys[i]
+		val := m.configOptionValues[i]
+
+		switch m.fileType {
+		case "properties":
+			lines = append(lines, fmt.Sprintf("%s=%s", key, val))
+
+		case "yml":
+			if val == "" {
+				// 1. It's a header or list item.
+				// Trim trailing spaces first to see what we're working with
+				line := strings.TrimRight(key, " ")
+
+				// Only add a colon if it doesn't have one AND isn't a list item
+				if !strings.HasSuffix(line, ":") && !strings.Contains(line, "- ") {
+					line += ":"
+				}
+				lines = append(lines, line)
+			} else {
+				// 2. It's a key-value pair.
+				// Make sure we don't have a colon at the end of the key
+				// because we are adding ": " manually.
+				cleanKey := strings.TrimRight(key, " ")
+				cleanKey = strings.TrimSuffix(cleanKey, ":")
+
+				lines = append(lines, fmt.Sprintf("%s: %s", cleanKey, val))
+			}
+		}
+	}
+
+	if err := os.WriteFile(m.fileName, []byte(strings.Join(lines, "\n")), 0644); err != nil {
+		m.err = err
+		return m, nil
+	}
+
+	m.err = nil
+	return m, core.Log("Saved " + m.fileName)
+}
+
+func (m ManageConfigsModel) View() tea.View {
+	if m.needsServer() {
+		return m.noServerView(m.Title())
+	}
+
+	switch m.step {
+	case stepEditFile:
+		return m.listView(m.Title()+" · "+filepath.Base(m.fileName), m.editRow,
+			styles.Hint{Key: "enter", Desc: "edit value"},
+			styles.Hint{Key: "backspace", Desc: "back to files"},
+		)
+
+	default:
+		if len(m.options) == 0 {
+			return m.emptyView(m.Title(), "No .properties or .yml files in this server yet.",
+				styles.Hint{Key: "backspace", Desc: "back"})
+		}
+
+		return m.listView(m.Title(), func(i int) string {
+			return m.row(i, m.options[i].entry.Name(), filepath.Dir(m.options[i].path))
+		},
+			styles.Hint{Key: "enter", Desc: "open"},
+			styles.Hint{Key: "backspace", Desc: "back"},
+		)
+	}
+}
+
+// editRow renders one key/value row of the file being edited.
+func (m ManageConfigsModel) editRow(i int) string {
+	keyStyle := lipgloss.NewStyle().Foreground(theme.Primary)
+	valueStyle := lipgloss.NewStyle().Foreground(theme.Accent)
+
+	separator := "="
+	if m.fileType == "yml" {
+		separator = ": "
+	}
+
+	value := valueStyle.Render(m.configOptionValues[i])
+	if m.editing == i {
+		value = m.textInput.View()
+	}
+
+	return m.row(i, keyStyle.Render(m.configOptionKeys[i])+separator+value, "")
+}
+
+// loadPropertiesConfig reads a java .properties file into key/value rows.
+func (m *ManageConfigsModel) loadPropertiesConfig(path string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	var keys, values []string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+
+		// Skip comments and empty lines to keep the UI clean
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// Split by the first "="
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) == 2 {
+			keys = append(keys, strings.TrimSpace(parts[0]))
+			values = append(values, strings.TrimSpace(parts[1]))
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+
+	m.fileType = "properties"
+	m.fileName = path
+	m.configOptionKeys = keys
+	m.configOptionValues = values
+	return nil
 }
 
 func (m *ManageConfigsModel) loadYamlConfig(path string) error {
@@ -327,6 +313,10 @@ func (m *ManageConfigsModel) loadYamlConfig(path string) error {
 		return err
 	}
 	defer file.Close()
+
+	m.configOptionKeys = nil
+	m.configOptionValues = nil
+
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		// Inside your scanner loop
@@ -365,15 +355,15 @@ func (m *ManageConfigsModel) loadYamlConfig(path string) error {
 
 	m.fileName = path
 	m.fileType = fileType
-	m.step = 1
 	return nil
 }
 
-func GetConfigFiles() []configFile {
+// configFilesIn walks a server directory for the config formats Osmium can edit.
+func configFilesIn(dir string) []configFile {
 	extensions := []string{".yml", ".properties"} // Supported config filetypes
 
 	var configEntries []configFile                                                // Entries that are configs
-	filepath.WalkDir(".", func(path string, entry fs.DirEntry, err error) error { // Walking through the whole folder
+	filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error { // Walking through the whole folder
 		if err != nil {
 			return nil // skip unreadable entries
 		}
@@ -402,10 +392,22 @@ func (m ManageConfigsModel) Title() string {
 
 func (m ManageConfigsModel) SetLayout(l core.Layout) core.Action {
 	m.layout = l
+	m.textInput.SetWidth(max(l.ContentWidth()/2, 10))
+
+	if m.step == stepEditFile {
+		m.base = m.setCount(len(m.configOptionKeys))
+	} else {
+		m.base = m.setCount(len(m.options))
+	}
 	return m
 }
 
 func (m ManageConfigsModel) SetFocus(focused bool) core.Action {
 	m.isFocus = focused
 	return m
+}
+
+func (m ManageConfigsModel) SetServer(server *storage.Server) core.Action {
+	m.server = server
+	return m.reload()
 }

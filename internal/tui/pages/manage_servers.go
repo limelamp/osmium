@@ -8,6 +8,22 @@ import (
 	"github.com/limelamp/osmium/internal/tui/storage"
 )
 
+// Pane identifies which of the page's three panels holds keyboard focus.
+const (
+	paneServers = iota
+	paneAction
+	paneActivity
+	paneCount
+)
+
+// Pane proportions. They are constants rather than state so the panels keep
+// their size when focus moves — a pane that resized itself on focus made the
+// whole page jump around.
+const (
+	serversWidthRatio = 0.32
+	actionHeightRatio = 0.6
+)
+
 type ManageServersModel struct {
 	layout core.Layout
 
@@ -15,7 +31,9 @@ type ManageServersModel struct {
 	activity     components.ActivityModel
 	activeAction core.Action
 
-	value int
+	// selected is the server every panel on the page currently acts on.
+	selected *storage.Server
+
 	focus int
 }
 
@@ -37,63 +55,93 @@ func (m ManageServersModel) Init() tea.Cmd {
 	)
 }
 
+// setFocus moves keyboard focus to a pane and tells every child about it.
+func (m ManageServersModel) setFocus(pane int) ManageServersModel {
+	m.focus = (pane + paneCount) % paneCount
+
+	m.servers = m.servers.SetFocus(m.focus == paneServers)
+	m.activeAction = m.activeAction.SetFocus(m.focus == paneAction)
+	m.activity = m.activity.SetFocus(m.focus == paneActivity)
+
+	return m
+}
+
+// paneAt reports which pane covers an absolute terminal coordinate.
+func (m ManageServersModel) paneAt(x, y int) int {
+	switch {
+	case m.serversLayout().Hit(x, y):
+		return paneServers
+	case m.actionLayout().Hit(x, y):
+		return paneAction
+	case m.activityLayout().Hit(x, y):
+		return paneActivity
+	}
+	return -1
+}
+
 // "conditional message routing" pattern
 func (m ManageServersModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	//? in case you need to register the keymsg for all views despite being out of focus
-	// isEvent := false
 	switch msg := msg.(type) {
 	// Sent when the Action needs to be switched.
 	case core.SwitchActionMsg:
-		m.activeAction = msg.NewAction
-		// Immediately enforce the current layout and focus constraints onto the new model
-		// m.activeAction = m.activeAction.SetLayout(m.getPageLayout())
-		m.activeAction = m.activeAction.SetFocus(m.focus == 1)
-		// Initialize the new component and return its command
-		return m, m.activeAction.Init()
+		return m.swapAction(msg.NewAction)
+
+	// Sent when an action panel wants to hand control back to the root menu.
+	case core.CloseActionMsg:
+		return m.swapAction(components.NewActionsModel())
+
+	case core.SelectServerMsg:
+		// Panels reload from disk when they are handed a server, so only a real
+		// change is propagated — otherwise every arrow key would rescan the
+		// selected server's folder.
+		if sameServer(m.selected, msg.Server) {
+			return m, nil
+		}
+
+		m.selected = msg.Server
+		m.activeAction = m.activeAction.SetServer(msg.Server).SetLayout(m.actionLayout())
+		m.activity = m.activity.SetServer(msg.Server)
+		return m, nil
+
+	// Process control, log output and shutdown all belong to the Activity
+	// panel, which owns the running server process.
+	case core.ServerControlMsg, core.LogMsg, core.ShutdownMsg:
+		updated, cmd := m.activity.Update(msg)
+		m.activity = updated.(components.ActivityModel)
+		return m, cmd
+
+	case tea.MouseMsg:
+		// Clicking a pane focuses it, then the click is delivered to that pane
+		// so a single click can both focus and select.
+		mouse := msg.Mouse()
+		if _, isClick := msg.(tea.MouseClickMsg); isClick {
+			if pane := m.paneAt(mouse.X, mouse.Y); pane >= 0 {
+				m = m.setFocus(pane)
+			}
+		}
+		return m.forwardToPane(msg, m.paneAt(mouse.X, mouse.Y))
 
 	case tea.KeyPressMsg:
+		// An action panel with an open text field keeps every key, including
+		// the ones the page would otherwise claim for navigation.
+		if m.focus == paneAction && m.activeAction.Editing() {
+			return m.forwardToPane(msg, paneAction)
+		}
+
 		switch msg.String() {
+		case "esc":
+			return m, core.RouteTo("Home")
+
 		case "tab":
-			m.focus = (m.focus + 1) % 3
+			return m.setFocus(m.focus + 1), nil
 
-			m.servers = m.servers.SetFocus(m.focus == 0)
-			m.activeAction = m.activeAction.SetFocus(m.focus == 1)
-			m.activity = m.activity.SetFocus(m.focus == 2)
-
-			return m.SetLayout(m.layout), nil
-
-			// case "e":
-			// 	isEvent = true
+		case "shift+tab":
+			return m.setFocus(m.focus - 1), nil
 		}
 
 		//! inside the case tea.KeyPressMsg after all msg.String() switch/cases
-		var cmd tea.Cmd
-		var updated tea.Model
-		switch m.focus {
-		case 0:
-			updated, cmd = m.servers.Update(msg)
-			m.servers = updated.(components.ServersModel)
-		case 1:
-			updated, cmd = m.activeAction.Update(msg)
-			m.activeAction = updated.(core.Action)
-		case 2:
-			updated, cmd = m.activity.Update(msg)
-			m.activity = updated.(components.ActivityModel)
-		}
-		return m, cmd
+		return m.forwardToPane(msg, m.focus)
 	}
-
-	// if isEvent {
-	// 	switch m.focus {
-	// 	case 0:
-	// 		_, cmd1 := m.servers.Update(msg)
-	// 		return m, cmd1
-
-	// 	case 1:
-	// 		_, cmd2 := m.actions.Update(msg)
-	// 		return m, cmd2
-	// 	}
-	// }
 
 	// forward the Update message to child components
 	updatedServers, cmd1 := m.servers.Update(msg)
@@ -107,26 +155,95 @@ func (m ManageServersModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmd1, cmd2, cmd3)
 }
 
+// sameServer reports whether two selections point at the same server folder.
+func sameServer(a, b *storage.Server) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return a.Path == b.Path
+}
+
+// swapAction replaces the action panel, handing the new one the page's current
+// layout, focus and selection so it never renders a frame misconfigured.
+func (m ManageServersModel) swapAction(action core.Action) (tea.Model, tea.Cmd) {
+	m.activeAction = action.
+		SetServer(m.selected).
+		SetLayout(m.actionLayout()).
+		SetFocus(m.focus == paneAction)
+
+	return m, m.activeAction.Init()
+}
+
+// forwardToPane delivers a message to a single pane and stores the result.
+func (m ManageServersModel) forwardToPane(msg tea.Msg, pane int) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+	var updated tea.Model
+
+	switch pane {
+	case paneServers:
+		updated, cmd = m.servers.Update(msg)
+		m.servers = updated.(components.ServersModel)
+	case paneAction:
+		updated, cmd = m.activeAction.Update(msg)
+		m.activeAction = updated.(core.Action)
+	case paneActivity:
+		updated, cmd = m.activity.Update(msg)
+		m.activity = updated.(components.ActivityModel)
+	}
+
+	return m, cmd
+}
+
 func (m ManageServersModel) View() tea.View {
 	if m.layout.Width == 0 {
 		return tea.NewView("loading...")
 	}
 
-	leftView := m.servers.View()
-	topView := m.activeAction.View()
-	bottomView := m.activity.View()
-
 	content := lipgloss.JoinHorizontal(
-		0,
-		leftView.Content,
+		lipgloss.Top,
+		m.servers.View().Content,
 		lipgloss.JoinVertical(
-			0,
-			topView.Content,
-			bottomView.Content,
+			lipgloss.Left,
+			m.activeAction.View().Content,
+			m.activity.View().Content,
 		),
 	)
 
 	return tea.NewView(content)
+}
+
+// Pane rectangles. Each is derived only from the page layout so that every
+// panel keeps the same size no matter which one has focus.
+func (m ManageServersModel) serversWidth() int {
+	return int(float64(m.layout.Width) * serversWidthRatio)
+}
+
+func (m ManageServersModel) serversLayout() core.Layout {
+	return core.Layout{
+		X:      m.layout.X,
+		Y:      m.layout.Y,
+		Width:  m.serversWidth(),
+		Height: m.layout.Height,
+	}
+}
+
+func (m ManageServersModel) actionLayout() core.Layout {
+	return core.Layout{
+		X:      m.layout.X + m.serversWidth(),
+		Y:      m.layout.Y,
+		Width:  m.layout.Width - m.serversWidth(),
+		Height: int(float64(m.layout.Height) * actionHeightRatio),
+	}
+}
+
+func (m ManageServersModel) activityLayout() core.Layout {
+	action := m.actionLayout()
+	return core.Layout{
+		X:      action.X,
+		Y:      action.Y + action.Height,
+		Width:  action.Width,
+		Height: m.layout.Height - action.Height,
+	}
 }
 
 // additional methods
@@ -137,27 +254,10 @@ func (m ManageServersModel) Title() string {
 func (m ManageServersModel) SetLayout(l core.Layout) tea.Model {
 	m.layout = l
 
-	half := int(float64(l.Width) * 0.35)
-	leftLayout := l
-	leftLayout.Width = half
-
-	topHeightRatio := 0.65
-	if m.focus == 2 {
-		topHeightRatio = 0.35
-	}
-
-	topLayout := l
-	topLayout.Width = l.Width - half
-	topLayout.Height = int(float64(l.Height) * topHeightRatio)
-
-	bottomLayout := l
-	bottomLayout.Width = topLayout.Width
-	bottomLayout.Height = l.Height - topLayout.Height
-
 	// propagate to children components
-	m.servers = m.servers.SetLayout(leftLayout)
-	m.activeAction = m.activeAction.SetLayout(topLayout)
-	m.activity = m.activity.SetLayout(bottomLayout)
+	m.servers = m.servers.SetLayout(m.serversLayout())
+	m.activeAction = m.activeAction.SetLayout(m.actionLayout())
+	m.activity = m.activity.SetLayout(m.activityLayout())
 
 	return m
 }

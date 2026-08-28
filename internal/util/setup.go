@@ -8,9 +8,12 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/limelamp/osmium/internal/scope"
 )
 
 // Json structs ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -590,7 +593,17 @@ func downloadFile(url string, filepath string) error {
 	return nil
 }
 
+// DownloadJar downloads (and, for mod loaders, installs) the server files into
+// the process working directory, printing progress to stdout. It is the form
+// the Cobra commands use.
 func DownloadJar(jarType string, jarVersion string) error {
+	return DownloadJarInto(scope.For("."), jarType, jarVersion)
+}
+
+// DownloadJarInto downloads the server files into the scope's directory and
+// reports progress through the scope, so the TUI can show a build log instead
+// of writing over the screen.
+func DownloadJarInto(sc scope.Scope, jarType string, jarVersion string) error {
 	// Deciding which url
 	url := ""
 	var err error
@@ -652,22 +665,22 @@ func DownloadJar(jarType string, jarVersion string) error {
 		output = installerFilename
 	}
 
-	fmt.Println("Downloading the required files....")
+	sc.Logf("Downloading the required files...")
 
-	if err := downloadFile(url, output); err != nil {
+	if err := downloadFile(url, sc.Path(output)); err != nil {
 		return err
 	}
 
-	fmt.Println("Download finished: ", output)
+	sc.Logf("Download finished: %s", output)
 
 	// If it's an installer (NeoForge, Forge, Quilt), run the installer
 	if isInstaller {
-		fmt.Println("Running installer...")
+		sc.Logf("Running installer...")
 		var err error
 		if jarType == "Quilt" {
-			err = RunModLoaderInstaller(jarType, output, jarVersion)
+			err = RunModLoaderInstaller(sc, jarType, output, jarVersion)
 		} else {
-			err = RunModLoaderInstaller(jarType, output)
+			err = RunModLoaderInstaller(sc, jarType, output)
 		}
 		if err != nil {
 			return err
@@ -688,7 +701,7 @@ func DownloadJar(jarType string, jarVersion string) error {
 }
 
 // RunModLoaderInstaller runs the mod loader installer to set up the server (for NeoForge, Forge, Quilt)
-func RunModLoaderInstaller(loaderType string, installerFile string, mcVersion ...string) error {
+func RunModLoaderInstaller(sc scope.Scope, loaderType string, installerFile string, mcVersion ...string) error {
 	var cmd *exec.Cmd
 
 	switch loaderType {
@@ -708,17 +721,23 @@ func RunModLoaderInstaller(loaderType string, installerFile string, mcVersion ..
 		return fmt.Errorf("unknown mod loader type: %s", loaderType)
 	}
 
-	// Run in current directory
-	cmd.Dir, _ = os.Getwd()
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	// Run inside the server directory, capturing the installer's chatter so it
+	// can be shown in a log panel instead of the raw terminal.
+	cmd.Dir = sc.Path()
 
-	fmt.Printf("Installing %s server...\n", loaderType)
+	var installerOutput strings.Builder
+	cmd.Stdout = &installerOutput
+	cmd.Stderr = &installerOutput
+
+	sc.Logf("Installing %s server...", loaderType)
 	if err := cmd.Run(); err != nil {
+		for _, line := range strings.Split(strings.TrimSpace(installerOutput.String()), "\n") {
+			sc.Logf("%s", line)
+		}
 		return fmt.Errorf("installer failed: %w", err)
 	}
 
-	fmt.Println("Installation complete!")
+	sc.Logf("Installation complete!")
 	return nil
 }
 
@@ -741,12 +760,14 @@ func appendToFile(filepath string, line string) error {
 	return nil
 }
 
-// GetServerRunCommand returns the command needed to run the server for a given jar type
-func GetServerRunCommand(jarType string, ram string) (string, []string) {
+// GetServerRunCommand returns the command needed to run the server for a given
+// jar type. dir is the server directory; it is where the loader-specific JVM
+// argument file is written.
+func GetServerRunCommand(dir string, jarType string, ram string) (string, []string) {
 	switch jarType {
 	case "NeoForge", "Forge":
 		// Since NeoForge & Forge both accept arguments only through writing to a specific text file, here it is.
-		appendToFile("user_jvm_args.txt", "\n"+"-Xms"+ram+"\n"+"-Xmx"+ram+"\n")
+		appendToFile(filepath.Join(dir, "user_jvm_args.txt"), "\n"+"-Xms"+ram+"\n"+"-Xmx"+ram+"\n")
 		// NeoForge and Forge create run.bat/run.sh after installation - use those directly
 		switch runtime.GOOS {
 		case "windows": // On Windows specifically, run the batch file

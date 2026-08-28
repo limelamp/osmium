@@ -6,6 +6,7 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/limelamp/osmium/internal/scope"
 	"github.com/limelamp/osmium/internal/shared"
 	"github.com/spf13/cobra"
 )
@@ -27,7 +28,7 @@ Example:
   osmium install`,
 	Args: cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := shared.InstallProjectsFromConfig(); err != nil {
+		if err := shared.InstallProjectsFromConfig(scope.For(".")); err != nil {
 			fmt.Println(err)
 			return
 		}

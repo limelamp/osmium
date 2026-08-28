@@ -2,128 +2,153 @@ package pages
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/limelamp/osmium/internal/config"
-	"github.com/limelamp/osmium/internal/tui/constants"
+	"github.com/limelamp/osmium/internal/tui/components/steps"
 	"github.com/limelamp/osmium/internal/tui/core"
+	"github.com/limelamp/osmium/internal/tui/storage"
 	"github.com/limelamp/osmium/internal/tui/styles"
 	"github.com/limelamp/osmium/internal/tui/theme"
-	"github.com/limelamp/osmium/internal/util"
 )
 
-type NextStepMsg struct{}
-type PrevStepMsg struct{}
-
-type ServerConfig struct {
-	Category string
-	Software string
-	Version  string
-	RAM      string
-	Eula     bool
-	AutoRun  bool
+// wizardStages names the steps in the progress bar. It is the single source of
+// the step numbering, so the heading a step shows can never drift from the
+// position the progress bar puts it in.
+var wizardStages = []string{
+	"Location", "Name", "Engine", "Version", "Memory", "Agreements", "Review", "Build",
 }
 
+// headingRows is how many rows the step heading and its trailing blank take.
+const headingRows = 3
+
+// CreateServerModel walks the user through creating a server. It owns the step
+// order, the progress bar and the shared configuration; the screens themselves
+// live in the steps package.
 type CreateServerModel struct {
 	layout core.Layout
-	config *ServerConfig
-	steps  []tea.Model
+
+	config *steps.Config
+	steps  []steps.Step
 	active int
 }
 
-func NewCreateServerModel() CreateServerModel {
-	cfg := &ServerConfig{
+func NewCreateServerModel(store *storage.ServerStore) CreateServerModel {
+	cfg, _ := config.LoadConfig()
+
+	wizardConfig := &steps.Config{
 		Category: "Vanilla",
 		Software: "Vanilla",
-		Version:  "1.21",
-		RAM:      "4 GB",
+		RAM:      cfg.DefaultRAM,
 	}
 
-	m := CreateServerModel{
-		config: cfg,
-	}
-	m.initSteps()
-	return m
-}
-
-func (m *CreateServerModel) initSteps() {
-	m.steps = []tea.Model{
-		NewLocationStep("Step 1: Select Location to Create the Server in", []string{"Current folder", "Choose a folder", "Default folder"}, func(v string) {
-			m.config.RAM = v
-		}),
-
-		CategoryEngineStep{config: m.config},
-
-		NewSelectStep("Step 3: Select Version", []string{}, func(v string) {
-			m.config.Version = v
-		}),
-
-		NewSelectStep("Step 4: Allocate System Memory", constants.RamOptions, func(v string) {
-			m.config.RAM = v
-		}),
-
-		EulaStep{config: m.config},
-
-		ConfirmStep{config: m.config},
-
-		SuccessStep{config: m.config},
+	return CreateServerModel{
+		config: wizardConfig,
+		steps: []steps.Step{
+			steps.NewLocationStep(wizardConfig, cfg.ServersDir()),
+			steps.NewNameStep(wizardConfig),
+			steps.NewEngineStep(wizardConfig),
+			steps.NewVersionStep(wizardConfig),
+			steps.NewMemoryStep(wizardConfig),
+			steps.NewAgreementsStep(wizardConfig),
+			steps.NewReviewStep(wizardConfig),
+			steps.NewBuildStep(wizardConfig, store),
+		},
 	}
 }
 
 func (m CreateServerModel) Init() tea.Cmd {
-	return nil
+	return m.steps[m.active].Init()
+}
+
+// current is the step being shown.
+func (m CreateServerModel) current() steps.Step {
+	return m.steps[m.active]
+}
+
+// buildStep is the wizard's final step, which owns the created server record.
+func (m CreateServerModel) buildStep() *steps.BuildStep {
+	return m.steps[len(m.steps)-1].(*steps.BuildStep)
+}
+
+// isBuilding reports whether the wizard is on the build step.
+func (m CreateServerModel) isBuilding() bool {
+	return m.active == len(m.steps)-1
+}
+
+// goTo moves to a step and initialises it, which is what starts the version
+// fetch and the build.
+func (m CreateServerModel) goTo(index int) (tea.Model, tea.Cmd) {
+	m.active = min(max(index, 0), len(m.steps)-1)
+	m.steps[m.active] = m.steps[m.active].SetLayout(m.bodyLayout())
+	return m, m.steps[m.active].Init()
 }
 
 func (m CreateServerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyPressMsg:
-		if msg.String() == "backspace" {
-			if m.active == 1 {
-				stepZero := m.steps[1].(CategoryEngineStep)
-				if stepZero.selectingSub {
-					var cmd tea.Cmd
-					m.steps[1], cmd = m.steps[1].Update(msg)
-					return m, cmd
-				}
-			}
+	case steps.NextMsg:
+		return m.goTo(m.active + 1)
 
-			if m.active > 0 && m.active < len(m.steps)-1 {
-				m.active--
-				return m, nil
+	case steps.PrevMsg:
+		return m.goTo(m.active - 1)
+
+	case tea.KeyPressMsg:
+		switch msg.String() {
+		case "esc":
+			return m, core.RouteTo("Home")
+
+		case "backspace":
+			// A step handles backspace itself while it has somewhere of its own
+			// to go back to; only then does it fall through to the wizard.
+			if handled, model, cmd := m.stepHandlesBack(msg); handled {
+				return model, cmd
+			}
+			if m.active > 0 {
+				return m.goTo(m.active - 1)
 			}
 			return m, core.RouteTo("Home")
-		}
 
-	case NextStepMsg:
-		if m.active < len(m.steps)-1 {
-			m.active++
-			if m.active == 2 {
-				versions, err := util.GetVersionStrings("release")
-				if err != nil {
-				}
-
-				m.steps[2] = NewSelectStep(
-					fmt.Sprintf("Step 2: Select Version for %s", m.config.Software),
-					versions,
-					func(v string) { m.config.Version = v },
-				)
+		case "enter":
+			// Finishing the wizard opens Manage Servers, booting the new server
+			// first when that was asked for.
+			if m.isBuilding() && m.buildStep().Done() && !m.buildStep().Failed() {
+				return m, m.finish()
 			}
 		}
-		return m, nil
-
-	case PrevStepMsg:
-		if m.active > 0 {
-			m.active--
-		}
-		return m, nil
 	}
 
 	var cmd tea.Cmd
-	m.steps[m.active], cmd = m.steps[m.active].Update(msg)
+	updated, cmd := m.current().Update(msg)
+	m.steps[m.active] = updated.(steps.Step)
 	return m, cmd
+}
+
+// stepHandlesBack lets the location browser collapse before the wizard steps
+// backwards, mirroring how nested navigation works elsewhere in the app.
+func (m CreateServerModel) stepHandlesBack(msg tea.Msg) (bool, tea.Model, tea.Cmd) {
+	location, ok := m.current().(*steps.LocationStep)
+	if !ok || !location.Browsing() {
+		return false, m, nil
+	}
+
+	updated, cmd := location.Update(msg)
+	m.steps[m.active] = updated.(steps.Step)
+	return true, m, cmd
+}
+
+// finish leaves the wizard for Manage Servers, starting the server on the way
+// when the user asked for it. The commands run in order so the page is already
+// showing before the start request reaches it.
+func (m CreateServerModel) finish() tea.Cmd {
+	if m.config.AutoRun {
+		return tea.Sequence(
+			core.RouteTo("ManageServers"),
+			core.ControlServer(core.ServerStart, m.buildStep().Server()),
+		)
+	}
+	return core.RouteTo("ManageServers")
 }
 
 func (m CreateServerModel) View() tea.View {
@@ -131,49 +156,105 @@ func (m CreateServerModel) View() tea.View {
 		return tea.NewView("loading...")
 	}
 
-	progressBar := m.renderProgressBar()
-	body := m.steps[m.active].View().Content
+	step := m.current()
 
-	helpText := "\n\n" + lipgloss.NewStyle().Foreground(theme.Inactive).Render("  [↑/↓] Navigate  •  [Enter] Select  •  [Backspace] Back")
-
-	view := lipgloss.JoinVertical(
+	content := lipgloss.JoinVertical(
 		lipgloss.Left,
-		progressBar,
+		m.renderProgressBar(),
 		"",
-		body,
-		helpText,
+		styles.StepHeading(m.active+1, step.Title(), step.Subtitle()),
+		"",
+		step.View().Content,
 	)
 
-	return tea.NewView(
-		styles.Container(
-			m.layout.Width,
-			m.layout.Height,
-			true,
-			"Setup New Server",
-			view,
-			true,
-		),
+	// Pad the body so the hint bar sits on the panel's last row rather than
+	// floating directly under the step.
+	body := styles.Body(content, m.layout.ContentHeight()-1)
+	scroll := step.Scroll()
+
+	return tea.NewView(styles.Container(styles.ContainerOpts{
+		Width:         m.layout.Width,
+		Height:        m.layout.Height,
+		Focused:       true,
+		Title:         "Setup New Server",
+		Content:       body + "\n" + m.hints(),
+		ShowHelp:      true,
+		ScrollOffset:  scroll.Offset,
+		ScrollTotal:   scroll.Total,
+		ScrollVisible: scroll.Visible,
+	}))
+}
+
+// hints describe what the current step responds to.
+func (m CreateServerModel) hints() string {
+	width := m.layout.ContentWidth()
+
+	if m.isBuilding() {
+		if m.buildStep().Done() {
+			return styles.Hints(width,
+				styles.Hint{Key: "enter", Desc: "manage servers"},
+				styles.Hint{Key: "backspace", Desc: "back"},
+			)
+		}
+		return styles.Hints(width, styles.Hint{Key: "↑/↓", Desc: "scroll log"})
+	}
+
+	return styles.Hints(width,
+		styles.Hint{Key: "↑/↓/←/→", Desc: "navigate"},
+		styles.Hint{Key: "enter", Desc: "select"},
+		styles.Hint{Key: "backspace", Desc: "back"},
 	)
 }
 
+// renderProgressBar draws the stage strip across the top of the wizard, using
+// the active theme's colours for the completed, current and pending stages.
 func (m CreateServerModel) renderProgressBar() string {
-	steps := []string{"Location", "Engine", "Version", "Specs", "Finilazing", "Confirm"}
-	var renderedSteps []string
+	current := lipgloss.NewStyle().Foreground(theme.Primary).Bold(true)
+	completed := lipgloss.NewStyle().Foreground(theme.Accent)
+	pending := lipgloss.NewStyle().Foreground(theme.Inactive)
 
-	for i, name := range steps {
-		stepIdx := i
-		var s string
-		if stepIdx == m.active {
-			s = lipgloss.NewStyle().Foreground(theme.Primary).Bold(true).Render(fmt.Sprintf("[%d. %s]", i+1, name))
-		} else if stepIdx < m.active {
-			s = lipgloss.NewStyle().Foreground(theme.Accent).Render(fmt.Sprintf("✓ %s", name))
-		} else {
-			s = lipgloss.NewStyle().Foreground(theme.Inactive).Render(fmt.Sprintf("%d. %s", i+1, name))
+	rendered := make([]string, 0, len(wizardStages))
+	for i, name := range wizardStages {
+		switch {
+		case i == m.active:
+			rendered = append(rendered, current.Render(fmt.Sprintf("%d %s", i+1, name)))
+		case i < m.active:
+			rendered = append(rendered, completed.Render("✓ "+name))
+		default:
+			rendered = append(rendered, pending.Render(fmt.Sprintf("%d %s", i+1, name)))
 		}
-		renderedSteps = append(renderedSteps, s)
 	}
 
-	return "  " + lipgloss.JoinHorizontal(0, strings.Join(renderedSteps, "  ➔  "))
+	bar := strings.Join(rendered, pending.Render(" › "))
+	if lipgloss.Width(bar) <= m.layout.ContentWidth() {
+		return bar
+	}
+
+	// Narrow terminals get a compact form; wrapping the strip onto a second
+	// line would push the step's own content off the bottom of the panel.
+	return current.Render(fmt.Sprintf("%d/%d %s", m.active+1, len(wizardStages), wizardStages[m.active])) +
+		pending.Render(m.progressTrack())
+}
+
+// progressTrack is the compact bar drawn beside the stage name when the full
+// strip does not fit.
+func (m CreateServerModel) progressTrack() string {
+	filled := strings.Repeat("━", m.active+1)
+	return "  " + filled + strings.Repeat("─", len(wizardStages)-m.active-1)
+}
+
+// bodyLayout is the rectangle a step may draw its body in, below the progress
+// bar and the heading.
+func (m CreateServerModel) bodyLayout() core.Layout {
+	// One row for the progress bar plus its blank, then the heading block.
+	top := 2 + headingRows
+
+	return core.Layout{
+		X:      m.layout.X + 2,
+		Y:      m.layout.Y + 1 + top,
+		Width:  m.layout.ContentWidth(),
+		Height: max(m.layout.ContentHeight()-top-2, 1),
+	}
 }
 
 func (m CreateServerModel) Title() string {
@@ -182,507 +263,10 @@ func (m CreateServerModel) Title() string {
 
 func (m CreateServerModel) SetLayout(l core.Layout) tea.Model {
 	m.layout = l
+
+	body := m.bodyLayout()
+	for i, step := range m.steps {
+		m.steps[i] = step.SetLayout(body)
+	}
 	return m
-}
-
-// ==========================================
-// subcomponent LocationStep (Step 1)
-// ==========================================
-type LocationStep struct {
-	title    string
-	options  []string
-	cursor   int
-	onSelect func(string)
-}
-
-func NewLocationStep(title string, options []string, onSelect func(string)) LocationStep {
-	return LocationStep{
-		title:    title,
-		options:  options,
-		onSelect: onSelect,
-	}
-}
-
-func (s LocationStep) Init() tea.Cmd { return nil }
-
-func (s LocationStep) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.KeyPressMsg:
-		switch msg.String() {
-		case "up", "k":
-			if s.cursor > 0 {
-				s.cursor--
-			}
-
-		case "down", "j":
-			if s.cursor < len(s.options)-1 {
-				s.cursor++
-			}
-
-		case "enter", " ":
-			if len(s.options) > 0 {
-				s.onSelect(s.options[s.cursor])
-				return s, func() tea.Msg { return NextStepMsg{} }
-			}
-		}
-	}
-	return s, nil
-}
-
-func (s LocationStep) View() tea.View {
-	var b strings.Builder
-	b.WriteString(lipgloss.NewStyle().Bold(true).Render(s.title))
-	b.WriteString("\n\n")
-
-	for i, opt := range s.options {
-		if i == s.cursor {
-			b.WriteString(lipgloss.NewStyle().Foreground(theme.Primary).Bold(true).Render(
-				fmt.Sprintf("  ➔ %s", opt)))
-			b.WriteString("\n\n")
-		} else {
-			b.WriteString(fmt.Sprintf("    %s\n\n", opt))
-		}
-	}
-	return tea.NewView(b.String())
-}
-
-// ==========================================
-// subcomponent CategoryEngineStep (Steps 2)
-// ==========================================
-
-type CategoryEngineStep struct {
-	config       *ServerConfig
-	categoryIdx  int
-	engineIdx    int
-	selectingSub bool
-}
-
-func (s CategoryEngineStep) Init() tea.Cmd { return nil }
-
-func (s CategoryEngineStep) getEnginesForCategory() []string {
-	chosen := constants.Categories[s.categoryIdx]
-	switch chosen {
-	case "Plugin":
-		return constants.PluginOptions
-
-	case "Mod Loader":
-		return constants.ModLoaderOptions
-	}
-	return nil
-}
-
-func (s CategoryEngineStep) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.KeyPressMsg:
-		key := msg.String()
-		if !s.selectingSub {
-			switch key {
-			case "up", "k":
-				if s.categoryIdx > 0 {
-					s.categoryIdx--
-				}
-
-			case "down", "j":
-				if s.categoryIdx < len(constants.Categories)-1 {
-					s.categoryIdx++
-				}
-
-			case "enter", " ", "right", "l":
-				chosen := constants.Categories[s.categoryIdx]
-				s.config.Category = chosen
-				if chosen == "Vanilla" {
-					s.config.Software = "Vanilla"
-					return s, func() tea.Msg { return NextStepMsg{} }
-				} else {
-					s.selectingSub = true
-					s.engineIdx = 0
-				}
-			}
-		} else {
-			engines := s.getEnginesForCategory()
-			switch key {
-			case "up", "k":
-				if s.engineIdx > 0 {
-					s.engineIdx--
-				}
-
-			case "down", "j":
-				if s.engineIdx < len(engines)-1 {
-					s.engineIdx++
-				}
-
-			case "left", "h", "esc", "backspace":
-				// Collapse sub-selection back to categories panel
-				s.selectingSub = false
-
-			case "enter", " ":
-				s.config.Software = engines[s.engineIdx]
-				// Complete step and signal parent model to advance
-				return s, func() tea.Msg { return NextStepMsg{} }
-			}
-		}
-	}
-	return s, nil
-}
-
-func (s CategoryEngineStep) View() tea.View {
-	var b strings.Builder
-	b.WriteString(lipgloss.NewStyle().Bold(true).Render("Step 1: Choose Server Engine"))
-	b.WriteString("\n\n")
-
-	// Render Left Panel (Categories)
-	var leftLines []string
-	for i, cat := range constants.Categories {
-		if i == s.categoryIdx {
-			if s.selectingSub {
-				// Category is active, but sub-menu has focus
-				leftLines = append(leftLines, lipgloss.NewStyle().Foreground(theme.Accent).Render(fmt.Sprintf("  • %s", cat)))
-			} else {
-				// Focus is on Category list
-				leftLines = append(leftLines, lipgloss.NewStyle().Foreground(theme.Primary).Bold(true).Render(fmt.Sprintf("  ➔ %s", cat)))
-			}
-		} else {
-			leftLines = append(leftLines, fmt.Sprintf("    %s", cat))
-		}
-	}
-	leftPanel := strings.Join(leftLines, "\n\n")
-
-	// Render Right Panel (Sub-Engines)
-	var rightPanel string
-	chosenCat := constants.Categories[s.categoryIdx]
-	if chosenCat != "Vanilla" {
-		var rightLines []string
-		rightLines = append(rightLines, lipgloss.NewStyle().Bold(true).Underline(true).Render("Available Software:"))
-		rightLines = append(rightLines, "")
-
-		engines := s.getEnginesForCategory()
-		for i, eng := range engines {
-			if s.selectingSub && i == s.engineIdx {
-				rightLines = append(rightLines, lipgloss.NewStyle().Foreground(theme.Primary).Bold(true).Render(fmt.Sprintf("  ➔ %s", eng)))
-			} else {
-				rightLines = append(rightLines, fmt.Sprintf("    %s", eng))
-			}
-		}
-		rightPanel = strings.Join(rightLines, "\n")
-	}
-
-	// Join both panels side-by-side
-	var layout string
-	if rightPanel != "" {
-		layout = lipgloss.JoinHorizontal(
-			lipgloss.Top,
-			lipgloss.NewStyle().Width(30).Render(leftPanel),
-			"      ", // gap spacing
-			lipgloss.NewStyle().Render(rightPanel),
-		)
-	} else {
-		layout = leftPanel
-	}
-
-	b.WriteString(layout)
-	return tea.NewView(b.String())
-}
-
-// ==========================================
-// subcomponent SelectStep (Steps 3, 4)
-// ==========================================
-
-type SelectStep struct {
-	title    string
-	options  []string
-	cursor   int
-	onSelect func(string)
-
-	offset  int // index of first visible item
-	visible int // how many items to show at once
-}
-
-func NewSelectStep(title string, options []string, onSelect func(string)) SelectStep {
-	return SelectStep{
-		title:    title,
-		options:  options,
-		onSelect: onSelect,
-		visible:  10,
-	}
-}
-
-func (s SelectStep) Init() tea.Cmd { return nil }
-
-func (s SelectStep) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.KeyPressMsg:
-		switch msg.String() {
-		case "up", "k":
-			if s.cursor > 0 {
-				s.cursor--
-				if s.cursor < s.offset {
-					s.offset--
-				}
-			}
-
-		case "down", "j":
-			if s.cursor < len(s.options)-1 {
-				s.cursor++
-				if s.cursor >= s.offset+s.visible {
-					s.offset++
-				}
-			}
-
-		case "enter", " ":
-			if len(s.options) > 0 {
-				s.onSelect(s.options[s.cursor])
-				return s, func() tea.Msg { return NextStepMsg{} }
-			}
-		}
-	}
-	return s, nil
-}
-
-func (s SelectStep) View() tea.View {
-	var b strings.Builder
-	b.WriteString(lipgloss.NewStyle().Bold(true).Render(s.title))
-	b.WriteString("\n\n")
-
-	end := s.offset + s.visible
-	if end > len(s.options) {
-		end = len(s.options)
-	}
-
-	for i, opt := range s.options[s.offset:end] {
-		actualIdx := s.offset + i
-		if actualIdx == s.cursor {
-			b.WriteString(lipgloss.NewStyle().Foreground(theme.Primary).Bold(true).Render(
-				fmt.Sprintf("  ➔ %s", opt)))
-			b.WriteString("\n\n")
-		} else {
-			b.WriteString(fmt.Sprintf("    %s\n\n", opt))
-		}
-	}
-	return tea.NewView(b.String())
-}
-
-// ==========================================
-// subcomponent EulaStep (Step 5)
-// ==========================================
-
-type EulaStep struct {
-	config *ServerConfig
-	cursor int
-	warn   string
-}
-
-func (e EulaStep) Init() tea.Cmd { return nil }
-
-func (e EulaStep) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.KeyPressMsg:
-		switch msg.String() {
-		case "up", "k":
-			if e.cursor > 0 {
-				e.cursor--
-			}
-
-		case "down", "j":
-			if e.cursor < 2 {
-				e.cursor++
-			}
-
-		case "enter", " ":
-			switch e.cursor {
-			case 0:
-				e.config.Eula = !e.config.Eula
-				e.warn = ""
-			case 1:
-				e.config.AutoRun = !e.config.AutoRun
-			case 2:
-				if e.config.Eula {
-					return e, func() tea.Msg { return NextStepMsg{} }
-				} else {
-					e.warn = "⚠️ You must accept the Mojang EULA to proceed."
-				}
-			}
-		}
-	}
-	return e, nil
-}
-
-func (e EulaStep) View() tea.View {
-	var b strings.Builder
-	b.WriteString(lipgloss.NewStyle().Bold(true).Render("Step 5: Agreements & Configurations"))
-	b.WriteString("\n\n")
-
-	eulaCheck := "[ ]"
-	if e.config.Eula {
-		eulaCheck = "[X]"
-	}
-	if e.cursor == 0 {
-		b.WriteString(lipgloss.NewStyle().Foreground(theme.Primary).Bold(true).Render(fmt.Sprintf("  ➔ %s Accept Minecraft EULA License Agreement", eulaCheck)))
-		b.WriteString("\n")
-	} else {
-		b.WriteString(fmt.Sprintf("    %s Accept Minecraft EULA License Agreement\n", eulaCheck))
-	}
-	b.WriteString(lipgloss.NewStyle().Foreground(theme.Inactive).Render("      (https://account.mojang.com/documents/minecraft_eula)"))
-	b.WriteString("\n\n")
-
-	startCheck := "[ ]"
-	if e.config.AutoRun {
-		startCheck = "[X]"
-	}
-	if e.cursor == 1 {
-		b.WriteString(lipgloss.NewStyle().Foreground(theme.Primary).Bold(true).Render(fmt.Sprintf("  ➔ %s Boot server instantly on setup", startCheck)))
-		b.WriteString("\n\n")
-	} else {
-		b.WriteString(fmt.Sprintf("    %s Boot server instantly on setup\n\n", startCheck))
-	}
-
-	var btn string
-	if e.cursor == 2 {
-		btn = lipgloss.NewStyle().Foreground(theme.Primary).Bold(true).Render("  ➔ [ Continue ]")
-	} else {
-		btn = "    [ Continue ]"
-	}
-	b.WriteString(btn)
-	b.WriteString("\n")
-
-	if e.warn != "" {
-		b.WriteString("\n")
-		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true).Render("  " + e.warn))
-		b.WriteString("\n")
-	}
-
-	return tea.NewView(b.String())
-}
-
-// ==========================================
-// subcomponent ConfirmStep (Step 5)
-// ==========================================
-
-type ConfirmStep struct {
-	config *ServerConfig
-	cursor int
-	err    error
-}
-
-func (c ConfirmStep) Init() tea.Cmd { return nil }
-
-func (c ConfirmStep) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.KeyPressMsg:
-		switch msg.String() {
-		case "up", "k", "down", "j":
-			c.cursor = (c.cursor + 1) % 2
-
-		case "enter", " ":
-			if c.cursor == 0 { // Execution functionality implemented from previous setup.go
-
-				// 1. Download the server jar
-				if err := util.DownloadJar(c.config.Software, c.config.Version); err != nil {
-					c.err = err
-					return c, nil
-				}
-
-				// 2. Write Osmium config file
-				osmiumConf := config.OsmiumConfig{
-					Category:     c.config.Category,
-					Loader:       c.config.Software,
-					Version:      c.config.Version,
-					AllocatedRAM: c.config.RAM,
-					Mods:         make(map[string]config.Project),
-					Plugins:      make(map[string]config.Project),
-				}
-				if err := config.WriteConfig(&osmiumConf); err != nil {
-					c.err = err
-					return c, nil
-				}
-
-				// 3. EULA Agreement creation
-				if c.config.Eula {
-					content := "#By changing the setting below to TRUE you are indicating your agreement to our EULA (https://aka.ms/MinecraftEULA).\n"
-					content += "eula=true\n"
-
-					if err := os.WriteFile("eula.txt", []byte(content), 0644); err != nil {
-						c.err = err
-						return c, nil
-					}
-				}
-
-				return c, func() tea.Msg { return NextStepMsg{} }
-			}
-			return c, func() tea.Msg { return PrevStepMsg{} }
-		}
-	}
-	return c, nil
-}
-
-func (c ConfirmStep) View() tea.View {
-	var b strings.Builder
-	b.WriteString(lipgloss.NewStyle().Bold(true).Render("Step 5: Review Server Details"))
-	b.WriteString("\n\n")
-
-	if c.err != nil {
-		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#FF0000")).Bold(true).Render(fmt.Sprintf("  Error: %s\n\n", c.err.Error())))
-	}
-
-	b.WriteString(fmt.Sprintf("  Engine:   %s\n", lipgloss.NewStyle().Foreground(theme.Accent).Render(c.config.Software)))
-	b.WriteString(fmt.Sprintf("  Version:  %s\n", lipgloss.NewStyle().Foreground(theme.Accent).Render(c.config.Version)))
-	b.WriteString(fmt.Sprintf("  Memory:   %s\n", lipgloss.NewStyle().Foreground(theme.Accent).Render(c.config.RAM)))
-
-	startStatus := "No"
-	if c.config.AutoRun {
-		startStatus = "Yes"
-	}
-	b.WriteString(fmt.Sprintf("  Boot:     %s\n\n", lipgloss.NewStyle().Foreground(theme.Accent).Render(startStatus)))
-
-	b.WriteString("Confirm creation of the Minecraft server setup?\n\n")
-
-	var confirmBtn, cancelBtn string
-	if c.cursor == 0 {
-		confirmBtn = lipgloss.NewStyle().Foreground(theme.Primary).Bold(true).Render("  ➔ [ Build Server ]")
-		cancelBtn = "    [ Back to Options ]"
-	} else {
-		confirmBtn = "    [ Build Server ]"
-		cancelBtn = lipgloss.NewStyle().Foreground(theme.Primary).Bold(true).Render("  ➔ [ Back to Options ]")
-	}
-
-	b.WriteString(confirmBtn)
-	b.WriteString("\n")
-	b.WriteString(cancelBtn)
-	return tea.NewView(b.String())
-}
-
-// ==========================================
-// subcomponent SuccessStep (Step 6)
-// ==========================================
-
-type SuccessStep struct {
-	config *ServerConfig
-}
-
-func (s SuccessStep) Init() tea.Cmd { return nil }
-
-func (s SuccessStep) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.KeyPressMsg:
-		if msg.String() == "enter" {
-			return s, core.RouteTo("ManageServers")
-		}
-	}
-	return s, nil
-}
-
-func (s SuccessStep) View() tea.View {
-	var b strings.Builder
-	b.WriteString(lipgloss.NewStyle().Foreground(theme.Accent).Bold(true).Render("✓ Server Created Successfully!"))
-	b.WriteString("\n\n")
-	b.WriteString(fmt.Sprintf("Your %s %s instance is ready.\n", s.config.Software, s.config.Version))
-	b.WriteString(fmt.Sprintf("Allocated Resource Cap: %s RAM\n\n", s.config.RAM))
-
-	if s.config.AutoRun {
-		b.WriteString("Spinning up instances now in the background...\n\n")
-	}
-
-	b.WriteString("Press ")
-	b.WriteString(lipgloss.NewStyle().Foreground(theme.Primary).Bold(true).Render("[Enter]"))
-	b.WriteString(" to continue.")
-	return tea.NewView(b.String())
 }

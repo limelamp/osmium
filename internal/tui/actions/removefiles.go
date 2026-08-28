@@ -1,142 +1,143 @@
 package actions
 
 import (
-	"fmt"
 	"os"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/limelamp/osmium/internal/tui/core"
+	"github.com/limelamp/osmium/internal/tui/storage"
 	"github.com/limelamp/osmium/internal/tui/styles"
+	"github.com/limelamp/osmium/internal/tui/theme"
 )
 
-// RemoveFiles Model
+// RemoveFilesModel lists the selected server's directory and deletes whichever
+// entries the user marks.
 type RemoveFilesModel struct {
-	layout core.Layout
+	base
 
-	cursor   int
 	options  []os.DirEntry
 	selected map[int]bool
-	isFocus  bool
-	err      error
 }
 
 func NewRemoveFilesModel() RemoveFilesModel {
-	entries, _ := os.ReadDir(".")
-
 	return RemoveFilesModel{
-		cursor:   0,
-		options:  entries,
 		selected: make(map[int]bool),
 	}
 }
 
-// RemoveFiles State
 func (m RemoveFilesModel) Init() tea.Cmd {
 	return nil
 }
 
+// reload re-reads the server directory after a change on disk.
+func (m RemoveFilesModel) reload() RemoveFilesModel {
+	entries, err := os.ReadDir(m.dir())
+	if err != nil {
+		m.err = err
+		entries = nil
+	}
+
+	m.options = entries
+	m.base = m.setCount(len(entries))
+	return m
+}
+
 func (m RemoveFilesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c", "q":
-			return m, tea.Quit
-		case "up":
-			if m.cursor > 0 {
-				m.cursor--
-			}
-		case "down":
-			if m.cursor < len(m.options)-1 {
-				m.cursor++
-			}
-		case "backspace":
+	case tea.MouseMsg:
+		updated, activated := m.handleMouse(msg)
+		m.base = updated
+		if activated {
+			return m.toggle(), nil
+		}
+		return m, nil
+
+	case tea.KeyPressMsg:
+		if list, handled := m.list.HandleKey(msg.String()); handled {
+			m.list = list
 			return m, nil
-		case "space":
-			if len(m.options) > 0 {
-				m.selected[m.cursor] = !m.selected[m.cursor]
-			}
+		}
+
+		switch msg.String() {
+		case "backspace":
+			return m, core.CloseAction()
+
+		case " ":
+			return m.toggle(), nil
+
 		case "ctrl+a":
-			for i := 0; i < len(m.options); i++ {
+			for i := range m.options {
 				m.selected[i] = true
 			}
+
 		case "enter":
-			for i, selected := range m.selected {
-				if !selected || i < 0 || i >= len(m.options) {
-					continue
-				}
-
-				if err := os.RemoveAll(m.options[i].Name()); err != nil {
-					m.err = err
-					return m, nil
-				}
-			}
-
-			m.selected = make(map[int]bool)
-			entries, err := os.ReadDir(".")
-			if err != nil {
-				m.err = err
-				return m, nil
-			}
-			m.options = entries
-
-			if m.cursor >= len(m.options) && len(m.options) > 0 {
-				m.cursor = len(m.options) - 1
-			}
-			if len(m.options) == 0 {
-				m.cursor = 0
-			}
-
-			if len(m.options) == 0 {
-				m.cursor = 0
-			}
+			return m.removeSelected()
 		}
 	}
+
 	return m, nil
 }
 
-// RemoveFiles View
-func (m RemoveFilesModel) View() tea.View {
-	content := ""
-	selectedStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#FF0000"))
-
-	if m.err != nil {
-		errorStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#FF0000")).
-			Bold(true)
-		content += errorStyle.Render("Error: "+m.err.Error()) + "\n\n"
+// toggle marks or unmarks the entry under the cursor.
+func (m RemoveFilesModel) toggle() RemoveFilesModel {
+	if len(m.options) > 0 {
+		m.selected[m.list.Cursor] = !m.selected[m.list.Cursor]
 	}
+	return m
+}
 
-	// Create a simple list
-	for i := 0; i < len(m.options); i++ {
-		cursor := "  "
-		if m.cursor == i {
-			cursor = "> "
+// removeSelected deletes every marked entry and reloads the listing.
+func (m RemoveFilesModel) removeSelected() (tea.Model, tea.Cmd) {
+	removed := make([]string, 0, len(m.selected))
+
+	for i, selected := range m.selected {
+		if !selected || i < 0 || i >= len(m.options) {
+			continue
 		}
 
 		name := m.options[i].Name()
-
-		if m.selected[i] {
-			// Selected: add asterisk and color red
-			content += fmt.Sprintf("%s%s\n", cursor, selectedStyle.Render("* "+name))
-		} else {
-			// Not selected: normal display
-			content += fmt.Sprintf("%s  %s\n", cursor, name)
+		if err := os.RemoveAll(m.scope(nil).Path(name)); err != nil {
+			m.err = err
+			return m, nil
 		}
+		removed = append(removed, "Removed "+name)
 	}
 
-	content += "\n\n" + "Navigate using arrow keys. Press ctrl + a to toggle all. Press 'q' to exit, 'backspace' to go back.\n\n"
+	m.err = nil
+	m.selected = make(map[int]bool)
 
-	return tea.NewView(styles.Container(
-		m.layout.Width,
-		m.layout.Height,
-		m.isFocus,
-		m.Title(),
-		content,
-		false,
-	))
+	return m.reload(), core.Log(removed...)
+}
 
+func (m RemoveFilesModel) View() tea.View {
+	if m.needsServer() {
+		return m.noServerView(m.Title())
+	}
+
+	if len(m.options) == 0 {
+		return m.emptyView(m.Title(), "This server's folder is empty.",
+			styles.Hint{Key: "backspace", Desc: "back"})
+	}
+
+	return m.listView(m.Title(), func(i int) string {
+		label := m.options[i].Name()
+		if m.options[i].IsDir() {
+			label += "/"
+		}
+
+		if m.selected[i] {
+			label = lipgloss.NewStyle().Foreground(theme.Accent).Render("✓ " + label)
+		} else {
+			label = "  " + label
+		}
+		return m.row(i, label, "")
+	},
+		styles.Hint{Key: "space", Desc: "mark"},
+		styles.Hint{Key: "ctrl+a", Desc: "mark all"},
+		styles.Hint{Key: "enter", Desc: "delete marked"},
+		styles.Hint{Key: "backspace", Desc: "back"},
+	)
 }
 
 // additional methods
@@ -146,10 +147,16 @@ func (m RemoveFilesModel) Title() string {
 
 func (m RemoveFilesModel) SetLayout(l core.Layout) core.Action {
 	m.layout = l
+	m.base = m.setCount(len(m.options))
 	return m
 }
 
 func (m RemoveFilesModel) SetFocus(focused bool) core.Action {
 	m.isFocus = focused
 	return m
+}
+
+func (m RemoveFilesModel) SetServer(server *storage.Server) core.Action {
+	m.server = server
+	return m.reload()
 }

@@ -6,6 +6,7 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/limelamp/osmium/internal/scope"
 	"github.com/limelamp/osmium/internal/shared"
 	"github.com/spf13/cobra"
 )
@@ -21,7 +22,7 @@ Example:
   osmium track`,
 	Args: cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
-		err := shared.TrackProjects()
+		err := shared.TrackProjects(scope.For("."))
 		if err != nil {
 			fmt.Println(err)
 		}
