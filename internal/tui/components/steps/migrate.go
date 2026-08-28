@@ -1,17 +1,17 @@
 package steps
 
 import (
+	"fmt"
 	"strings"
 
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/limelamp/osmium/internal/config"
 	"github.com/limelamp/osmium/internal/scope"
 	"github.com/limelamp/osmium/internal/shared"
+	"github.com/limelamp/osmium/internal/supervisor"
 	"github.com/limelamp/osmium/internal/tui/core"
 	"github.com/limelamp/osmium/internal/tui/styles"
-	"github.com/limelamp/osmium/internal/tui/theme"
 )
 
 // MigrateStep moves a server to another loader and version, streaming what it
@@ -47,6 +47,14 @@ func (s *MigrateStep) Init() tea.Cmd {
 	// Coming back to a finished migration must not run it a second time: the
 	// mods have already been replaced.
 	if s.started {
+		return nil
+	}
+
+	// Replacing the jar under a running server would leave it running one
+	// version and configured for another.
+	if supervisor.Running(s.config.Dir) {
+		s.started, s.done = true, true
+		s.err = fmt.Errorf("%s is running — stop it before migrating it", s.config.Name)
 		return nil
 	}
 
@@ -164,19 +172,3 @@ func (s *MigrateStep) Scroll() core.Scroll {
 
 // Editing reports that the log takes no typed input.
 func (s *MigrateStep) Editing() bool { return false }
-
-// Summary is the one-line description of what the migration will do, shown
-// before it starts.
-func Summary(cfg *Config) string {
-	conf, err := config.ReadConfigIn(cfg.Dir)
-	if err != nil {
-		return cfg.Name
-	}
-
-	from := lipgloss.NewStyle().Foreground(theme.Inactive).
-		Render(conf.Loader + " " + conf.Version)
-	to := lipgloss.NewStyle().Foreground(theme.Accent).
-		Render(cfg.Software + " " + cfg.Version)
-
-	return cfg.Name + ": " + from + " → " + to
-}

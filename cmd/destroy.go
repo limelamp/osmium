@@ -100,7 +100,7 @@ func targetServer() (storage.Server, error) {
 		return storage.Server{}, err
 	}
 
-	servers, err := store.LoadAll()
+	servers, _, err := store.Load()
 	if err != nil {
 		return storage.Server{}, err
 	}

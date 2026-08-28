@@ -815,14 +815,12 @@ func MigrateServer(sc scope.Scope, loader string, version string) error {
 		}
 	}
 
-	// Step 3: Update config file with new loader and version
-	sc.Logf("--- Updating osmium.json ---")
-	if err := config.WriteConfigIn(sc.Dir, newConf); err != nil {
-		return fmt.Errorf("failed to update osmium.json: %w", err)
-	}
-	sc.Logf("✓ Config updated")
-
-	// Step 4: Download and install new server.jar (only if loader or version changed)
+	// Step 3: Download and install new server.jar (only if loader or version changed)
+	//
+	// The jar comes before the manifest is rewritten: a failed download would
+	// otherwise leave osmium.json claiming a version the folder does not have,
+	// and everything that reads the manifest — the server list included —
+	// would report the server as something it is not.
 	if strings.EqualFold(oldConf.Loader, loader) && oldConf.Version == version {
 		sc.Logf("--- Server.jar unchanged ---")
 		sc.Logf("✓ Same loader and version, skipping server.jar download")
@@ -833,6 +831,13 @@ func MigrateServer(sc scope.Scope, loader string, version string) error {
 		}
 		sc.Logf("✓ Server files downloaded")
 	}
+
+	// Step 4: Update config file with new loader and version
+	sc.Logf("--- Updating osmium.json ---")
+	if err := config.WriteConfigIn(sc.Dir, newConf); err != nil {
+		return fmt.Errorf("failed to update osmium.json: %w", err)
+	}
+	sc.Logf("✓ Config updated")
 
 	sc.Logf("\n=== Migration completed! ===")
 	sc.Logf("Server migrated from %s %s to %s %s", oldConf.Loader, oldConf.Version, loader, version)

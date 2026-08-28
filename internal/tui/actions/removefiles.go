@@ -45,6 +45,9 @@ func (m RemoveFilesModel) reload() RemoveFilesModel {
 
 func (m RemoveFilesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case core.RefreshMsg:
+		return m.reload(), nil
+
 	case tea.MouseMsg:
 		updated, activated := m.handleMouse(msg)
 		m.base = updated

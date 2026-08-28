@@ -52,7 +52,7 @@ func resolveScope() (scope.Scope, error) {
 // findServer looks a registered server up by name, case-insensitively, and
 // falls back to matching its folder name so tab-completed paths work too.
 func findServer(name string) (storage.Server, error) {
-	servers, err := store.LoadAll()
+	servers, _, err := store.Load()
 	if err != nil {
 		return storage.Server{}, err
 	}

@@ -117,24 +117,32 @@ func (g Grid) follow() Grid {
 	return g
 }
 
-// moveColumn steps sideways, keeping the row within the new column.
+// moveColumn steps sideways, wrapping between the first and last column and
+// keeping the row within the column it lands in.
 func (g Grid) moveColumn(delta int) Grid {
-	if len(g.columns) == 0 {
+	count := len(g.columns)
+	if count == 0 {
 		return g
 	}
 
-	g.col = min(max(g.col+delta, 0), len(g.columns)-1)
+	g.col = ((g.col+delta)%count + count) % count
 	g.row = min(g.row, max(0, len(g.columns[g.col].Items)-1))
 	return g.follow()
 }
 
-// moveRow steps up or down inside the current column.
+// moveRow steps up or down inside the current column, wrapping around its ends
+// the way the lists do.
 func (g Grid) moveRow(delta int) Grid {
 	if len(g.columns) == 0 {
 		return g
 	}
 
-	g.row = min(max(g.row+delta, 0), max(0, len(g.columns[g.col].Items)-1))
+	items := len(g.columns[g.col].Items)
+	if items == 0 {
+		return g
+	}
+
+	g.row = ((g.row+delta)%items + items) % items
 	return g.follow()
 }
 

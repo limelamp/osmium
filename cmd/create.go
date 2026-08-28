@@ -194,6 +194,11 @@ func pendingSteps(cfg *steps.Config, defaultDir string) []steps.Step {
 	if cfg.Version == "" {
 		pending = append(pending, steps.NewVersionStep(cfg))
 	}
+	if createflags.ram == "" {
+		// The configured default only pre-selects the step; it is still asked,
+		// because --ram is what says the question has been answered.
+		pending = append(pending, steps.NewMemoryStep(cfg))
+	}
 	if !cfg.Eula {
 		// The EULA cannot be accepted on someone's behalf, so its step is only
 		// skipped when --eula said so explicitly.

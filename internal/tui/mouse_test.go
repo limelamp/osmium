@@ -164,3 +164,23 @@ func containsRow(rows []string, text string) bool {
 	}
 	return false
 }
+
+// The page is drawn inside the app, under a title bar that only some pages
+// have. A click is answered against the layout the app handed the page, so the
+// two have to agree about where the page starts — this drives the whole app so
+// that a row spent on the chrome cannot go unnoticed.
+func TestAppClickReachesTheRowUnderThePointer(t *testing.T) {
+	app := NewAppModel(storage.NewServerStore())
+
+	var model tea.Model = app
+	model, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+
+	rows := screen(model.View().Content)
+	y := rowOf(t, rows, core.Layout{}, "Migrate server")
+
+	model, _ = model.Update(click(40, y))
+	if after := screen(model.View().Content); !containsRow(after, "> Migrate server") {
+		t.Errorf("clicking Migrate server on screen row %d did not select it:\n%s",
+			y, strings.Join(after, "\n"))
+	}
+}

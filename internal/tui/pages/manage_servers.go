@@ -151,6 +151,22 @@ func (m ManageServersModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case core.CloseActionMsg:
 		return m.swapAction(m.menu())
 
+	case core.WakeMsg:
+		activity, cmd := m.activity.Wake()
+		m.activity = activity
+		return m, cmd
+
+	// A finished operation is two things: output for the console, and a reason
+	// for the panel that started it to re-read what it shows.
+	case core.OperationDoneMsg:
+		activity, cmd := m.activity.Update(core.LogMsg{Lines: msg.Lines})
+		m.activity = activity.(components.ActivityModel)
+
+		action, refreshCmd := m.activeAction.Update(core.RefreshMsg{})
+		m.activeAction = action.(core.Action)
+
+		return m, tea.Batch(cmd, refreshCmd)
+
 	case core.SelectServerMsg:
 		// Panels reload from disk when they are handed a server, so only a real
 		// change is propagated — otherwise every arrow key would rescan the

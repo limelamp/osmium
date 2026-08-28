@@ -124,6 +124,17 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+	// The console lives on the Manage Servers page, but an operation started
+	// there can finish while the user is somewhere else. Its output is handed
+	// to that page wherever they are, instead of to whatever page happens to be
+	// on screen, which would drop it.
+	case core.LogMsg, core.OperationDoneMsg:
+		if m.activePage.Title() != m.manageServers.Title() {
+			updated, cmd := m.manageServers.Update(msg)
+			m.manageServers = updated.(pages.ManageServersModel)
+			return m, cmd
+		}
+
 	case core.ChangePageMsg:
 		switch msg.Target {
 		case "Home":
@@ -175,18 +186,20 @@ func (m *appModel) retain(page Page) {
 }
 
 func (m appModel) View() tea.View {
-	pageView := m.activePage.View()
+	baseContent := m.activePage.View().Content
 
-	var title string
-	if m.activePage.Title() != "Home" {
-		title = styles.Title(m.layout.Width, "Osmium", m.activePage.Title())
+	// A page without a title bar is drawn on its own. Joining it to an empty
+	// title would still spend a row on that title, putting every row of the
+	// page one lower than the layout its components hit-test clicks against —
+	// which is why the title bar's presence is decided by the same titleHeight
+	// the layout is derived from.
+	if m.titleHeight(m.activePage) > 0 {
+		baseContent = lipgloss.JoinVertical(
+			0,
+			styles.Title(m.layout.Width, "Osmium", m.activePage.Title()),
+			baseContent,
+		)
 	}
-
-	baseContent := lipgloss.JoinVertical(
-		0,
-		title,
-		pageView.Content,
-	)
 
 	// The page describes the keys that work where the user actually is, so the
 	// modal lists those rather than one fixed set for the whole app.

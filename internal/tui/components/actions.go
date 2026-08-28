@@ -161,22 +161,26 @@ func (m ActionsModel) selectable(index int) bool {
 }
 
 // settle moves the cursor off a heading or a blank onto the next entry in the
-// direction it was already travelling, so the headings are seen but never
-// landed on.
+// direction it was travelling, wrapping at the ends the way the lists do, so
+// the headings are seen but never landed on.
 func (m ActionsModel) settle(direction int) ActionsModel {
 	if !m.hasEntries() {
 		return m
 	}
+	if direction == 0 {
+		direction = 1
+	}
 
 	for !m.selectable(m.list.Cursor) {
-		next := m.list.Cursor + direction
-		if next < 0 || next >= len(m.rows) {
-			direction = -direction // bounced off an end: come back the other way
-			continue
-		}
-		m.list = m.list.MoveTo(next)
+		m.list = m.list.Cycle(direction)
 	}
 	return m
+}
+
+// move steps the cursor by one entry, skipping the headings between them.
+func (m ActionsModel) move(delta int) ActionsModel {
+	m.list = m.list.Cycle(delta)
+	return m.settle(delta)
 }
 
 // hasEntries reports whether there is anything the cursor could rest on, which
@@ -207,6 +211,20 @@ func (m ActionsModel) activate() tea.Cmd {
 	return entry.activate(m)
 }
 
+// moveFor applies one of the shared navigation keys and then settles the
+// cursor on an entry, in the direction that key travels.
+func (m ActionsModel) moveFor(key string, direction int) ActionsModel {
+	switch key {
+	case "up", "k", "down", "j":
+		return m.move(direction)
+	}
+
+	if list, handled := m.list.HandleKey(key); handled {
+		m.list = list
+	}
+	return m.settle(direction)
+}
+
 // run executes a whole-server operation, reporting into the Activity pane.
 func (m ActionsModel) run(label string, op func(scope.Scope) error) tea.Cmd {
 	if m.server == nil {
@@ -233,6 +251,9 @@ func (m ActionsModel) refreshDetails() ActionsModel {
 
 func (m ActionsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case core.RefreshMsg:
+		return m.refreshDetails(), nil
+
 	case detailTickMsg:
 		return m.refreshDetails(), detailTick()
 
@@ -252,15 +273,14 @@ func (m ActionsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyPressMsg:
-		before := m.list.Cursor
-		if list, handled := m.list.HandleKey(msg.String()); handled {
-			m.list = list
-
-			direction := 1
-			if m.list.Cursor < before {
-				direction = -1
-			}
-			return m.settle(direction), nil
+		// The direction comes from the key rather than from where the cursor
+		// ended up: a wrap moves it the other way, and settling has to keep
+		// travelling the way the user was going.
+		switch msg.String() {
+		case "up", "k", "pgup", "end":
+			return m.moveFor(msg.String(), -1), nil
+		case "down", "j", "pgdown", "home":
+			return m.moveFor(msg.String(), 1), nil
 		}
 
 		if msg.String() == "enter" {

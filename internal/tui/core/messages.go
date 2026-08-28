@@ -20,6 +20,24 @@ type ChangePageMsg struct {
 // something outside it changed what is registered.
 type ReloadServersMsg struct{}
 
+// WakeMsg is delivered when a page becomes active again, so anything it owns
+// that runs on a timer can restart. A timer only ticks into the page that is on
+// screen, so a page left behind stops being told to poll — waking it is what
+// keeps the console following its servers after a trip through another page.
+type WakeMsg struct{}
+
+// RefreshMsg asks the active action panel to re-read what it shows, after an
+// operation changed it on disk.
+type RefreshMsg struct{}
+
+// OperationDoneMsg reports a finished background operation: what it said, and
+// the fact that it finished. The page splits it in two — the lines go to the
+// console, the completion refreshes whichever panel started it — so a panel
+// cannot go on showing what was installed before the install.
+type OperationDoneMsg struct {
+	Lines []supervisor.Line
+}
+
 // SwitchActionMsg is emitted when a component wants to swap the actions panel.
 type SwitchActionMsg struct {
 	NewAction Action
@@ -84,6 +102,13 @@ func RouteToServer(target string, server *storage.Server) tea.Cmd {
 func ReloadServers() tea.Cmd {
 	return func() tea.Msg {
 		return ReloadServersMsg{}
+	}
+}
+
+// Wake tells a page that has just become active to restart what it polls.
+func Wake() tea.Cmd {
+	return func() tea.Msg {
+		return WakeMsg{}
 	}
 }
 
@@ -154,21 +179,8 @@ type SavedServersMsg struct {
 // dropping any whose folder has been deleted behind Osmium's back.
 func LoadServersCmd(store *storage.ServerStore) tea.Cmd {
 	return func() tea.Msg {
-		servers, err := store.LoadAll()
-		if err != nil {
-			return LoadedServersMsg{Err: err}
-		}
-
-		present, missing := storage.Present(servers)
-		if len(missing) == 0 {
-			return LoadedServersMsg{Servers: present}
-		}
-
-		return LoadedServersMsg{
-			Servers: present,
-			Missing: missing,
-			Err:     store.SaveAll(present),
-		}
+		servers, missing, err := store.Load()
+		return LoadedServersMsg{Servers: servers, Missing: missing, Err: err}
 	}
 }
 

@@ -39,15 +39,15 @@ type vanillaVersionPackage struct {
 }
 
 // https://api.papermc.io/v2/projects/paper/versions/{version}/builds/{build}/downloads/{filename}
-type paperBuilds struct {
-	Builds []int `json:"builds"` // Build numbers
-}
-
-type paperDownloads struct {
-	Downloads struct {
-		Application struct {
-			Name string `json:"name"`
-		} `json:"application"`
+// PaperMC's build list: https://fill.papermc.io/v3/projects/paper/versions/{version}/builds
+//
+// One entry per build, newest first, each carrying the download it produced.
+type paperBuild struct {
+	ID        int    `json:"id"`
+	Channel   string `json:"channel"`
+	Downloads map[string]struct {
+		Name string `json:"name"`
+		URL  string `json:"url"`
 	} `json:"downloads"`
 }
 
@@ -182,49 +182,44 @@ func getVanillaServerURL(targetVersion string) (string, error) {
 	return pkg.Downloads.Server.URL, nil
 }
 
+// getPaperServerURL finds the newest Paper build for a Minecraft version.
+//
+// It asks PaperMC's fill API, which replaced the api.papermc.io/v2 endpoints
+// the previous URLs were built from; those now answer 410 Gone to everything,
+// so no Paper server could be downloaded at all.
 func getPaperServerURL(version string) (string, error) {
-	// Step 1: Get the builds list to find the LATEST build number
-	buildsURL := fmt.Sprintf("https://api.papermc.io/v2/projects/paper/versions/%s", version)
+	buildsURL := fmt.Sprintf("https://fill.papermc.io/v3/projects/paper/versions/%s/builds", version)
 	resp, err := getWithStatus(buildsURL)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
 
-	var buildsData paperBuilds
-	if err := json.NewDecoder(resp.Body).Decode(&buildsData); err != nil {
+	var builds []paperBuild
+	if err := json.NewDecoder(resp.Body).Decode(&builds); err != nil {
 		return "", err
 	}
 
-	if len(buildsData.Builds) == 0 {
+	if len(builds) == 0 {
 		return "", fmt.Errorf("no builds found for version %s", version)
 	}
-	latestBuild := buildsData.Builds[len(buildsData.Builds)-1]
 
-	// Step 2: Get the filename for that specific build
-	infoURL := fmt.Sprintf("https://api.papermc.io/v2/projects/paper/versions/%s/builds/%d", version, latestBuild)
-	resp, err = getWithStatus(infoURL)
-	if err != nil {
-		return "", err
+	// The list is newest first, and a stable build is preferred over an
+	// experimental one for a server someone is about to run.
+	chosen := builds[0]
+	for _, build := range builds {
+		if strings.EqualFold(build.Channel, "STABLE") {
+			chosen = build
+			break
+		}
 	}
-	defer resp.Body.Close()
 
-	var info paperDownloads
-	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
-		return "", err
+	download, ok := chosen.Downloads["server:default"]
+	if !ok || download.URL == "" {
+		return "", fmt.Errorf("paper build %d for %s has no server download", chosen.ID, version)
 	}
-	filename := info.Downloads.Application.Name
 
-	// Step 3: Construct the final direct download link
-	finalURL := fmt.Sprintf("https://api.papermc.io/v2/projects/paper/versions/%s/builds/%d/downloads/%s",
-		version, latestBuild, filename)
-
-	// Potential shortcut method
-	// finalURL := "paper-" + targetVersion + "-" + strconv.Itoa(latestBuild) + ".jar"
-	// fmt.Println(finalURL)
-	// return finalURL, nil
-
-	return finalURL, nil
+	return download.URL, nil
 }
 
 func getFabricServerURL(mcVersion string) (string, error) {

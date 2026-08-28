@@ -129,7 +129,7 @@ func Run(dir string, label string, op func(scope.Scope) error) tea.Cmd {
 		if err := op(sc); err != nil {
 			lines = append(lines, supervisor.Line{Tag: supervisor.TagError, Text: err.Error()})
 		}
-		return core.LogMsg{Lines: lines}
+		return core.OperationDoneMsg{Lines: lines}
 	}
 }
 

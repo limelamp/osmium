@@ -31,6 +31,20 @@ func (l List) Move(delta int) List {
 	return l.follow()
 }
 
+// Cycle steps the cursor by delta, wrapping around the ends: down on the last
+// row lands on the first, up on the first lands on the last. It is what the
+// arrow keys use, so every list in the app runs in a loop rather than stopping
+// dead at its ends.
+func (l List) Cycle(delta int) List {
+	total := l.Scroll.Total
+	if total == 0 {
+		return l
+	}
+
+	l.Cursor = ((l.Cursor+delta)%total + total) % total
+	return l.follow()
+}
+
 // MoveTo jumps the cursor to an absolute index.
 func (l List) MoveTo(index int) List {
 	if index < 0 || index >= l.Scroll.Total {
@@ -56,9 +70,9 @@ func (l List) follow() List {
 func (l List) HandleKey(key string) (List, bool) {
 	switch key {
 	case "up", "k":
-		return l.Move(-1), true
+		return l.Cycle(-1), true
 	case "down", "j":
-		return l.Move(1), true
+		return l.Cycle(1), true
 	case "pgup":
 		return l.Move(-max(1, l.Scroll.Visible)), true
 	case "pgdown":

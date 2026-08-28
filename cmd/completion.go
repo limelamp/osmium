@@ -22,7 +22,7 @@ const completionTimeout = 800 * time.Millisecond
 // completeServerNames offers the registered servers, annotated with what they
 // are and whether they are up, which is what the shell shows beside each entry.
 func completeServerNames(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
-	servers, err := store.LoadAll()
+	servers, _, err := store.Load()
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveError
 	}

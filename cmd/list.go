@@ -24,7 +24,7 @@ Example:
   osmium list`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		servers, err := store.LoadAll()
+		servers, _, err := store.Load()
 		if err != nil {
 			return err
 		}

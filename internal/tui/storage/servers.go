@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/limelamp/osmium/internal/config"
@@ -59,6 +60,37 @@ func Present(servers []Server) (present []Server, missing []string) {
 	return present, missing
 }
 
+// Sync refreshes each entry from its server's own osmium.json and reports
+// whether anything changed.
+//
+// servers.json keeps a copy of the engine, version and memory so the list can
+// be drawn without opening every server folder, and that copy goes stale the
+// moment something else edits the manifest — a migration, the CLI, or a hand
+// edit. The manifest is the truth, so the copy is refreshed from it whenever
+// the list is read rather than only where Osmium happens to remember to.
+func Sync(servers []Server) ([]Server, bool) {
+	changed := false
+
+	for i, server := range servers {
+		conf, err := config.ReadConfigIn(server.Path)
+		if err != nil {
+			continue // a server with no manifest keeps what it was registered with
+		}
+
+		if loader := strings.ToLower(conf.Loader); loader != "" && loader != server.Type {
+			servers[i].Type, changed = loader, true
+		}
+		if conf.Version != "" && conf.Version != server.Version {
+			servers[i].Version, changed = conf.Version, true
+		}
+		if conf.AllocatedRAM != "" && conf.AllocatedRAM != server.Memory {
+			servers[i].Memory, changed = conf.AllocatedRAM, true
+		}
+	}
+
+	return servers, changed
+}
+
 // ServerStore manages thread-safe JSON interactions for server data.
 type ServerStore struct {
 	mu sync.RWMutex
@@ -76,6 +108,28 @@ func (s *ServerStore) GetFilePath() (string, error) {
 		return "", err
 	}
 	return filepath.Join(appDir, ServersFileName), nil
+}
+
+// Load reads the registry and brings it up to date: entries whose folder is
+// gone are dropped, the rest are refreshed from their own osmium.json, and the
+// file is rewritten only when something actually changed. It returns the names
+// of whatever was dropped so the caller can say what happened.
+//
+// Every reader goes through this — the interface and the commands alike — so
+// none of them can show a server as something it stopped being.
+func (s *ServerStore) Load() ([]Server, []string, error) {
+	servers, err := s.LoadAll()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	present, missing := Present(servers)
+	present, changed := Sync(present)
+
+	if len(missing) == 0 && !changed {
+		return present, nil, nil
+	}
+	return present, missing, s.SaveAll(present)
 }
 
 // LoadAll reads and decodes the servers list.

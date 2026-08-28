@@ -106,8 +106,20 @@ func (m ProjectsModel) operations() []string {
 	return labels
 }
 
-// reload rereads which projects the selected server has tracked.
+// reload rereads what is tracked and returns to the panel's root screen. It is
+// what a fresh selection gets: a different server is a different panel.
 func (m ProjectsModel) reload() ProjectsModel {
+	return m.refresh().gotoState(stateOperations)
+}
+
+// refresh rereads which projects the selected server has tracked, leaving the
+// screen the user is on exactly where it is.
+//
+// An operation finishing is a reason to re-read the list, not a reason to throw
+// the user out of the screen they are working in — so removing one of three
+// mods leaves the other two on screen, freshly read, rather than bouncing back
+// to the menu.
+func (m ProjectsModel) refresh() ProjectsModel {
 	m.installed = nil
 
 	if conf, err := config.ReadConfigIn(m.dir()); err == nil {
@@ -121,7 +133,9 @@ func (m ProjectsModel) reload() ProjectsModel {
 		sort.Strings(m.installed)
 	}
 
-	return m.gotoState(stateOperations)
+	m.selected = make(map[int]bool)
+	m.base = m.setCount(m.itemCount())
+	return m
 }
 
 // gotoState switches nested screens and resizes the list to the new contents.
@@ -150,6 +164,10 @@ func (m ProjectsModel) itemCount() int {
 
 func (m ProjectsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case core.RefreshMsg:
+		// An install or a removal has finished; what is tracked has changed.
+		return m.refresh(), nil
+
 	case tea.MouseMsg:
 		updated, activated := m.handleMouse(msg)
 		m.base = updated
@@ -230,13 +248,13 @@ func (m ProjectsModel) activate() (tea.Model, tea.Cmd) {
 		case 1:
 			return m.gotoState(stateRemove), nil
 		case 2:
-			return m.reload(), m.run("Installing tracked "+m.kind.noun+"s...", func(sc scope.Scope) error {
+			return m, m.run("Installing tracked "+m.kind.noun+"s...", func(sc scope.Scope) error {
 				return shared.InstallProjectsFromConfig(sc)
 			})
 		case 3:
 			return m.gotoState(stateUpdate), nil
 		case 4:
-			return m.reload(), m.run("Tracking untracked "+m.kind.noun+"s...", func(sc scope.Scope) error {
+			return m, m.run("Tracking untracked "+m.kind.noun+"s...", func(sc scope.Scope) error {
 				return shared.TrackProjects(sc)
 			})
 		}
@@ -247,7 +265,7 @@ func (m ProjectsModel) activate() (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.queryInput.Reset()
-		return m.reload(), m.run("Adding "+query+"...", func(sc scope.Scope) error {
+		return m.gotoState(stateOperations), m.run("Adding "+query+"...", func(sc scope.Scope) error {
 			return shared.AddProjectByID(sc, query, folder)
 		})
 
@@ -256,7 +274,7 @@ func (m ProjectsModel) activate() (tea.Model, tea.Cmd) {
 		if len(slugs) == 0 {
 			return m, nil
 		}
-		return m.reload(), m.run("Removing "+m.kind.noun+"s...", func(sc scope.Scope) error {
+		return m, m.run("Removing "+m.kind.noun+"s...", func(sc scope.Scope) error {
 			for _, slug := range slugs {
 				if err := shared.RemoveProjectByID(sc, slug, folder); err != nil {
 					return err
@@ -268,12 +286,12 @@ func (m ProjectsModel) activate() (tea.Model, tea.Cmd) {
 
 	case stateUpdate:
 		if m.list.Cursor == 0 {
-			return m.reload(), m.run("Updating all "+m.kind.noun+"s...", func(sc scope.Scope) error {
+			return m, m.run("Updating all "+m.kind.noun+"s...", func(sc scope.Scope) error {
 				return shared.UpdateAllProjects(sc, folder)
 			})
 		}
 		slug := m.installed[m.list.Cursor-1]
-		return m.reload(), m.run("Updating "+slug+"...", func(sc scope.Scope) error {
+		return m, m.run("Updating "+slug+"...", func(sc scope.Scope) error {
 			return shared.UpdateProject(sc, slug, folder)
 		})
 	}

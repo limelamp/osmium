@@ -37,7 +37,7 @@ func (m MigrateModel) forServer(server *storage.Server) MigrateModel {
 	m.config = &steps.Config{}
 	m.origin = "Home"
 
-	stages := []string{"Server", "Engine", "Version", "Migrate"}
+	stages := []string{"Server", "Engine", "Version", "Review", "Migrate"}
 	chooser := []steps.Step{steps.NewServerStep(m.config, m.store)}
 
 	if server != nil {
@@ -54,6 +54,7 @@ func (m MigrateModel) forServer(server *storage.Server) MigrateModel {
 		steps: append(chooser,
 			steps.NewEngineStep(m.config),
 			steps.NewVersionStep(m.config),
+			steps.NewMigrateReviewStep(m.config),
 			steps.NewMigrateStep(m.config),
 		),
 	}
@@ -92,11 +93,14 @@ func (m MigrateModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.step(m.active - 1)
 
 	case tea.KeyPressMsg:
-		switch msg.String() {
-		case "esc":
-			return m, core.RouteTo(m.origin)
+		// A step with a field open keeps the keys that would otherwise
+		// navigate, exactly as in the create wizard.
+		if m.current().Editing() && (msg.String() == "backspace" || msg.String() == "esc") {
+			break
+		}
 
-		case "shift+tab", "backspace":
+		switch msg.String() {
+		case "esc", "backspace", "shift+tab":
 			// A migration that has already started cannot be walked back out
 			// of: the files on disk have changed.
 			if m.last() && !m.migrateStep().Done() {

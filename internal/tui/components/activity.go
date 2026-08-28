@@ -32,11 +32,13 @@ const pollInterval = 300 * time.Millisecond
 // slower cadence than the log reading.
 const statusEvery = 7
 
-// tickMsg drives the log polling.
-type tickMsg time.Time
+// tickMsg drives the log polling. It carries the generation of the loop it
+// belongs to, so a tick left over from a loop that was already restarted is
+// recognised and dropped instead of starting a second one.
+type tickMsg int
 
-func tickCmd() tea.Cmd {
-	return tea.Tick(pollInterval, func(t time.Time) tea.Msg { return tickMsg(t) })
+func tickCmd(generation int) tea.Cmd {
+	return tea.Tick(pollInterval, func(time.Time) tea.Msg { return tickMsg(generation) })
 }
 
 // console is everything the Activity panel keeps for one server: its output
@@ -101,9 +103,10 @@ type ActivityModel struct {
 	consoles map[string]*console
 	current  string
 
-	polling bool
-	polls   int
-	wrapped int // rendered line count, for the scrollbar
+	polling    bool
+	generation int
+	polls      int
+	wrapped    int // rendered line count, for the scrollbar
 }
 
 func NewActivityModel() ActivityModel {
@@ -192,6 +195,10 @@ func (m ActivityModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tickMsg:
+		// A tick from a loop that has been superseded is not this loop's tick.
+		if int(msg) != m.generation {
+			return m, nil
+		}
 		m.polling = false
 		return m.drain()
 
@@ -250,10 +257,23 @@ func (m ActivityModel) poll() (ActivityModel, tea.Cmd) {
 	for _, c := range m.consoles {
 		if c.tail != nil {
 			m.polling = true
-			return m, tickCmd()
+			return m, tickCmd(m.generation)
 		}
 	}
 	return m, nil
+}
+
+// Wake restarts the poll loop after the pane has been off screen.
+//
+// A tick is only delivered to the page that is on screen, so leaving Manage
+// Servers strands the loop: the tick goes to whatever page took over and the
+// console never hears from it again — which is what left the logs frozen until
+// the app was restarted. Waking starts a fresh generation, and the stranded
+// tick is dropped when it turns up.
+func (m ActivityModel) Wake() (ActivityModel, tea.Cmd) {
+	m.polling = false
+	m.generation++
+	return m.poll()
 }
 
 // drain moves whatever the followed servers have written since the last poll
