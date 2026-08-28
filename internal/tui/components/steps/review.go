@@ -143,3 +143,6 @@ func yesNo(value bool) string {
 
 // Scroll reports no scrolling: the summary is trimmed to fit instead.
 func (s *ReviewStep) Scroll() core.Scroll { return core.Scroll{} }
+
+// Editing reports that the review step takes no typed input.
+func (s *ReviewStep) Editing() bool { return false }

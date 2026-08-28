@@ -10,12 +10,11 @@ import (
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/limelamp/osmium/internal/tui/core"
 	"github.com/limelamp/osmium/internal/tui/storage"
 	"github.com/limelamp/osmium/internal/tui/styles"
 	"github.com/limelamp/osmium/internal/tui/theme"
-
-	"charm.land/lipgloss/v2"
 )
 
 // configStep is which of the panel's two nested screens is showing.
@@ -26,13 +25,50 @@ const (
 	stepEditFile
 )
 
+// The editors a config file can be opened in. Files that have a key/value shape
+// get the field editor; anything else is edited a line at a time.
+const (
+	editorProperties = "properties"
+	editorYAML       = "yml"
+	editorRaw        = "raw"
+)
+
+// configExtensions maps a supported file extension to the editor it opens in.
+var configExtensions = map[string]string{
+	".properties": editorProperties,
+	".yml":        editorYAML,
+	".yaml":       editorYAML,
+	".json":       editorRaw,
+	".toml":       editorRaw,
+	".conf":       editorRaw,
+	".cfg":        editorRaw,
+}
+
+// skippedDirs are the folders never walked when looking for config files. They
+// hold world data, downloaded jars and logs — never anything worth editing —
+// and walking them makes opening the panel slow on a real server.
+var skippedDirs = map[string]bool{
+	"world":            true,
+	"world_nether":     true,
+	"world_the_end":    true,
+	"libraries":        true,
+	"versions":         true,
+	"logs":             true,
+	"crash-reports":    true,
+	"cache":            true,
+	"mods":             true,
+	"plugins":          true,
+	"migration_backup": true,
+}
+
 type configFile struct {
-	path  string
-	entry os.DirEntry
+	path   string
+	entry  os.DirEntry
+	editor string
 }
 
 // ManageConfigsModel browses the config files of the selected server and edits
-// their key/value pairs in place.
+// them: key/value files field by field, everything else line by line.
 type ManageConfigsModel struct {
 	base
 
@@ -139,7 +175,7 @@ func (m ManageConfigsModel) activate() (tea.Model, tea.Cmd) {
 		if len(m.options) == 0 {
 			return m, nil
 		}
-		return m.openFile(m.options[m.list.Cursor].path)
+		return m.openFile(m.options[m.list.Cursor])
 
 	case stepEditFile:
 		if len(m.configOptionKeys) == 0 {
@@ -153,16 +189,16 @@ func (m ManageConfigsModel) activate() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// openFile parses a config file into editable key/value rows.
-func (m ManageConfigsModel) openFile(path string) (tea.Model, tea.Cmd) {
+// openFile parses a config file into editable rows.
+func (m ManageConfigsModel) openFile(file configFile) (tea.Model, tea.Cmd) {
 	var err error
-	switch {
-	case strings.HasSuffix(path, ".properties"):
-		err = m.loadPropertiesConfig(path)
-	case strings.HasSuffix(path, ".yml"):
-		err = m.loadYamlConfig(path)
+	switch file.editor {
+	case editorProperties:
+		err = m.loadPropertiesConfig(file.path)
+	case editorYAML:
+		err = m.loadYamlConfig(file.path)
 	default:
-		return m, nil
+		err = m.loadRawConfig(file.path)
 	}
 
 	if err != nil {
@@ -189,10 +225,10 @@ func (m ManageConfigsModel) commitEdit() (tea.Model, tea.Cmd) {
 		val := m.configOptionValues[i]
 
 		switch m.fileType {
-		case "properties":
+		case editorProperties:
 			lines = append(lines, fmt.Sprintf("%s=%s", key, val))
 
-		case "yml":
+		case editorYAML:
 			if val == "" {
 				// 1. It's a header or list item.
 				// Trim trailing spaces first to see what we're working with
@@ -212,10 +248,15 @@ func (m ManageConfigsModel) commitEdit() (tea.Model, tea.Cmd) {
 
 				lines = append(lines, fmt.Sprintf("%s: %s", cleanKey, val))
 			}
+
+		default:
+			// A raw file is stored one whole line per row, so it is written
+			// back exactly as it is shown.
+			lines = append(lines, val)
 		}
 	}
 
-	if err := os.WriteFile(m.fileName, []byte(strings.Join(lines, "\n")), 0644); err != nil {
+	if err := os.WriteFile(m.fileName, []byte(strings.Join(lines, "\n")+"\n"), 0644); err != nil {
 		m.err = err
 		return m, nil
 	}
@@ -238,12 +279,12 @@ func (m ManageConfigsModel) View() tea.View {
 
 	default:
 		if len(m.options) == 0 {
-			return m.emptyView(m.Title(), "No .properties or .yml files in this server yet.",
+			return m.emptyView(m.Title(), "No editable config files in this server yet.",
 				styles.Hint{Key: "backspace", Desc: "back"})
 		}
 
 		return m.listView(m.Title(), func(i int) string {
-			return m.row(i, m.options[i].entry.Name(), filepath.Dir(m.options[i].path))
+			return m.row(i, m.options[i].entry.Name(), m.relativeDir(m.options[i].path))
 		},
 			styles.Hint{Key: "enter", Desc: "open"},
 			styles.Hint{Key: "backspace", Desc: "back"},
@@ -251,22 +292,38 @@ func (m ManageConfigsModel) View() tea.View {
 	}
 }
 
-// editRow renders one key/value row of the file being edited.
-func (m ManageConfigsModel) editRow(i int) string {
-	keyStyle := lipgloss.NewStyle().Foreground(theme.Primary)
-	valueStyle := lipgloss.NewStyle().Foreground(theme.Accent)
-
-	separator := "="
-	if m.fileType == "yml" {
-		separator = ": "
+// relativeDir shows which sub-folder a config file came from, relative to the
+// server, so two files with the same name are still tellable apart.
+func (m ManageConfigsModel) relativeDir(path string) string {
+	relative, err := filepath.Rel(m.dir(), filepath.Dir(path))
+	if err != nil || relative == "." {
+		return ""
 	}
+	return relative + "/"
+}
 
-	value := valueStyle.Render(m.configOptionValues[i])
+// editRow renders one editable row of the file being edited.
+func (m ManageConfigsModel) editRow(i int) string {
+	value := m.configOptionValues[i]
 	if m.editing == i {
 		value = m.textInput.View()
+	} else {
+		value = lipgloss.NewStyle().Foreground(theme.Accent).Render(value)
 	}
 
-	return m.row(i, keyStyle.Render(m.configOptionKeys[i])+separator+value, "")
+	switch m.fileType {
+	case editorProperties:
+		return m.row(i, m.key(i)+"="+value, "")
+	case editorYAML:
+		return m.row(i, m.key(i)+": "+value, "")
+	default:
+		return m.row(i, value, "")
+	}
+}
+
+// key renders a row's key in the field-editor styles.
+func (m ManageConfigsModel) key(i int) string {
+	return lipgloss.NewStyle().Foreground(theme.Primary).Render(m.configOptionKeys[i])
 }
 
 // loadPropertiesConfig reads a java .properties file into key/value rows.
@@ -299,7 +356,7 @@ func (m *ManageConfigsModel) loadPropertiesConfig(path string) error {
 		return err
 	}
 
-	m.fileType = "properties"
+	m.fileType = editorProperties
 	m.fileName = path
 	m.configOptionKeys = keys
 	m.configOptionValues = values
@@ -307,7 +364,6 @@ func (m *ManageConfigsModel) loadPropertiesConfig(path string) error {
 }
 
 func (m *ManageConfigsModel) loadYamlConfig(path string) error {
-	fileType := "yml"
 	file, err := os.Open(path)
 	if err != nil {
 		return err
@@ -354,29 +410,48 @@ func (m *ManageConfigsModel) loadYamlConfig(path string) error {
 	}
 
 	m.fileName = path
-	m.fileType = fileType
+	m.fileType = editorYAML
 	return nil
 }
 
-// configFilesIn walks a server directory for the config formats Osmium can edit.
-func configFilesIn(dir string) []configFile {
-	extensions := []string{".yml", ".properties"} // Supported config filetypes
+// loadRawConfig reads a file that has no key/value shape — json, toml and the
+// rest — as one editable row per line, so it can still be corrected in place
+// without Osmium having to understand its format.
+func (m *ManageConfigsModel) loadRawConfig(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
 
-	var configEntries []configFile                                                // Entries that are configs
+	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+
+	m.configOptionKeys = make([]string, len(lines))
+	m.configOptionValues = lines
+	m.fileName = path
+	m.fileType = editorRaw
+	return nil
+}
+
+// configFilesIn walks a server directory for the config formats Osmium can
+// open, skipping the folders that only hold world data, jars and logs.
+func configFilesIn(dir string) []configFile {
+	var configEntries []configFile // Entries that are configs
+
 	filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error { // Walking through the whole folder
 		if err != nil {
 			return nil // skip unreadable entries
 		}
 
 		if entry.IsDir() {
+			name := entry.Name()
+			if path != dir && (skippedDirs[name] || strings.HasPrefix(name, ".")) {
+				return fs.SkipDir
+			}
 			return nil // If it is a directory skip it
 		}
 
-		for _, ext := range extensions {
-			if strings.HasSuffix(entry.Name(), ext) { // Check if found file has the supported filetype
-				configEntries = append(configEntries, configFile{path, entry})
-				break
-			}
+		if editor, ok := configExtensions[strings.ToLower(filepath.Ext(entry.Name()))]; ok {
+			configEntries = append(configEntries, configFile{path: path, entry: entry, editor: editor})
 		}
 
 		return nil
@@ -392,7 +467,14 @@ func (m ManageConfigsModel) Title() string {
 
 func (m ManageConfigsModel) SetLayout(l core.Layout) core.Action {
 	m.layout = l
-	m.textInput.SetWidth(max(l.ContentWidth()/2, 10))
+
+	// A raw line needs the whole row; a key/value field only needs the value
+	// half, because the key is drawn beside it.
+	inputWidth := l.ContentWidth() / 2
+	if m.fileType == editorRaw {
+		inputWidth = l.ContentWidth() - 4
+	}
+	m.textInput.SetWidth(max(inputWidth, 10))
 
 	if m.step == stepEditFile {
 		m.base = m.setCount(len(m.configOptionKeys))

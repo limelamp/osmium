@@ -163,6 +163,9 @@ func (m ProjectsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch msg.String() {
 			case "enter":
 				return m.activate()
+			case "esc":
+				return m.gotoState(stateOperations), nil
+
 			case "backspace":
 				if m.queryInput.Value() != "" {
 					break // let the input handle its own deletion
@@ -297,7 +300,7 @@ func (m ProjectsModel) View() tea.View {
 		return m.panelView(m.Title()+" · Add",
 			body,
 			styles.Hint{Key: "enter", Desc: "install"},
-			styles.Hint{Key: "backspace", Desc: "back"},
+			styles.Hint{Key: "esc", Desc: "back"},
 		)
 
 	case stateRemove:

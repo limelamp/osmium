@@ -29,6 +29,7 @@ const headingRows = 3
 // live in the steps package.
 type CreateServerModel struct {
 	layout core.Layout
+	store  *storage.ServerStore
 
 	config *steps.Config
 	steps  []steps.Step
@@ -45,6 +46,7 @@ func NewCreateServerModel(store *storage.ServerStore) CreateServerModel {
 	}
 
 	return CreateServerModel{
+		store:  store,
 		config: wizardConfig,
 		steps: []steps.Step{
 			steps.NewLocationStep(wizardConfig, cfg.ServersDir()),
@@ -95,8 +97,22 @@ func (m CreateServerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.goTo(m.active - 1)
 
 	case tea.KeyPressMsg:
+		// A step with an open text field keeps backspace and esc, so typing
+		// into it can never walk the wizard backwards.
+		if m.current().Editing() && (msg.String() == "backspace" || msg.String() == "esc") {
+			break
+		}
+
 		switch msg.String() {
 		case "esc":
+			return m, core.RouteTo("Home")
+
+		// shift+tab steps back without touching backspace, which is the only
+		// way back out of a step whose text field is always focused.
+		case "shift+tab":
+			if m.active > 0 {
+				return m.goTo(m.active - 1)
+			}
 			return m, core.RouteTo("Home")
 
 		case "backspace":
@@ -114,7 +130,10 @@ func (m CreateServerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Finishing the wizard opens Manage Servers, booting the new server
 			// first when that was asked for.
 			if m.isBuilding() && m.buildStep().Done() && !m.buildStep().Failed() {
-				return m, m.finish()
+				// The wizard is left behind as a fresh one: coming back to
+				// Create Server should start a new server, not sit on the
+				// finished build of the last one.
+				return m.reset(), m.finish()
 			}
 		}
 	}
@@ -136,6 +155,12 @@ func (m CreateServerModel) stepHandlesBack(msg tea.Msg) (bool, tea.Model, tea.Cm
 	updated, cmd := location.Update(msg)
 	m.steps[m.active] = updated.(steps.Step)
 	return true, m, cmd
+}
+
+// reset returns the wizard to its first step with empty choices, reloading the
+// defaults from settings in case they changed while it was open.
+func (m CreateServerModel) reset() tea.Model {
+	return NewCreateServerModel(m.store).SetLayout(m.layout)
 }
 
 // finish leaves the wizard for Manage Servers, starting the server on the way
@@ -199,10 +224,15 @@ func (m CreateServerModel) hints() string {
 		return styles.Hints(width, styles.Hint{Key: "↑/↓", Desc: "scroll log"})
 	}
 
+	back := styles.Hint{Key: "backspace", Desc: "back"}
+	if m.current().Editing() {
+		back = styles.Hint{Key: "shift+tab", Desc: "back"}
+	}
+
 	return styles.Hints(width,
 		styles.Hint{Key: "↑/↓/←/→", Desc: "navigate"},
 		styles.Hint{Key: "enter", Desc: "select"},
-		styles.Hint{Key: "backspace", Desc: "back"},
+		back,
 	)
 }
 

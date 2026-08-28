@@ -34,6 +34,7 @@ type VersionStep struct {
 	layout core.Layout
 
 	grid    Grid
+	loaded  bool
 	loading bool
 	err     error
 }
@@ -43,6 +44,12 @@ func NewVersionStep(config *Config) *VersionStep {
 }
 
 func (s *VersionStep) Init() tea.Cmd {
+	// The manifest is fetched once and then kept: revisiting the step must not
+	// hit the network again or throw away the version the user was looking at.
+	if s.loaded {
+		return nil
+	}
+
 	s.loading = true
 	return LoadVersions()
 }
@@ -57,6 +64,7 @@ func (s *VersionStep) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case VersionsLoadedMsg:
 		s.loading = false
+		s.loaded = msg.Err == nil
 		s.err = msg.Err
 		s.grid = NewGrid(groupVersions(msg.Versions)).SetLayout(s.layout)
 		return s, nil
@@ -158,3 +166,6 @@ func patchNumber(version string) int {
 
 // Scroll reports the version grid's position.
 func (s *VersionStep) Scroll() core.Scroll { return s.grid.Scroll() }
+
+// Editing reports that the version grid takes no typed input.
+func (s *VersionStep) Editing() bool { return false }

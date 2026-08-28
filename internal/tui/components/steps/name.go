@@ -40,16 +40,22 @@ func (s *NameStep) Subtitle() string {
 }
 
 func (s *NameStep) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if key, ok := msg.(tea.KeyPressMsg); ok && key.String() == "enter" {
-		name := strings.TrimSpace(s.input.Value())
-		if name == "" {
-			s.warn = "Give the server a name to continue."
-			return s, nil
-		}
+	if key, ok := msg.(tea.KeyPressMsg); ok {
+		switch key.String() {
+		case "enter":
+			name := strings.TrimSpace(s.input.Value())
+			if name == "" {
+				s.warn = "Give the server a name to continue."
+				return s, nil
+			}
 
-		s.warn = ""
-		s.config.Name = name
-		return s, Next()
+			s.warn = ""
+			s.config.Name = name
+			return s, Next()
+
+		case "esc":
+			return s, core.RouteTo("Home")
+		}
 	}
 
 	var cmd tea.Cmd
@@ -112,6 +118,9 @@ func slug(name string) string {
 type errString string
 
 func (e errString) Error() string { return string(e) }
+
+// Editing reports that the name field always holds the keyboard.
+func (s *NameStep) Editing() bool { return true }
 
 // Scroll reports no scrolling: the name step is a single field.
 func (s *NameStep) Scroll() core.Scroll { return core.Scroll{} }

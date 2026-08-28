@@ -157,3 +157,6 @@ func checkbox(checked bool) string {
 
 // Scroll reports no scrolling: the options are trimmed to fit instead.
 func (s *AgreementsStep) Scroll() core.Scroll { return core.Scroll{} }
+
+// Editing reports that the agreements step takes no typed input.
+func (s *AgreementsStep) Editing() bool { return false }

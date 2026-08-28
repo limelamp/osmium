@@ -8,13 +8,13 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/limelamp/osmium/internal/config"
-	"github.com/limelamp/osmium/internal/tui/constants"
+	"github.com/limelamp/osmium/internal/tui/components/steps"
 	"github.com/limelamp/osmium/internal/tui/core"
 	"github.com/limelamp/osmium/internal/tui/styles"
 	"github.com/limelamp/osmium/internal/tui/theme"
 )
 
-// settingsSections are the groups listed down the left of the Settings page.
+// settingsSections are the groups listed in the left container.
 var settingsSections = []string{"Appearance", "Defaults", "About"}
 
 const (
@@ -23,8 +23,9 @@ const (
 	sectionAbout
 )
 
-// sectionPaneWidth is how wide the section column is.
-const sectionPaneWidth = 20
+// sectionPaneWidth is the outer width of the sections container, matching the
+// proportions the page had when both columns shared one box.
+const sectionPaneWidth = 24
 
 // Rows of the Defaults section, in display order.
 const (
@@ -33,9 +34,18 @@ const (
 	defaultsCount
 )
 
-// SettingsModel edits the application configuration. The left column picks a
-// section and the right column edits that section's settings, which is the same
-// nested two-pane shape used elsewhere in the app.
+// settingsField names which text field currently has the keyboard.
+type settingsField int
+
+const (
+	fieldNone settingsField = iota
+	fieldDir
+	fieldRAM
+)
+
+// SettingsModel edits the application configuration. The left container picks a
+// section and the right one edits that section's settings, which is the same
+// two-container shape the Manage Servers page uses.
 type SettingsModel struct {
 	layout core.Layout
 
@@ -44,28 +54,33 @@ type SettingsModel struct {
 	sections core.List
 	settings core.List
 
-	// inSection is true once focus has moved from the section column into the
-	// settings column.
+	// inSection is true once focus has moved from the section container into
+	// the settings container.
 	inSection bool
 
-	// editing is true while the folder input has the keyboard.
-	editing bool
+	editing settingsField
 	dirIn   textinput.Model
-
-	status string
+	ramIn   textinput.Model
+	warn    string
 }
 
 func NewSettingsModel() SettingsModel {
 	cfg, _ := config.LoadConfig()
 
-	ti := textinput.New()
-	ti.Placeholder = cfg.ServersDir()
-	ti.Prompt = "› "
-	ti.CharLimit = 300
+	dirIn := textinput.New()
+	dirIn.Placeholder = cfg.ServersDir()
+	dirIn.Prompt = "› "
+	dirIn.CharLimit = 300
+
+	ramIn := textinput.New()
+	ramIn.Placeholder = "e.g. 6G, 10G or 3072M"
+	ramIn.Prompt = "› "
+	ramIn.CharLimit = 12
 
 	m := SettingsModel{
 		cfg:   cfg,
-		dirIn: ti,
+		dirIn: dirIn,
+		ramIn: ramIn,
 	}
 	m.sections = m.sections.Resize(len(settingsSections), len(settingsSections))
 
@@ -95,9 +110,9 @@ func (m SettingsModel) settingsCount() int {
 	}
 }
 
-// syncSettings reflows the settings column to the selected section.
+// syncSettings reflows the settings container to the selected section.
 func (m SettingsModel) syncSettings() SettingsModel {
-	m.settings = m.settings.Resize(m.settingsCount(), max(m.layout.ContentHeight()-2, 1))
+	m.settings = m.settings.Resize(m.settingsCount(), max(m.detailLayout().ContentHeight()-2, 1))
 	return m
 }
 
@@ -107,7 +122,9 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleMouse(msg), nil
 
 	case tea.KeyPressMsg:
-		if m.editing {
+		// An open field owns every key, so typing into it — backspace included
+		// — never doubles as navigation.
+		if m.editing != fieldNone {
 			return m.updateEditor(msg)
 		}
 
@@ -149,27 +166,50 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// updateEditor routes keys to the folder input while it is open.
+// updateEditor routes keys to whichever field is open.
 func (m SettingsModel) updateEditor(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "enter":
-		m.cfg.DefaultServerDir = strings.TrimSpace(m.dirIn.Value())
-		m.editing = false
-		m.dirIn.Blur()
-		return m, m.save()
+		return m.commit()
 
 	case "esc":
-		m.editing = false
+		m.editing = fieldNone
+		m.warn = ""
 		m.dirIn.Blur()
+		m.ramIn.Blur()
 		return m, nil
 	}
 
 	var cmd tea.Cmd
-	m.dirIn, cmd = m.dirIn.Update(msg)
+	if m.editing == fieldDir {
+		m.dirIn, cmd = m.dirIn.Update(msg)
+	} else {
+		m.ramIn, cmd = m.ramIn.Update(msg)
+	}
 	return m, cmd
 }
 
-// activate applies the setting under the cursor.
+// commit validates and stores whatever the open field holds.
+func (m SettingsModel) commit() (tea.Model, tea.Cmd) {
+	if m.editing == fieldRAM {
+		amount, err := steps.NormaliseRAM(m.ramIn.Value())
+		if err != nil {
+			m.warn = err.Error()
+			return m, nil
+		}
+		m.cfg.DefaultRAM = amount
+	} else {
+		m.cfg.DefaultServerDir = strings.TrimSpace(m.dirIn.Value())
+	}
+
+	m.warn = ""
+	m.editing = fieldNone
+	m.dirIn.Blur()
+	m.ramIn.Blur()
+	return m, m.save()
+}
+
+// activate applies or opens the setting under the cursor.
 func (m SettingsModel) activate() (tea.Model, tea.Cmd) {
 	switch m.sections.Cursor {
 	case sectionAppearance:
@@ -182,13 +222,14 @@ func (m SettingsModel) activate() (tea.Model, tea.Cmd) {
 	case sectionDefaults:
 		switch m.settings.Cursor {
 		case defaultServerDir:
-			m.editing = true
+			m.editing = fieldDir
 			m.dirIn.SetValue(m.cfg.ServersDir())
 			return m, m.dirIn.Focus()
 
 		case defaultRAM:
-			m.cfg.DefaultRAM = nextRAM(m.cfg.DefaultRAM)
-			return m, m.save()
+			m.editing = fieldRAM
+			m.ramIn.SetValue(m.cfg.DefaultRAM)
+			return m, m.ramIn.Focus()
 		}
 	}
 
@@ -203,32 +244,13 @@ func (m SettingsModel) save() tea.Cmd {
 	return nil
 }
 
-// nextRAM steps to the following preset memory size, wrapping around.
-func nextRAM(current string) string {
-	for i, option := range constants.RamOptions {
-		if option == current {
-			return constants.RamOptions[(i+1)%len(constants.RamOptions)]
-		}
-	}
-	return constants.RamOptions[0]
-}
-
-// handleMouse focuses a column and moves its cursor to the clicked row.
+// handleMouse focuses a container and moves its cursor to the clicked row.
 func (m SettingsModel) handleMouse(msg tea.MouseMsg) SettingsModel {
 	mouse := msg.Mouse()
-	if !m.layout.Hit(mouse.X, mouse.Y) {
-		return m
-	}
 
-	row := m.layout.ContentRow(mouse.Y)
-	if row < 0 {
-		return m
-	}
-
-	// The section column occupies the left edge of the panel; anything to the
-	// right of it belongs to the settings column.
-	if mouse.X < m.layout.X+2+sectionPaneWidth {
-		if row < len(settingsSections) {
+	if sections := m.sectionsLayout(); sections.Hit(mouse.X, mouse.Y) {
+		row := sections.ContentRow(mouse.Y)
+		if row >= 0 && row < len(settingsSections) {
 			m.sections = m.sections.MoveTo(row)
 			m.settings.Cursor = 0
 			m.inSection = false
@@ -237,59 +259,98 @@ func (m SettingsModel) handleMouse(msg tea.MouseMsg) SettingsModel {
 		return m
 	}
 
-	if row < m.settingsCount() {
-		m.settings = m.settings.MoveTo(row)
+	detail := m.detailLayout()
+	if !detail.Hit(mouse.X, mouse.Y) {
+		return m
+	}
+
+	if index, ok := m.settingRows()[detail.ContentRow(mouse.Y)]; ok {
+		m.settings = m.settings.MoveTo(index)
 		m.inSection = true
 	}
 	return m
 }
 
+// settingRows maps a display row of the settings container to the setting it
+// belongs to. The Defaults section puts each value on its own line under its
+// label, so the rows are not one per setting.
+func (m SettingsModel) settingRows() map[int]int {
+	rows := make(map[int]int, m.settingsCount())
+
+	switch m.sections.Cursor {
+	case sectionAppearance:
+		for i := range theme.ThemeNames {
+			rows[i] = i
+		}
+	case sectionDefaults:
+		rows[0] = defaultServerDir
+		rows[3] = defaultRAM
+	}
+
+	return rows
+}
+
 func (m SettingsModel) View() tea.View {
+	sections := m.sectionsLayout()
+	detail := m.detailLayout()
+
 	sectionRows := make([]string, 0, len(settingsSections))
 	for i, name := range settingsSections {
 		sectionRows = append(sectionRows, styles.ListRow(
-			sectionPaneWidth,
+			sections.ContentWidth(),
 			!m.inSection && i == m.sections.Cursor,
 			name, "",
 		))
 	}
 
-	sectionPane := lipgloss.NewStyle().
-		Width(sectionPaneWidth).
-		Border(lipgloss.NormalBorder(), false, true, false, false).
-		BorderForeground(theme.Inactive).
-		Height(max(m.layout.ContentHeight()-2, 1)).
-		Render(lipgloss.JoinVertical(lipgloss.Left, sectionRows...))
+	sectionsPane := styles.Container(styles.ContainerOpts{
+		Width:   sections.Width,
+		Height:  sections.Height,
+		Focused: !m.inSection,
+		Title:   "Settings",
+		Content: styles.Body(lipgloss.JoinVertical(lipgloss.Left, sectionRows...),
+			sections.ContentHeight()-1) + "\n" +
+			styles.Hints(sections.ContentWidth(), styles.Hint{Key: "↑/↓", Desc: "section"}),
+	})
 
-	detailPane := lipgloss.NewStyle().
-		PaddingLeft(2).
-		Width(m.detailWidth() + 2).
-		Render(m.detailView())
+	detailPane := styles.Container(styles.ContainerOpts{
+		Width:    detail.Width,
+		Height:   detail.Height,
+		Focused:  m.inSection,
+		Title:    settingsSections[m.sections.Cursor],
+		Content:  styles.Body(m.detailView(), detail.ContentHeight()-1) + "\n" + m.hints(detail),
+		ShowHelp: true,
+	})
 
-	// Pad the body so the hint bar lands on the panel's last row.
-	body := styles.Body(lipgloss.JoinHorizontal(lipgloss.Top, sectionPane, detailPane), m.layout.ContentHeight()-1)
+	return tea.NewView(lipgloss.JoinHorizontal(lipgloss.Top, sectionsPane, detailPane))
+}
 
-	hints := styles.Hints(m.layout.ContentWidth(),
+// hints describe what the settings container responds to right now.
+func (m SettingsModel) hints(detail core.Layout) string {
+	if m.warn != "" {
+		return styles.Error(errText(m.warn))
+	}
+
+	if m.editing != fieldNone {
+		return styles.Hints(detail.ContentWidth(),
+			styles.Hint{Key: "enter", Desc: "save"},
+			styles.Hint{Key: "esc", Desc: "cancel"},
+		)
+	}
+
+	if !m.inSection {
+		return styles.Hints(detail.ContentWidth(),
+			styles.Hint{Key: "→/enter", Desc: "edit section"},
+			styles.Hint{Key: "esc", Desc: "home"},
+		)
+	}
+
+	return styles.Hints(detail.ContentWidth(),
 		styles.Hint{Key: "↑/↓", Desc: "move"},
-		styles.Hint{Key: "→/enter", Desc: "edit"},
+		styles.Hint{Key: "enter", Desc: "apply"},
 		styles.Hint{Key: "←", Desc: "sections"},
 		styles.Hint{Key: "esc", Desc: "home"},
 	)
-
-	return tea.NewView(styles.Container(styles.ContainerOpts{
-		Width:    m.layout.Width,
-		Height:   m.layout.Height,
-		Focused:  true,
-		Title:    "Settings",
-		Content:  body + "\n" + hints,
-		ShowHelp: true,
-	}))
-}
-
-// detailWidth is how many columns the settings column has for its own content,
-// after the section column and the gap between them.
-func (m SettingsModel) detailWidth() int {
-	return max(m.layout.ContentWidth()-sectionPaneWidth-5, 20)
 }
 
 // detailView renders the selected section's settings.
@@ -306,30 +367,10 @@ func (m SettingsModel) detailView() string {
 
 // appearanceView lists the themes with a live swatch of each palette.
 func (m SettingsModel) appearanceView() string {
-	rows := []string{
-		lipgloss.NewStyle().Foreground(theme.Primary).Bold(true).Render("Theme"),
-		"",
-	}
+	var rows []string
 
 	for i, name := range theme.ThemeNames {
-		scheme := theme.Themes[name]
-		swatch := lipgloss.NewStyle().Foreground(scheme.Primary).Render("███") +
-			lipgloss.NewStyle().Foreground(scheme.Accent).Render("███") +
-			lipgloss.NewStyle().Foreground(scheme.Inactive).Render("███")
-
-		// The badge column is always the same width so the swatches line up
-		// whether or not a row is the active theme.
-		badge := lipgloss.NewStyle().Foreground(theme.Accent).Width(8).Align(lipgloss.Right)
-		suffix := swatch + badge.Render("")
-		if name == theme.CurrentTheme {
-			suffix = swatch + badge.Render("active")
-		}
-
-		rows = append(rows, styles.ListRow(
-			m.detailWidth(),
-			m.inSection && i == m.settings.Cursor,
-			name, suffix,
-		))
+		rows = append(rows, m.themeRow(i, name))
 	}
 
 	rows = append(rows, "", lipgloss.NewStyle().Foreground(theme.Inactive).
@@ -338,35 +379,61 @@ func (m SettingsModel) appearanceView() string {
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
 
+// themeRow draws one theme with its palette right beside the name, so the
+// colours read as belonging to it rather than floating at the far edge.
+//
+// It is built from independently styled segments instead of styles.ListRow,
+// because the swatch has to keep its own colours even on the selected row.
+func (m SettingsModel) themeRow(index int, name string) string {
+	scheme := theme.Themes[name]
+
+	marker := "  "
+	nameStyle := lipgloss.NewStyle().Width(12)
+	if m.inSection && index == m.settings.Cursor {
+		marker = "➔ "
+		nameStyle = nameStyle.Foreground(theme.Primary).Bold(true)
+	}
+
+	swatch := lipgloss.NewStyle().Foreground(scheme.Primary).Render("███") +
+		lipgloss.NewStyle().Foreground(scheme.Accent).Render("███") +
+		lipgloss.NewStyle().Foreground(scheme.Inactive).Render("███")
+
+	badge := ""
+	if name == theme.CurrentTheme {
+		badge = lipgloss.NewStyle().Foreground(theme.Accent).Render("  active")
+	}
+
+	return marker + nameStyle.Render(name) + swatch + badge
+}
+
 // defaultsView edits the values the Create Server wizard starts from.
 func (m SettingsModel) defaultsView() string {
-	width := m.detailWidth()
+	width := m.detailLayout().ContentWidth()
+	muted := lipgloss.NewStyle().Foreground(theme.Inactive)
+	value := lipgloss.NewStyle().Foreground(theme.Accent).PaddingLeft(4)
 
-	dirValue := m.cfg.ServersDir()
-	if m.editing {
-		dirValue = m.dirIn.View()
+	dir := value.Render(m.cfg.ServersDir())
+	if m.editing == fieldDir {
+		dir = lipgloss.NewStyle().PaddingLeft(4).Render(m.dirIn.View())
 	}
 
-	ram := m.cfg.DefaultRAM
-	if ram == "" {
-		ram = constants.RamOptions[0]
+	ram := value.Render(defaultOr(m.cfg.DefaultRAM, "4G"))
+	if m.editing == fieldRAM {
+		ram = lipgloss.NewStyle().PaddingLeft(4).Render(m.ramIn.View())
 	}
 
-	rows := []string{
-		lipgloss.NewStyle().Foreground(theme.Primary).Bold(true).Render("Defaults"),
-		"",
+	return lipgloss.JoinVertical(
+		lipgloss.Left,
 		styles.ListRow(width, m.inSection && m.settings.Cursor == defaultServerDir,
 			"Default server folder", ""),
-		lipgloss.NewStyle().Foreground(theme.Accent).PaddingLeft(4).Render(dirValue),
+		dir,
 		"",
 		styles.ListRow(width, m.inSection && m.settings.Cursor == defaultRAM,
-			"Default memory", lipgloss.NewStyle().Foreground(theme.Accent).Render(ram)),
+			"Default memory", ""),
+		ram,
 		"",
-		lipgloss.NewStyle().Foreground(theme.Inactive).
-			Render("The wizard's \"Default folder\" option creates servers here."),
-	}
-
-	return lipgloss.JoinVertical(lipgloss.Left, rows...)
+		muted.Render("The wizard starts from these; both accept a typed value."),
+	)
 }
 
 // aboutView shows where Osmium keeps its files.
@@ -381,8 +448,6 @@ func (m SettingsModel) aboutView() string {
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
-		lipgloss.NewStyle().Foreground(theme.Primary).Bold(true).Render("About"),
-		"",
 		label.Render("Osmium — terminal Minecraft server manager"),
 		"",
 		fmt.Sprintf("%s %s", label.Render("Config directory:"), value.Render(appDir)),
@@ -391,12 +456,50 @@ func (m SettingsModel) aboutView() string {
 	)
 }
 
+// Container rectangles. The section column keeps the width it had when both
+// columns lived in one box, and the settings container takes the rest.
+func (m SettingsModel) sectionsLayout() core.Layout {
+	return core.Layout{
+		X:      m.layout.X,
+		Y:      m.layout.Y,
+		Width:  min(sectionPaneWidth, m.layout.Width),
+		Height: m.layout.Height,
+	}
+}
+
+func (m SettingsModel) detailLayout() core.Layout {
+	sections := m.sectionsLayout()
+	return core.Layout{
+		X:      sections.X + sections.Width,
+		Y:      sections.Y,
+		Width:  m.layout.Width - sections.Width,
+		Height: m.layout.Height,
+	}
+}
+
 func (m SettingsModel) Title() string {
 	return "Settings"
 }
 
 func (m SettingsModel) SetLayout(l core.Layout) tea.Model {
 	m.layout = l
-	m.dirIn.SetWidth(max(l.ContentWidth()-sectionPaneWidth-8, 10))
+
+	width := max(m.detailLayout().ContentWidth()-8, 10)
+	m.dirIn.SetWidth(width)
+	m.ramIn.SetWidth(min(width, 24))
+
 	return m.syncSettings()
 }
+
+// defaultOr falls back to a placeholder when a setting has never been set.
+func defaultOr(value, fallback string) string {
+	if value == "" {
+		return fallback
+	}
+	return value
+}
+
+// errText lets a plain warning reuse the shared error styling.
+type errText string
+
+func (e errText) Error() string { return string(e) }

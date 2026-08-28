@@ -77,3 +77,6 @@ func (s *EngineStep) SetLayout(l core.Layout) Step {
 
 // Scroll reports the engine grid's position.
 func (s *EngineStep) Scroll() core.Scroll { return s.grid.Scroll() }
+
+// Editing reports that the engine grid takes no typed input.
+func (s *EngineStep) Editing() bool { return false }

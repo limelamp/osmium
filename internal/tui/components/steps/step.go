@@ -56,4 +56,10 @@ type Step interface {
 	// Scroll reports the step's scroll position so the wizard can draw the
 	// shared scrollbar for it. A zero value means the step always fits.
 	Scroll() core.Scroll
+
+	// Editing reports whether the step has a text field open. While it does,
+	// the wizard hands backspace and esc to the step instead of treating them
+	// as navigation, so typing into a field cannot walk the wizard backwards.
+	// A step that answers yes must therefore handle esc itself.
+	Editing() bool
 }

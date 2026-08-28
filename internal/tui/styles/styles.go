@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/limelamp/osmium/internal/tui/theme"
 )
 
@@ -94,7 +95,12 @@ func Container(o ContainerOpts) string {
 	b := lipgloss.NormalBorder()
 	borderStyle := lipgloss.NewStyle().Foreground(borderColor)
 
-	titleText := borderStyle.Render(" " + o.Title + " ")
+	// A title wider than the box would push the top-right corner past the end
+	// of the line and leave the panel looking broken, so it is trimmed to fit.
+	titleText := lipgloss.NewStyle().
+		MaxWidth(max(o.Width-2, 0)).
+		Render(borderStyle.Render(" " + o.Title + " "))
+
 	topLineLen := max(o.Width-2-lipgloss.Width(titleText), 0)
 
 	topLine := borderStyle.Render(b.TopLeft) +
@@ -172,6 +178,11 @@ func ListRow(width int, selected bool, label string, suffix string) string {
 	if selected {
 		marker = "➔ "
 		style = style.Foreground(theme.Primary).Bold(true)
+
+		// A row's own colouring is dropped while it is selected: the reset at
+		// the end of a nested colour would otherwise cut the selection style
+		// short and leave the rest of the row in the terminal's default.
+		label = ansi.Strip(label)
 	}
 
 	left := style.Render(marker + label)

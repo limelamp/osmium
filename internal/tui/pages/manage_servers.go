@@ -16,12 +16,28 @@ const (
 	paneCount
 )
 
-// Pane proportions. They are constants rather than state so the panels keep
-// their size when focus moves — a pane that resized itself on focus made the
-// whole page jump around.
+// Pane proportions. The focused pane is given more room: the servers list grows
+// sideways, the action and activity panes grow downwards.
+//
+// The three sizes are always derived from one another so the panes tile the
+// page exactly — the left column is the full height, and the right column's two
+// heights add up to it — which is what keeps the reflow on focus from leaving
+// gaps or overlapping borders.
 const (
-	serversWidthRatio = 0.32
-	actionHeightRatio = 0.6
+	serversWidthRatio        = 0.32
+	serversFocusedWidthRatio = 0.42
+
+	actionHeightRatio        = 0.55
+	actionFocusedHeightRatio = 0.72
+	actionUnfocusedRatio     = 0.32
+)
+
+// Smallest a pane may be squeezed to. Below these the reflow would produce
+// panes with no usable content, so on a small terminal the page splits evenly
+// instead of honouring the ratios.
+const (
+	minPaneWidth  = 24
+	minPaneHeight = 5
 )
 
 type ManageServersModel struct {
@@ -30,6 +46,11 @@ type ManageServersModel struct {
 	servers      components.ServersModel
 	activity     components.ActivityModel
 	activeAction core.Action
+
+	// actions remembers each server's own action panel, keyed by its path, so
+	// switching selection returns to whatever that server was in the middle of
+	// instead of dropping another server's panel on it.
+	actions map[string]core.Action
 
 	// selected is the server every panel on the page currently acts on.
 	selected *storage.Server
@@ -43,6 +64,7 @@ func NewManageServersModel(store *storage.ServerStore) ManageServersModel {
 		servers:      components.NewServersModel(store).SetFocus(true),
 		activeAction: components.NewActionsModel().SetFocus(false), // Set it to default action "dashboard"'s model
 		activity:     components.NewActivityModel().SetFocus(false),
+		actions:      make(map[string]core.Action),
 	}
 }
 
@@ -63,7 +85,10 @@ func (m ManageServersModel) setFocus(pane int) ManageServersModel {
 	m.activeAction = m.activeAction.SetFocus(m.focus == paneAction)
 	m.activity = m.activity.SetFocus(m.focus == paneActivity)
 
-	return m
+	// The panes are sized from whichever one has focus, so they are re-flowed
+	// for the new one — otherwise the children would keep rendering at their
+	// old size inside the newly sized boxes.
+	return m.SetLayout(m.layout).(ManageServersModel)
 }
 
 // paneAt reports which pane covers an absolute terminal coordinate.
@@ -98,10 +123,7 @@ func (m ManageServersModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		m.selected = msg.Server
-		m.activeAction = m.activeAction.SetServer(msg.Server).SetLayout(m.actionLayout())
-		m.activity = m.activity.SetServer(msg.Server)
-		return m, nil
+		return m.selectServer(msg.Server)
 
 	// Process control, log output and shutdown all belong to the Activity
 	// panel, which owns the running server process.
@@ -111,15 +133,17 @@ func (m ManageServersModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case tea.MouseMsg:
-		// Clicking a pane focuses it, then the click is delivered to that pane
-		// so a single click can both focus and select.
 		mouse := msg.Mouse()
-		if _, isClick := msg.(tea.MouseClickMsg); isClick {
-			if pane := m.paneAt(mouse.X, mouse.Y); pane >= 0 {
-				m = m.setFocus(pane)
-			}
+		pane := m.paneAt(mouse.X, mouse.Y)
+
+		// Clicking an unfocused pane only focuses it. Focusing resizes the
+		// panes, so passing the click on as well would land it on whatever row
+		// moved under the pointer rather than the one that was clicked.
+		if _, isClick := msg.(tea.MouseClickMsg); isClick && pane >= 0 && pane != m.focus {
+			return m.setFocus(pane), nil
 		}
-		return m.forwardToPane(msg, m.paneAt(mouse.X, mouse.Y))
+
+		return m.forwardToPane(msg, pane)
 
 	case tea.KeyPressMsg:
 		// An action panel with an open text field keeps every key, including
@@ -163,8 +187,37 @@ func sameServer(a, b *storage.Server) bool {
 	return a.Path == b.Path
 }
 
+// selectServer points the whole page at another server, parking the outgoing
+// server's action panel so it is still there when the user comes back.
+func (m ManageServersModel) selectServer(server *storage.Server) (tea.Model, tea.Cmd) {
+	if key := serverKey(m.selected); key != "" {
+		m.actions[key] = m.activeAction
+	}
+
+	m.selected = server
+
+	action, remembered := m.actions[serverKey(server)]
+	if !remembered {
+		action = components.NewActionsModel()
+	}
+
+	m.activeAction = action.
+		SetServer(server).
+		SetLayout(m.actionLayout()).
+		SetFocus(m.focus == paneAction)
+
+	m.activity = m.activity.SetServer(server)
+
+	if remembered {
+		return m, nil
+	}
+	return m, m.activeAction.Init()
+}
+
 // swapAction replaces the action panel, handing the new one the page's current
-// layout, focus and selection so it never renders a frame misconfigured.
+// layout, focus and selection so it never renders a frame misconfigured. The
+// live panel is filed under its server by selectServer on the way out, so it is
+// still open when the user comes back to that server.
 func (m ManageServersModel) swapAction(action core.Action) (tea.Model, tea.Cmd) {
 	m.activeAction = action.
 		SetServer(m.selected).
@@ -172,6 +225,14 @@ func (m ManageServersModel) swapAction(action core.Action) (tea.Model, tea.Cmd) 
 		SetFocus(m.focus == paneAction)
 
 	return m, m.activeAction.Init()
+}
+
+// serverKey identifies a server for the per-server state maps.
+func serverKey(server *storage.Server) string {
+	if server == nil {
+		return ""
+	}
+	return server.Path
 }
 
 // forwardToPane delivers a message to a single pane and stores the result.
@@ -212,10 +273,38 @@ func (m ManageServersModel) View() tea.View {
 	return tea.NewView(content)
 }
 
-// Pane rectangles. Each is derived only from the page layout so that every
-// panel keeps the same size no matter which one has focus.
+// Pane rectangles, derived from the page layout and the focused pane.
 func (m ManageServersModel) serversWidth() int {
-	return int(float64(m.layout.Width) * serversWidthRatio)
+	ratio := serversWidthRatio
+	if m.focus == paneServers {
+		ratio = serversFocusedWidthRatio
+	}
+
+	return fitPane(int(float64(m.layout.Width)*ratio), m.layout.Width, minPaneWidth)
+}
+
+// actionHeight is how tall the action pane is: taller when it has focus,
+// shorter when the activity pane below it does.
+func (m ManageServersModel) actionHeight() int {
+	ratio := actionHeightRatio
+	switch m.focus {
+	case paneAction:
+		ratio = actionFocusedHeightRatio
+	case paneActivity:
+		ratio = actionUnfocusedRatio
+	}
+
+	return fitPane(int(float64(m.layout.Height)*ratio), m.layout.Height, minPaneHeight)
+}
+
+// fitPane keeps a pane's size inside the page while leaving its neighbour at
+// least the minimum, falling back to an even split when the page cannot hold
+// two panes of that minimum at all.
+func fitPane(size, total, minimum int) int {
+	if total < minimum*2 {
+		return total / 2
+	}
+	return min(max(size, minimum), total-minimum)
 }
 
 func (m ManageServersModel) serversLayout() core.Layout {
@@ -232,7 +321,7 @@ func (m ManageServersModel) actionLayout() core.Layout {
 		X:      m.layout.X + m.serversWidth(),
 		Y:      m.layout.Y,
 		Width:  m.layout.Width - m.serversWidth(),
-		Height: int(float64(m.layout.Height) * actionHeightRatio),
+		Height: m.actionHeight(),
 	}
 }
 

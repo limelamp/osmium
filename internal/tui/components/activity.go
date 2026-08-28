@@ -23,10 +23,10 @@ import (
 	"github.com/limelamp/osmium/internal/util"
 )
 
-// maxLogLines bounds how much history the console keeps.
+// maxLogLines bounds how much history one server's console keeps.
 const maxLogLines = 5000
 
-// Used to poll the buffer for new log lines automatically
+// Used to poll the buffers for new log lines automatically
 type tickMsg time.Time
 
 func tickCmd() tea.Cmd {
@@ -35,9 +35,9 @@ func tickCmd() tea.Cmd {
 	})
 }
 
-// serverProcess is the Minecraft server the Activity panel is attached to. It
-// lives behind a pointer because the model is copied on every update while the
-// process, its stdin pipe and its output buffer must not be.
+// serverProcess is a running Minecraft server. It lives behind a pointer
+// because the model is copied on every update while the process, its stdin pipe
+// and its output buffer must not be.
 type serverProcess struct {
 	mu     sync.Mutex
 	buffer bytes.Buffer
@@ -80,6 +80,15 @@ func (p *serverProcess) finish() {
 	p.mu.Unlock()
 }
 
+// send writes one console command to the server's stdin.
+func (p *serverProcess) send(command string) error {
+	if p.stdin == nil {
+		return fmt.Errorf("server is not running")
+	}
+	_, err := fmt.Fprintln(p.stdin, command)
+	return err
+}
+
 // interrupt asks the process to shut down the way "osmium stop" does, letting
 // the server save its world instead of losing it to a kill.
 func (p *serverProcess) interrupt() {
@@ -93,31 +102,52 @@ func (p *serverProcess) interrupt() {
 	_ = shared.RemoveLockFileIn(p.dir)
 }
 
-// send writes one console command to the server's stdin.
-func (p *serverProcess) send(command string) error {
-	if p.stdin == nil {
-		return fmt.Errorf("server is not running")
-	}
-	_, err := fmt.Fprintln(p.stdin, command)
-	return err
+// console is everything the Activity panel keeps for one server: its output
+// history, the process producing it, and where the user had scrolled to.
+//
+// One console per server is what keeps two servers from sharing a state: their
+// logs stay apart, starting one does not report the other as already running,
+// and switching selection returns to exactly the view you left.
+type console struct {
+	name    string
+	lines   []string
+	process *serverProcess
+	status  string
+
+	// offset and follow remember this console's scroll position across
+	// selection changes.
+	offset int
+	follow bool
 }
 
-// ActivityModel is the console of the Manage Servers page: it shows the
+// append adds lines to a console, trimming the oldest once it is full.
+func (c *console) append(lines ...string) {
+	c.lines = append(c.lines, lines...)
+	if len(c.lines) > maxLogLines {
+		c.lines = c.lines[len(c.lines)-maxLogLines:]
+	}
+}
+
+// isRunning reports whether this console owns a live process.
+func (c *console) isRunning() bool {
+	return c.process != nil && c.process.isRunning()
+}
+
+// ActivityModel is the console of the Manage Servers page. It shows the
 // selected server's output and application progress, and sends typed commands
-// to the running process.
+// to that server's process.
 type ActivityModel struct {
 	layout  core.Layout
 	isFocus bool
-	server  *storage.Server
 
 	textInput textinput.Model
 	viewport  viewport.Model
 
-	lines     []string
-	wrapped   int // rendered line count, for the scrollbar
-	process   *serverProcess
-	statusMsg string
-	err       error
+	// consoles is keyed by server path; current names the visible one.
+	consoles map[string]*console
+	current  string
+
+	wrapped int // rendered line count, for the scrollbar
 }
 
 func NewActivityModel() ActivityModel {
@@ -149,6 +179,7 @@ func NewActivityModel() ActivityModel {
 	return ActivityModel{
 		textInput: ti,
 		viewport:  vp,
+		consoles:  make(map[string]*console),
 	}
 }
 
@@ -156,39 +187,47 @@ func (m ActivityModel) Init() tea.Cmd {
 	return nil
 }
 
-func (m ActivityModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmds []tea.Cmd
+// consoleFor returns the console for a server, creating it on first use.
+func (m ActivityModel) consoleFor(server *storage.Server) *console {
+	if server == nil || server.Path == "" {
+		return nil
+	}
 
+	if existing, ok := m.consoles[server.Path]; ok {
+		existing.name = server.Name
+		return existing
+	}
+
+	created := &console{name: server.Name, follow: true}
+	m.consoles[server.Path] = created
+	return created
+}
+
+// visible returns the console currently on screen, if any.
+func (m ActivityModel) visible() *console {
+	return m.consoles[m.current]
+}
+
+func (m ActivityModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case core.ServerControlMsg:
 		return m.control(msg)
 
 	case core.LogMsg:
-		return m.append(msg.Lines...), nil
+		return m.appendVisible(msg.Lines...), nil
 
 	case core.ShutdownMsg:
-		// Leaving the TUI must not orphan a server, so it is asked to shut
-		// down gracefully on the way out.
-		if m.process != nil && m.process.isRunning() {
-			m.process.interrupt()
+		// Leaving the TUI must not orphan a server, so every one that is still
+		// running is asked to shut down gracefully on the way out.
+		for _, c := range m.consoles {
+			if c.isRunning() {
+				c.process.interrupt()
+			}
 		}
 		return m, nil
 
 	case tickMsg:
-		if m.process == nil {
-			return m, nil
-		}
-
-		if output := m.process.drain(); output != "" {
-			m = m.append(strings.Split(strings.TrimRight(output, "\n"), "\n")...)
-		}
-
-		if !m.process.isRunning() {
-			m.statusMsg = "server stopped"
-			m.process = nil
-			return m.append("— server process exited —"), nil
-		}
-		return m, tickCmd()
+		return m.drainAll()
 
 	case tea.MouseMsg:
 		mouse := msg.Mouse()
@@ -199,6 +238,7 @@ func (m ActivityModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case tea.MouseWheelDown:
 				m.viewport.ScrollDown(core.WheelStep)
 			}
+			m.rememberScroll()
 		}
 		return m, nil
 
@@ -213,9 +253,10 @@ func (m ActivityModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			return m.submit()
 
-		case "pgup", "pgdown":
+		case "pgup", "pgdown", "up", "down":
 			var cmd tea.Cmd
 			m.viewport, cmd = m.viewport.Update(msg)
+			m.rememberScroll()
 			return m, cmd
 		}
 
@@ -224,14 +265,41 @@ func (m ActivityModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
-	var vpCmd tea.Cmd
-	m.viewport, vpCmd = m.viewport.Update(msg)
-	cmds = append(cmds, vpCmd)
-
-	return m, tea.Batch(cmds...)
+	return m, nil
 }
 
-// submit sends the typed line to the running server.
+// drainAll moves any new process output into its own console, so a server that
+// is not currently on screen still collects its logs.
+func (m ActivityModel) drainAll() (tea.Model, tea.Cmd) {
+	anyRunning := false
+
+	for _, c := range m.consoles {
+		if c.process == nil {
+			continue
+		}
+
+		if output := c.process.drain(); output != "" {
+			c.append(strings.Split(strings.TrimRight(output, "\n"), "\n")...)
+		}
+
+		if c.process.isRunning() {
+			anyRunning = true
+			continue
+		}
+
+		c.append("— server process exited —")
+		c.process = nil
+		c.status = "stopped"
+	}
+
+	m = m.refresh()
+	if !anyRunning {
+		return m, nil
+	}
+	return m, tickCmd()
+}
+
+// submit sends the typed line to the visible server's process.
 func (m ActivityModel) submit() (tea.Model, tea.Cmd) {
 	command := m.textInput.Value()
 	if command == "" {
@@ -239,54 +307,62 @@ func (m ActivityModel) submit() (tea.Model, tea.Cmd) {
 	}
 	m.textInput.Reset()
 
-	if m.process == nil {
-		return m.append("no server running — start one from the Actions pane"), nil
+	current := m.visible()
+	switch {
+	case current == nil:
+		return m, nil
+	case !current.isRunning():
+		return m.appendVisible("no server running — start one from the Actions pane"), nil
 	}
 
-	if err := m.process.send(command); err != nil {
-		return m.append("error: " + err.Error()), nil
+	if err := current.process.send(command); err != nil {
+		return m.appendVisible("error: " + err.Error()), nil
 	}
-	return m.append("› " + command), nil
+	return m.appendVisible("› " + command), nil
 }
 
-// control starts, stops or restarts the selected server.
+// control starts, stops or restarts the server the request names, which is not
+// necessarily the one on screen.
 func (m ActivityModel) control(msg core.ServerControlMsg) (tea.Model, tea.Cmd) {
+	target := m.consoleFor(msg.Server)
+	if target == nil {
+		return m.appendVisible("select a server first"), nil
+	}
+
 	switch msg.Control {
 	case core.ServerStop:
-		return m.stop(), nil
+		return m.stop(target), nil
 
 	case core.ServerRestart:
-		m = m.stop()
-		return m.start(msg.Server)
+		m = m.stop(target)
+		return m.start(msg.Server, target)
 
 	default:
-		return m.start(msg.Server)
+		return m.start(msg.Server, target)
 	}
 }
 
-// start launches the server process for the given server.
-func (m ActivityModel) start(server *storage.Server) (tea.Model, tea.Cmd) {
-	if server == nil || server.Path == "" {
-		return m.append("select a server before starting it"), nil
-	}
-	if m.process != nil && m.process.isRunning() {
-		return m.append("server is already running"), nil
-	}
-
+// start launches the process for one server into its own console.
+func (m ActivityModel) start(server *storage.Server, target *console) (tea.Model, tea.Cmd) {
 	dir := server.Path
+
+	if target.isRunning() {
+		return m.appendTo(target, fmt.Sprintf("%s is already running", server.Name)), nil
+	}
 
 	osmiumConf, err := config.ReadConfigIn(dir)
 	if err != nil {
-		return m.append("error: could not read osmium.json in " + dir), nil
+		return m.appendTo(target, "error: could not read osmium.json in "+dir), nil
 	}
 
 	// A live lock file means somebody else owns this server already.
 	if pid, err := shared.ReadLockPIDIn(dir); err == nil {
 		if shared.IsPIDRunning(pid) {
-			return m.append(fmt.Sprintf("server already running (pid %d); stop it with 'osmium stop'", pid)), nil
+			return m.appendTo(target, fmt.Sprintf(
+				"%s is already running (pid %d); stop it with 'osmium stop'", server.Name, pid)), nil
 		}
 		if err := shared.RemoveLockFileIn(dir); err != nil {
-			return m.append("error: " + err.Error()), nil
+			return m.appendTo(target, "error: "+err.Error()), nil
 		}
 	}
 
@@ -297,22 +373,22 @@ func (m ActivityModel) start(server *storage.Server) (tea.Model, tea.Cmd) {
 	process.cmd = exec.Command(javaPath, args...)
 	process.cmd.Dir = dir
 
-	// Point both outputs to our buffer
+	// Point both outputs to this server's own buffer
 	process.cmd.Stdout = process
 	process.cmd.Stderr = process
 
 	process.stdin, err = process.cmd.StdinPipe() // This is the "entrance"
 	if err != nil {
-		return m.append("error: " + err.Error()), nil
+		return m.appendTo(target, "error: "+err.Error()), nil
 	}
 
 	if err := process.cmd.Start(); err != nil {
-		return m.append("error: " + err.Error()), nil
+		return m.appendTo(target, "error: "+err.Error()), nil
 	}
 
 	if err := shared.WriteLockPIDIn(dir, process.cmd.Process.Pid); err != nil {
 		_ = process.cmd.Process.Kill()
-		return m.append("error: " + err.Error()), nil
+		return m.appendTo(target, "error: "+err.Error()), nil
 	}
 
 	// // Start the socket listener in the background
@@ -324,59 +400,86 @@ func (m ActivityModel) start(server *storage.Server) (tea.Model, tea.Cmd) {
 		_ = shared.RemoveLockFileIn(p.dir)
 	}(process)
 
-	m.process = process
-	m.statusMsg = "running"
+	target.process = process
+	target.status = "running"
 
-	return m.append(fmt.Sprintf("— starting %s (%s %s) —", server.Name, osmiumConf.Loader, osmiumConf.Version)), tickCmd()
+	return m.appendTo(target, fmt.Sprintf("— starting %s (%s %s) —",
+		server.Name, osmiumConf.Loader, osmiumConf.Version)), tickCmd()
 }
 
-// stop terminates the running server process.
-func (m ActivityModel) stop() ActivityModel {
-	if m.process == nil || !m.process.isRunning() {
-		return m.append("no server is running")
+// stop terminates one server's process.
+func (m ActivityModel) stop(target *console) ActivityModel {
+	if !target.isRunning() {
+		return m.appendTo(target, fmt.Sprintf("%s is not running", target.name))
 	}
 
 	// "stop" lets the server save and shut down cleanly; killing it is the
 	// fallback when it will not take the command.
-	if err := m.process.send("stop"); err != nil {
-		if m.process.cmd != nil && m.process.cmd.Process != nil {
-			_ = m.process.cmd.Process.Kill()
+	if err := target.process.send("stop"); err != nil {
+		if target.process.cmd != nil && target.process.cmd.Process != nil {
+			_ = target.process.cmd.Process.Kill()
 		}
 	}
 
-	m.statusMsg = "stopping"
-	return m.append("— stopping server —")
+	target.status = "stopping"
+	return m.appendTo(target, "— stopping "+target.name+" —")
 }
 
-// append adds lines to the console and follows the tail when already at bottom.
-func (m ActivityModel) append(lines ...string) ActivityModel {
-	if len(lines) == 0 {
+// appendVisible writes lines into the console currently on screen.
+func (m ActivityModel) appendVisible(lines ...string) ActivityModel {
+	return m.appendTo(m.visible(), lines...)
+}
+
+// appendTo writes lines into one console, re-rendering only if it is the one
+// being shown.
+func (m ActivityModel) appendTo(target *console, lines ...string) ActivityModel {
+	if target == nil || len(lines) == 0 {
 		return m
 	}
 
-	atBottom := m.viewport.AtBottom()
-
-	m.lines = append(m.lines, lines...)
-	if len(m.lines) > maxLogLines {
-		m.lines = m.lines[len(m.lines)-maxLogLines:]
+	target.append(lines...)
+	if target != m.visible() {
+		return m
 	}
-
-	m = m.refresh()
-	if atBottom {
-		m.viewport.GotoBottom()
-	}
-	return m
+	return m.refresh()
 }
 
-// refresh re-wraps the log to the viewport width.
+// rememberScroll stores where the user scrolled the visible console to, so
+// coming back to it lands in the same place.
+func (m ActivityModel) rememberScroll() {
+	if current := m.visible(); current != nil {
+		current.offset = m.viewport.YOffset()
+		current.follow = m.viewport.AtBottom()
+	}
+}
+
+// refresh re-renders the visible console into the viewport.
 func (m ActivityModel) refresh() ActivityModel {
+	current := m.visible()
+
+	text := ""
+	if current != nil {
+		text = strings.Join(current.lines, "\n")
+	}
+
 	// Using Lipgloss to force the text to wrap exactly at the edge of the viewport
 	wrapped := lipgloss.NewStyle().
 		Width(max(m.viewport.Width(), 1)).
-		Render(strings.Join(m.lines, "\n"))
+		Render(text)
 
 	m.viewport.SetContent(wrapped)
 	m.wrapped = lipgloss.Height(wrapped)
+
+	switch {
+	case current == nil:
+		m.viewport.SetYOffset(0)
+	case current.follow:
+		m.viewport.GotoBottom()
+		current.offset = m.viewport.YOffset()
+	default:
+		m.viewport.SetYOffset(current.offset)
+	}
+
 	return m
 }
 
@@ -387,8 +490,9 @@ func (m ActivityModel) View() tea.View {
 		Render(strings.Repeat("─", max(m.layout.ContentWidth(), 0)))
 
 	logs := m.viewport.View()
-	if m.err != nil {
-		logs = styles.Error(m.err) + "\n" + logs
+	if m.visible() == nil {
+		logs = styles.Body(lipgloss.NewStyle().Foreground(theme.Inactive).
+			Render("Select a server to see its console."), m.viewport.Height())
 	}
 
 	// The command line sits at the very bottom of the pane, under a rule, so it
@@ -412,12 +516,18 @@ func (m ActivityModel) View() tea.View {
 	}))
 }
 
-// title shows the pane name plus what the process is currently doing.
+// title names the pane, the server it is showing and what that server is doing.
 func (m ActivityModel) title() string {
-	if m.statusMsg == "" {
+	current := m.visible()
+	if current == nil {
 		return m.Title()
 	}
-	return m.Title() + " · " + m.statusMsg
+
+	title := m.Title() + " · " + current.name
+	if current.status != "" {
+		title += " · " + current.status
+	}
+	return title
 }
 
 // additional methods
@@ -447,7 +557,28 @@ func (m ActivityModel) SetFocus(focused bool) ActivityModel {
 	return m
 }
 
+// SetServer switches the panel to that server's own console, keeping the one it
+// was showing exactly as it was.
 func (m ActivityModel) SetServer(server *storage.Server) ActivityModel {
-	m.server = server
-	return m
+	m.rememberScroll()
+
+	if server == nil || server.Path == "" {
+		m.current = ""
+		return m.refresh()
+	}
+
+	m.consoleFor(server)
+	m.current = server.Path
+	return m.refresh()
+}
+
+// Running reports whether any server still has a live process, which is what
+// keeps the poll ticking after the page is rebuilt.
+func (m ActivityModel) Running() bool {
+	for _, c := range m.consoles {
+		if c.isRunning() {
+			return true
+		}
+	}
+	return false
 }

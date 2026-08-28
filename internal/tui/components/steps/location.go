@@ -158,7 +158,7 @@ func (s *LocationStep) updateBrowser(msg tea.Msg) (tea.Model, tea.Cmd) {
 				s.pathFocused = false
 				s.pathIn.Blur()
 				return s, s.openDir(strings.TrimSpace(s.pathIn.Value()))
-			case "tab":
+			case "tab", "esc":
 				s.pathFocused = false
 				s.pathIn.Blur()
 				return s, nil
@@ -328,6 +328,9 @@ func (s *LocationStep) SetLayout(l core.Layout) Step {
 	}
 	return s
 }
+
+// Editing reports whether the path bar has the keyboard.
+func (s *LocationStep) Editing() bool { return s.browsing && s.pathFocused }
 
 // Scroll reports the folder listing's position; the option list always fits.
 func (s *LocationStep) Scroll() core.Scroll {

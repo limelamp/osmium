@@ -151,7 +151,12 @@ func (s *BuildStep) build(target string, server *storage.Server) {
 	s.events <- buildEvent{done: true}
 }
 
-// register appends the new server to servers.json, keeping its id unique.
+// register records the new server in servers.json.
+//
+// A server is identified by its folder, so building into a folder that is
+// already registered updates that entry rather than adding a second row for the
+// same files. Only a genuinely new folder gets appended, with its id made
+// unique against the ones already in use.
 func (s *BuildStep) register(server *storage.Server) error {
 	servers, err := s.store.LoadAll()
 	if err != nil {
@@ -159,7 +164,12 @@ func (s *BuildStep) register(server *storage.Server) error {
 	}
 
 	taken := make(map[string]bool, len(servers))
-	for _, existing := range servers {
+	for i, existing := range servers {
+		if existing.Path == server.Path {
+			server.ID = existing.ID
+			servers[i] = *server
+			return s.store.SaveAll(servers)
+		}
 		taken[existing.ID] = true
 	}
 
@@ -269,3 +279,6 @@ func (s *BuildStep) Scroll() core.Scroll {
 		Visible: s.viewport.Height(),
 	}
 }
+
+// Editing reports that the build log takes no typed input.
+func (s *BuildStep) Editing() bool { return false }
