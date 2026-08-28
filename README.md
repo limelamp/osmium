@@ -20,7 +20,7 @@ Osmium is a terminal-based Minecraft server manager built in Go with Bubble Tea,
 Clone the repository and build the TUI from the `tui` module:
 
 ```bash
-git clone https://github.com/limelamp/osmium-refactor.git
+git clone https://github.com/limelamp/osmium.git
 cd osmium
 go build ./...
 ```
