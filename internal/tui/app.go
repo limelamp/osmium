@@ -109,7 +109,7 @@ func (m appModel) switchPage(p Page) (tea.Model, tea.Cmd) {
 
 // asPage converts a model back into the page it is. Every page returns itself
 // from SetLayout, so a failure here is a programming mistake rather than
-// something to recover from — but it should say which type broke the contract.
+// something to recover from - but it should say which type broke the contract.
 func asPage(model tea.Model) Page {
 	page, ok := model.(Page)
 	if !ok {
@@ -120,8 +120,8 @@ func asPage(model tea.Model) Page {
 
 // quit leaves the app. Running servers are deliberately left alone: each one
 // belongs to its own supervisor process, so quitting Osmium is not the same as
-// stopping a server, and a server started here is still running — and still
-// takes commands — the next time Osmium is opened.
+// stopping a server, and a server started here is still running - and still
+// takes commands - the next time Osmium is opened.
 func (m appModel) quit() tea.Cmd {
 	return tea.Quit
 }
@@ -277,7 +277,7 @@ func (m *appModel) retain(page Page) {
 // help modal are drawn over it.
 //
 // A page's View is a function of its model and nothing else, so this can be
-// asked for again when a selection needs to know what was on the screen —
+// asked for again when a selection needs to know what was on the screen -
 // View itself cannot keep a copy, having only a value receiver.
 func (m appModel) baseFrame() string {
 	// The confirmation is shown where the help indicator is, which every page
@@ -288,7 +288,7 @@ func (m appModel) baseFrame() string {
 
 	// A page without a title bar is drawn on its own. Joining it to an empty
 	// title would still spend a row on that title, putting every row of the
-	// page one lower than the layout its components hit-test clicks against —
+	// page one lower than the layout its components hit-test clicks against -
 	// which is why the title bar's presence is decided by the same titleHeight
 	// the layout is derived from.
 	if m.titleHeight(m.activePage) > 0 {

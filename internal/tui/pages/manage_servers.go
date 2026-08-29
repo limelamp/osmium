@@ -20,8 +20,8 @@ const (
 // sideways, the action and activity panes grow downwards.
 //
 // The three sizes are always derived from one another so the panes tile the
-// page exactly — the left column is the full height, and the right column's two
-// heights add up to it — which is what keeps the reflow on focus from leaving
+// page exactly - the left column is the full height, and the right column's two
+// heights add up to it - which is what keeps the reflow on focus from leaving
 // gaps or overlapping borders.
 const (
 	serversWidthRatio        = 0.32
@@ -93,7 +93,7 @@ func (m ManageServersModel) Init() tea.Cmd {
 }
 
 // focusNext moves focus by one pane, stepping over the servers pane while it is
-// collapsed — focus must never land on something that is not on screen.
+// collapsed - focus must never land on something that is not on screen.
 func (m ManageServersModel) focusNext(delta int) ManageServersModel {
 	pane := (m.focus + delta + paneCount) % paneCount
 	if m.collapsed && pane == paneServers {
@@ -124,7 +124,7 @@ func (m ManageServersModel) setFocus(pane int) ManageServersModel {
 	m.activity = m.activity.SetFocus(m.focus == paneActivity)
 
 	// The panes are sized from whichever one has focus, so they are re-flowed
-	// for the new one — otherwise the children would keep rendering at their
+	// for the new one - otherwise the children would keep rendering at their
 	// old size inside the newly sized boxes.
 	page, _ := m.SetLayout(m.layout).(ManageServersModel)
 	return page
@@ -210,7 +210,7 @@ func (m ManageServersModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case core.SelectServerMsg:
 		// Panels reload from disk when they are handed a server, so only a real
-		// change is propagated — otherwise every arrow key would rescan the
+		// change is propagated - otherwise every arrow key would rescan the
 		// selected server's folder.
 		if sameServer(m.selected, msg.Server) {
 			return m, nil
@@ -511,16 +511,16 @@ func (m ManageServersModel) ContentAt(x, y int) (core.Pane, bool) {
 // Help describes the keys of whichever pane holds focus, so the modal lists
 // what works here and now rather than everything the page can do.
 func (m ManageServersModel) Help() []core.HelpSection {
-	section := core.HelpSection{Title: "Manage Servers — Servers", Hints: m.servers.Hints()}
+	section := core.HelpSection{Title: "Manage Servers - Servers", Hints: m.servers.Hints()}
 
 	switch m.focus {
 	case paneAction:
 		section = core.HelpSection{
-			Title: "Manage Servers — " + m.activeAction.Title(),
+			Title: "Manage Servers - " + m.activeAction.Title(),
 			Hints: m.activeAction.Hints(),
 		}
 	case paneActivity:
-		section = core.HelpSection{Title: "Manage Servers — Activity", Hints: m.activity.Hints()}
+		section = core.HelpSection{Title: "Manage Servers - Activity", Hints: m.activity.Hints()}
 	}
 
 	return []core.HelpSection{section}

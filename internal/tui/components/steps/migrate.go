@@ -67,7 +67,7 @@ func (s *MigrateStep) Init() tea.Cmd {
 	// version and configured for another.
 	if supervisor.Running(s.config.Dir) {
 		s.started, s.done = true, true
-		s.err = fmt.Errorf("%s is running — stop it before migrating it", s.config.Name)
+		s.err = fmt.Errorf("%s is running - stop it before migrating it", s.config.Name)
 		return nil
 	}
 

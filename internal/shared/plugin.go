@@ -27,10 +27,10 @@ import (
 
 /*
 	What the dependency types mean
-		required — the mod must be present for this version to work.
-		optional — the mod can be present but isn’t necessary.
-		incompatible — the mod must not be present because it breaks things.
-		embedded — the dependency is included inside the mod itself and doesn’t have to be fetched separately.
+		required - the mod must be present for this version to work.
+		optional - the mod can be present but isn’t necessary.
+		incompatible - the mod must not be present because it breaks things.
+		embedded - the dependency is included inside the mod itself and doesn’t have to be fetched separately.
 */
 
 type projectInfo struct {
@@ -845,7 +845,7 @@ func MigrateServer(sc scope.Scope, loader, version string) error {
 	//
 	// The jar comes before the manifest is rewritten: a failed download would
 	// otherwise leave osmium.json claiming a version the folder does not have,
-	// and everything that reads the manifest — the server list included —
+	// and everything that reads the manifest - the server list included -
 	// would report the server as something it is not.
 	if strings.EqualFold(oldConf.Loader, loader) && oldConf.Version == version {
 		sc.Logf("--- Server.jar unchanged ---")

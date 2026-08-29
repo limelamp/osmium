@@ -127,7 +127,7 @@ func TestDragPastTheEdgeScrolls(t *testing.T) {
 
 // The console holds far more than it shows. Dragging from the top of it and
 // holding the pointer past its bottom edge scrolls it, and everything that
-// goes past on the way is copied — not only the screenful left at the end.
+// goes past on the way is copied - not only the screenful left at the end.
 func TestDragThroughALogCopiesWhatScrolledPast(t *testing.T) {
 	var app tea.Model = NewAppModel(storage.NewServerStore())
 	app, _ = app.Update(tea.WindowSizeMsg{Width: 110, Height: 30})

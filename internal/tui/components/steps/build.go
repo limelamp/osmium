@@ -19,7 +19,7 @@ import (
 )
 
 // buildEvent is one message from the background build: either a progress line
-// or the final outcome. A single channel keeps the ordering obvious — the done
+// or the final outcome. A single channel keeps the ordering obvious - the done
 // event is always the last thing the build sends.
 type buildEvent struct {
 	line string

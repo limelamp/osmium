@@ -45,7 +45,7 @@ var configExtensions = map[string]string{
 }
 
 // skippedDirs are the folders never walked when looking for config files. They
-// hold world data, downloaded jars and logs — never anything worth editing —
+// hold world data, downloaded jars and logs - never anything worth editing -
 // and walking them makes opening the panel slow on a real server.
 var skippedDirs = map[string]bool{
 	"world":            true,
@@ -497,8 +497,8 @@ func (m *ManageConfigsModel) loadYamlConfig(path string) error {
 	return nil
 }
 
-// loadRawConfig reads a file that has no key/value shape — json, toml and the
-// rest — as one editable row per line, so it can still be corrected in place
+// loadRawConfig reads a file that has no key/value shape - json, toml and the
+// rest - as one editable row per line, so it can still be corrected in place
 // without Osmium having to understand its format.
 func (m *ManageConfigsModel) loadRawConfig(path string) error {
 	data, err := os.ReadFile(path)

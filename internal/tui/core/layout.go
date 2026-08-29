@@ -38,8 +38,8 @@ func (l Layout) Hit(x, y int) bool {
 //
 // Hit-testing is always done against the rectangle the rows occupy, never
 // against the layout a component was given: a panel drawn through
-// styles.Container passes Inner(), and a component that draws bare content —
-// a wizard step, say — passes its layout unchanged. Getting this wrong is what
+// styles.Container passes Inner(), and a component that draws bare content -
+// a wizard step, say - passes its layout unchanged. Getting this wrong is what
 // makes a click land one row off.
 func (l Layout) Inner() Layout {
 	return Layout{

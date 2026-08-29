@@ -119,8 +119,8 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleMouse(msg), nil
 
 	case tea.KeyPressMsg:
-		// An open field owns every key, so typing into it — backspace included
-		// — never doubles as navigation.
+		// An open field owns every key, so typing into it - backspace included
+		// - never doubles as navigation.
 		if m.editing != fieldNone {
 			return m.updateEditor(msg)
 		}
@@ -422,7 +422,7 @@ func (m SettingsModel) Help() []core.HelpSection {
 		pane = settingsSections[m.sections.Cursor]
 	}
 
-	return []core.HelpSection{{Title: "Settings — " + pane, Hints: m.hints()}}
+	return []core.HelpSection{{Title: "Settings - " + pane, Hints: m.hints()}}
 }
 
 // detailBody is the visible part of the section's content, and how much of it
@@ -552,7 +552,7 @@ func (m SettingsModel) aboutView() string {
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
-		label.Render("Osmium — terminal Minecraft server manager"),
+		label.Render("Osmium - terminal Minecraft server manager"),
 		fmt.Sprintf("%s %s", label.Render("Version:         "), value.Render(build.Info())),
 		"",
 		fmt.Sprintf("%s %s", label.Render("Config directory:"), value.Render(appDir)),

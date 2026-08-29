@@ -195,7 +195,7 @@ func NormaliseRAM(input string) (string, error) {
 
 	amount, err := strconv.Atoi(strings.TrimSpace(value))
 	if err != nil || amount <= 0 {
-		return "", fmt.Errorf("%q is not a valid amount — try 6G or 3072M", input)
+		return "", fmt.Errorf("%q is not a valid amount - try 6G or 3072M", input)
 	}
 
 	return fmt.Sprintf("%d%s", amount, unit), nil

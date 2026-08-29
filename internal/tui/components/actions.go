@@ -40,7 +40,7 @@ type actionGroup struct {
 
 // actionGroups is the Actions panel's menu, in display order: what the server
 // is doing, what is installed on it, how it is set up, and what cannot be
-// undone — kept apart so a destructive row is never next to a routine one.
+// undone - kept apart so a destructive row is never next to a routine one.
 var actionGroups = []actionGroup{
 	{"SERVER", []actionEntry{
 		{
@@ -234,7 +234,7 @@ func (m ActionsModel) current() *actionEntry {
 }
 
 // activate runs the entry under the cursor, returning the model it left behind
-// — an operation marks the row it started from as working.
+// - an operation marks the row it started from as working.
 func (m ActionsModel) activate() (ActionsModel, tea.Cmd) {
 	entry := m.current()
 	if entry == nil {

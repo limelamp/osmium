@@ -38,7 +38,7 @@ func String() string {
 }
 
 // Info is the version on its own, falling back to what the go tool recorded
-// when nothing was stamped in — a binary installed straight from a tag knows
+// when nothing was stamped in - a binary installed straight from a tag knows
 // its own version even though nobody passed any flags.
 func Info() string {
 	if Version != "" {
@@ -52,7 +52,7 @@ func Info() string {
 }
 
 // moduleVersion is the version the go tool recorded, unless it is one of the
-// pseudo-versions it invents for an untagged commit — "v0.0.0-20260829…" says
+// pseudo-versions it invents for an untagged commit - "v0.0.0-20260829…" says
 // less about a build than the word "dev" does.
 func moduleVersion() string {
 	info, ok := debug.ReadBuildInfo()

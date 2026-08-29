@@ -46,7 +46,7 @@ type base struct {
 }
 
 // spinnerInterval is how often the busy indicator advances a frame, and
-// resultBeats is how many of those beats a result line stays up for — about
+// resultBeats is how many of those beats a result line stays up for - about
 // four seconds, long enough to read and short enough not to linger.
 const (
 	spinnerInterval = 100 * time.Millisecond
@@ -264,8 +264,8 @@ func (b base) row(index int, label, suffix string) string {
 // lines into a single message so they land in the Activity panel instead of on
 // the raw terminal.
 //
-// It is exported because the Actions menu runs the whole-server operations —
-// installing everything tracked, updating everything — without opening a panel
+// It is exported because the Actions menu runs the whole-server operations -
+// installing everything tracked, updating everything - without opening a panel
 // of its own, and those must report exactly the way a panel's operations do.
 func Run(dir, label string, op func(scope.Scope) error) tea.Cmd {
 	return func() tea.Msg {

@@ -79,7 +79,7 @@ func (m DetailsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.ticker = armed
 
 		// Coming back to a panel that was already open does not run Init
-		// again, so the measurement is started here instead — otherwise
+		// again, so the measurement is started here instead - otherwise
 		// switching servers leaves it saying "measuring…" for good.
 		if !m.sized && !m.measuring {
 			m.measuring = true
@@ -340,7 +340,7 @@ func (m DetailsModel) setting(read func(*config.OsmiumConfig) string) string {
 // names renders a list of players, or a dash when there are none.
 func names(list []string) string {
 	if len(list) == 0 {
-		return "—"
+		return "-"
 	}
 	return strings.Join(list, ", ")
 }

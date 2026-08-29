@@ -11,7 +11,7 @@ import (
 )
 
 // ServerStep picks which registered server the wizard acts on. It is only shown
-// when the page was opened without one — coming from the Actions pane, the
+// when the page was opened without one - coming from the Actions pane, the
 // server is already known and the step is left out.
 type ServerStep struct {
 	config *Config

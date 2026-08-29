@@ -126,7 +126,7 @@ func (m ProjectsModel) reload() ProjectsModel {
 // screen the user is on exactly where it is.
 //
 // An operation finishing is a reason to re-read the list, not a reason to throw
-// the user out of the screen they are working in — so removing one of three
+// the user out of the screen they are working in - so removing one of three
 // mods leaves the other two on screen, freshly read, rather than bouncing back
 // to the menu.
 func (m ProjectsModel) refresh() ProjectsModel {

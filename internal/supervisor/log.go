@@ -42,8 +42,8 @@ func (l Line) Encode() string {
 	return string(l.Tag) + tagSeparator + l.Text
 }
 
-// ParseLine reads back a line written by Encode. A line without a tag — a log
-// file written by something else, or a half-written line — is server output.
+// ParseLine reads back a line written by Encode. A line without a tag - a log
+// file written by something else, or a half-written line - is server output.
 func ParseLine(raw string) Line {
 	tag, text, found := strings.Cut(raw, tagSeparator)
 	if !found {

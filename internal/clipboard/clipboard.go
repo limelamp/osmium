@@ -4,7 +4,7 @@
 // terminal itself acts on: it needs nothing installed and it works over SSH,
 // where no local tool could reach the clipboard you are actually looking at.
 // Some terminals refuse it, so the second route is whichever clipboard command
-// the platform has — and since neither can be relied on alone, both are tried.
+// the platform has - and since neither can be relied on alone, both are tried.
 package clipboard
 
 import (

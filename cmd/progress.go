@@ -14,7 +14,7 @@ import (
 )
 
 // reporter draws what a long command is doing: its output as it arrives, and
-// underneath it one live line — a spinner while it waits, a progress bar while
+// underneath it one live line - a spinner while it waits, a progress bar while
 // something downloads.
 //
 // The live line is only drawn on a terminal. Piped into a file or a CI log it
@@ -162,7 +162,7 @@ func isTerminal() bool {
 }
 
 // busy shows a spinner with a label for work that reports nothing until it is
-// finished — resolving a version, asking Modrinth. The returned function ends
+// finished - resolving a version, asking Modrinth. The returned function ends
 // it.
 func (r *reporter) busy(label string) func() {
 	r.mu.Lock()

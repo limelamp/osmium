@@ -165,7 +165,7 @@ func (m PlayersModel) playerRow(index int) string {
 		status = "online"
 	}
 
-	role := "—"
+	role := "-"
 	if player.Op {
 		role = fmt.Sprintf("op %d", player.Level)
 	}
@@ -232,7 +232,7 @@ func lastSeen(player shared.Player) string {
 	case player.Online:
 		return "now"
 	case player.LastSeen.IsZero():
-		return "—"
+		return "-"
 	}
 
 	// The user cache stores when the entry expires, a month after the player

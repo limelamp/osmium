@@ -15,7 +15,7 @@ const (
 )
 
 // detach frees the supervisor from the console that started it, so closing that
-// console — or quitting the TUI — does not take the server with it.
+// console - or quitting the TUI - does not take the server with it.
 func detach(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		CreationFlags: createNewProcessGroup | detachedProcess,

@@ -44,7 +44,7 @@ func (w wizard) last() bool {
 }
 
 // goTo moves to a step and lays it out, returning the command that initialises
-// it — which is what starts the version fetch, the build or the migration.
+// it - which is what starts the version fetch, the build or the migration.
 func (w wizard) goTo(index int) (wizard, tea.Cmd) {
 	w.active = min(max(index, 0), len(w.steps)-1)
 	w.steps[w.active] = w.steps[w.active].SetLayout(w.bodyLayout())
@@ -60,8 +60,8 @@ func (w wizard) update(msg tea.Msg) (wizard, tea.Cmd) {
 	return w, cmd
 }
 
-// stepHandlesBack lets a step with somewhere of its own to go back to — the
-// location browser — take the key first, mirroring how nested navigation works
+// stepHandlesBack lets a step with somewhere of its own to go back to - the
+// location browser - take the key first, mirroring how nested navigation works
 // everywhere else in the app.
 func (w wizard) stepHandlesBack(msg tea.Msg) (bool, wizard, tea.Cmd) {
 	location, ok := w.current().(*steps.LocationStep)

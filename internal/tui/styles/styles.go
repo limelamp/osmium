@@ -205,8 +205,8 @@ func ListRow(width int, selected bool, label, suffix string) string {
 	// it, and the label is trimmed to whatever is left. Without this the two
 	// run together and then wrap onto the next line in narrow panels.
 	//
-	// Two thirds rather than a half because the suffix is usually the detail —
-	// engine, version, memory, uptime — while the label is a short name.
+	// Two thirds rather than a half because the suffix is usually the detail -
+	// engine, version, memory, uptime - while the label is a short name.
 	right := lipgloss.NewStyle().
 		Foreground(theme.Inactive).
 		MaxWidth(max(width*2/3, 1)).
@@ -324,7 +324,7 @@ func Selected(text string) string {
 }
 
 // notice is a line the app wants shown in the corner of the page for a moment
-// — "✓ copied 3 lines" — in place of the help indicator.
+// - "✓ copied 3 lines" - in place of the help indicator.
 //
 // It is package state for the same reason the theme is: it belongs to the
 // whole interface rather than to one page, and every container already draws
@@ -359,7 +359,7 @@ func StepHeading(step int, title, subtitle string) string {
 		Bold(true).
 		Render(title)
 
-	heading := number + lipgloss.NewStyle().Foreground(theme.Inactive).Render(" — ") + name
+	heading := number + lipgloss.NewStyle().Foreground(theme.Inactive).Render(" - ") + name
 	if subtitle == "" {
 		return heading
 	}
@@ -368,8 +368,8 @@ func StepHeading(step int, title, subtitle string) string {
 }
 
 // Body fits a panel's main content to exactly height rows: padded when it is
-// short, clipped when it is long. Panels use it so whatever they pin below —
-// a hint bar, a command prompt — is never pushed out of the frame.
+// short, clipped when it is long. Panels use it so whatever they pin below -
+// a hint bar, a command prompt - is never pushed out of the frame.
 //
 // The width matters as much as the height: a line wider than the panel is
 // wrapped by the container when it is drawn, and a line that becomes two after

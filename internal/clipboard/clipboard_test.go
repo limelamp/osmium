@@ -53,7 +53,7 @@ func TestWriteFeedsTheTool(t *testing.T) {
 }
 
 // With no tool at all, the caller is told so rather than left thinking the copy
-// worked — the terminal may still have taken the OSC 52 sequence, which is why
+// worked - the terminal may still have taken the OSC 52 sequence, which is why
 // the app words it the way it does.
 func TestWriteWithoutAnyTool(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())

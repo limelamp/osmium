@@ -17,8 +17,8 @@ const ManifestSuffix = ".osmium.json"
 //
 // keepManifest saves the server's osmium.json beside the folder before the
 // folder goes, under the server's own name. It is the one part of a server that
-// is worth anything once the world is gone — the loader, version, memory and
-// the whole mod list — so keeping it means the same server can be built again.
+// is worth anything once the world is gone - the loader, version, memory and
+// the whole mod list - so keeping it means the same server can be built again.
 // The path it was saved to is returned, empty when nothing was kept.
 func Destroy(store *ServerStore, server Server, keepManifest bool) (kept string, err error) {
 	if server.Path == "" {

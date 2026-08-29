@@ -119,7 +119,7 @@ func playerCount(online, limit int, names []string) string {
 // playerList renders a list of names, or a dash.
 func playerList(names []string) string {
 	if len(names) == 0 {
-		return "—"
+		return "-"
 	}
 	return strings.Join(names, ", ")
 }

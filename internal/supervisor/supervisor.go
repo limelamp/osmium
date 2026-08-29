@@ -5,8 +5,8 @@
 // and could only be typed at from the session that launched it. Here a detached
 // supervisor process owns the server instead: it holds the server's stdin, tees
 // its output into a log file, and listens on a control socket in the server's
-// own folder. Anything that wants to talk to that server — a later TUI, the
-// `osmium exec` command — connects to the socket and tails the log, so every
+// own folder. Anything that wants to talk to that server - a later TUI, the
+// `osmium exec` command - connects to the socket and tails the log, so every
 // Osmium invocation sees the same server the same way.
 package supervisor
 
@@ -144,8 +144,8 @@ func Start(serverDir, name string) error {
 		return fmt.Errorf("could not locate the osmium executable: %w", err)
 	}
 
-	// The supervisor keeps no terminal of its own — its output is the log file
-	// — so its standard streams go nowhere. Leaving them attached would tie it
+	// The supervisor keeps no terminal of its own - its output is the log file
+	// - so its standard streams go nowhere. Leaving them attached would tie it
 	// to the terminal that launched it and corrupt the TUI's screen.
 	devNull, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
 	if err != nil {
@@ -186,7 +186,7 @@ func send(serverDir string, req request) error {
 	var res reply
 	if err := json.NewDecoder(conn).Decode(&res); err != nil {
 		// A supervisor that hangs up without answering has taken the request
-		// and gone away — stopping does exactly that.
+		// and gone away - stopping does exactly that.
 		return nil
 	}
 	if !res.OK && res.Error != "" {
@@ -220,7 +220,7 @@ func Ping(serverDir string) error {
 }
 
 // maxSocketPath is how long a unix socket path may be. The limit is a fixed
-// buffer in the kernel — 108 bytes on Linux, 104 on macOS — and it is short
+// buffer in the kernel - 108 bytes on Linux, 104 on macOS - and it is short
 // enough that a server sitting a few folders deep can exceed it.
 const maxSocketPath = 100
 

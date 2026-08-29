@@ -87,8 +87,8 @@ func (l List) HandleKey(key string) (List, bool) {
 	return l, false
 }
 
-// Settle moves a cursor off a row that cannot be selected — a heading, a blank
-// — onto the next one that can, in the direction it was travelling, wrapping at
+// Settle moves a cursor off a row that cannot be selected - a heading, a blank
+// - onto the next one that can, in the direction it was travelling, wrapping at
 // the ends the way the arrow keys do.
 //
 // Two lists in the app are drawn with headings inside them; this is how both
@@ -117,7 +117,7 @@ func Settle(list List, direction int, selectable func(index int) bool) List {
 }
 
 // Render draws the rows currently in view, one line each, in the order they
-// appear. Every list in the app is drawn this way — the panel says what a row
+// appear. Every list in the app is drawn this way - the panel says what a row
 // looks like, the list says which rows are on screen.
 func (l List) Render(row func(index int) string) string {
 	start, end := l.Window()
@@ -132,8 +132,8 @@ func (l List) Render(row func(index int) string) string {
 
 // HitRow maps a mouse position to the item index under it, or -1 when the
 // pointer is outside the list. rows is the rectangle the item rows are drawn
-// in — Layout.Inner() for a panel inside a container, the plain layout for a
-// component that draws bare content — and headerRows is how many of those rows
+// in - Layout.Inner() for a panel inside a container, the plain layout for a
+// component that draws bare content - and headerRows is how many of those rows
 // the panel spends above the first item.
 func (l List) HitRow(rows Layout, headerRows, x, y int) int {
 	if !rows.Hit(x, y) {

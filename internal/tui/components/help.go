@@ -8,8 +8,8 @@ import (
 )
 
 // HelpModel is the help overlay. It draws whatever the active page says is
-// live right now, so the keys it lists are the keys that actually work — down
-// to the pane and the nested screen in front of the user — rather than one
+// live right now, so the keys it lists are the keys that actually work - down
+// to the pane and the nested screen in front of the user - rather than one
 // fixed list for the whole app.
 type HelpModel struct {
 	showHelp bool

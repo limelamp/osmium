@@ -190,7 +190,7 @@ func (s *LocationStep) updateBrowser(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "backspace":
 			// Nested navigation: backspace leaves the browser before it leaves
-			// the step. Esc is not handled here — it leaves the wizard.
+			// the step. Esc is not handled here - it leaves the wizard.
 			s.browsing = false
 			s.list = s.list.Resize(locationCount, locationCount)
 			s.list.Cursor = locationChoose

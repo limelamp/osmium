@@ -71,7 +71,7 @@ func Serve(serverDir, name string) error {
 		log.Write(TagError, "could not start the server: "+err.Error())
 		return err
 	}
-	log.Write(TagOsmium, fmt.Sprintf("— starting %s (%s %s) —", name, conf.Loader, conf.Version))
+	log.Write(TagOsmium, fmt.Sprintf("- starting %s (%s %s) -", name, conf.Loader, conf.Version))
 
 	listener, err := listen(dir)
 	if err != nil {
@@ -86,7 +86,7 @@ func Serve(serverDir, name string) error {
 	go control.handleSignals()
 
 	err = cmd.Wait()
-	log.Write(TagOsmium, "— "+name+" exited"+exitDetail(err)+" —")
+	log.Write(TagOsmium, "- "+name+" exited"+exitDetail(err)+" -")
 
 	// Closing the listener ends the accept loop, so nothing is left listening
 	// on a socket whose server is gone.
@@ -154,12 +154,12 @@ func (c *controller) apply(req request) error {
 	case opStop:
 		// "stop" lets the server save its world and shut down properly; a kill
 		// is what the caller asks for explicitly when it will not.
-		c.log.Write(TagOsmium, "— stopping "+c.name+" —")
+		c.log.Write(TagOsmium, "- stopping "+c.name+" -")
 		_, err := fmt.Fprintln(c.stdin, "stop")
 		return err
 
 	case opKill:
-		c.log.Write(TagOsmium, "— killing "+c.name+" —")
+		c.log.Write(TagOsmium, "- killing "+c.name+" -")
 		if c.cmd.Process == nil {
 			return nil
 		}
@@ -188,6 +188,6 @@ func (c *controller) handleSignals() {
 	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
 
 	<-signals
-	c.log.Write(TagOsmium, "— shutting "+c.name+" down —")
+	c.log.Write(TagOsmium, "- shutting "+c.name+" down -")
 	fmt.Fprintln(c.stdin, "stop")
 }

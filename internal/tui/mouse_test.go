@@ -18,8 +18,8 @@ import (
 // A click has to land on the row the user actually sees, which means every
 // component's hit-testing has to agree with its own rendering to the row.
 //
-// These tests click on the row a label was drawn on — found in the rendered
-// output rather than assumed — and check that the component selected that
+// These tests click on the row a label was drawn on - found in the rendered
+// output rather than assumed - and check that the component selected that
 // label. That is the one thing a coordinate mistake cannot survive, whether it
 // comes from a container border, a spacer or a heading.
 
@@ -81,8 +81,8 @@ func TestHomeMenuClickSelectsTheRowUnderThePointer(t *testing.T) {
 	}
 }
 
-// The home page is centred vertically, so anything that changes its height —
-// the running-servers box appearing — moves the menu. The rows it answers
+// The home page is centred vertically, so anything that changes its height -
+// the running-servers box appearing - moves the menu. The rows it answers
 // clicks on have to move with it.
 func TestHomeMenuClickAfterServersLoad(t *testing.T) {
 	layout := core.Layout{Width: 120, Height: 40}
@@ -210,7 +210,7 @@ func containsRow(rows []string, text string) bool {
 
 // The page is drawn inside the app, under a title bar that only some pages
 // have. A click is answered against the layout the app handed the page, so the
-// two have to agree about where the page starts — this drives the whole app so
+// two have to agree about where the page starts - this drives the whole app so
 // that a row spent on the chrome cannot go unnoticed.
 func TestAppClickReachesTheRowUnderThePointer(t *testing.T) {
 	app := NewAppModel(storage.NewServerStore())

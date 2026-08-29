@@ -17,7 +17,7 @@ type TickMsg struct {
 // Ticker is a repeating timer owned by a component.
 //
 // A tea.Tick is delivered to whatever page is on screen when it fires, so a
-// timer belonging to a page the user has left is simply lost — and arming a new
+// timer belonging to a page the user has left is simply lost - and arming a new
 // one on every visit leaves the old loops running as well. A Ticker fixes both:
 // it refuses to arm twice, and Restart abandons the generation that was lost
 // rather than adding to it.

@@ -8,7 +8,7 @@ import (
 
 // ChangePageMsg is sent by child pages to request routing.
 //
-// Server is optional: a page that acts on one server — Migrate — is handed it
+// Server is optional: a page that acts on one server - Migrate - is handed it
 // with the routing request, so there is still exactly one way to change page
 // rather than a second mechanism for pages that need an argument.
 type ChangePageMsg struct {
@@ -22,7 +22,7 @@ type ReloadServersMsg struct{}
 
 // WakeMsg is delivered when a page becomes active again, so anything it owns
 // that runs on a timer can restart. A timer only ticks into the page that is on
-// screen, so a page left behind stops being told to poll — waking it is what
+// screen, so a page left behind stops being told to poll - waking it is what
 // keeps the console following its servers after a trip through another page.
 type WakeMsg struct{}
 
@@ -42,8 +42,8 @@ func OperationStarted() tea.Cmd {
 }
 
 // OperationDoneMsg reports a finished background operation: what it said, and
-// the fact that it finished. The page splits it in two — the lines go to the
-// console, the completion refreshes whichever panel started it — so a panel
+// the fact that it finished. The page splits it in two - the lines go to the
+// console, the completion refreshes whichever panel started it - so a panel
 // cannot go on showing what was installed before the install.
 type OperationDoneMsg struct {
 	Lines []supervisor.Line
@@ -144,8 +144,8 @@ func Log(lines ...string) tea.Cmd {
 	return LogAs(supervisor.TagOsmium, lines...)
 }
 
-// LogAs sends progress lines that came from somewhere in particular — a mod
-// operation, a failure — so the console can label them.
+// LogAs sends progress lines that came from somewhere in particular - a mod
+// operation, a failure - so the console can label them.
 func LogAs(tag supervisor.Tag, lines ...string) tea.Cmd {
 	tagged := make([]supervisor.Line, 0, len(lines))
 	for _, line := range lines {

@@ -1,4 +1,4 @@
-# Osmium — terminal Minecraft server manager.
+# Osmium - terminal Minecraft server manager.
 #
 # `make` on its own lists what there is. Every target is a shorthand for
 # something you could type by hand; nothing here hides anything from you.

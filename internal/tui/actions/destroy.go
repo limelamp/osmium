@@ -138,7 +138,7 @@ func (m DestroyModel) destroy() (tea.Model, tea.Cmd) {
 	}
 
 	if supervisor.Running(m.server.Path) {
-		m.warn = m.server.Name + " is still running — stop it first."
+		m.warn = m.server.Name + " is still running - stop it first."
 		return m, nil
 	}
 

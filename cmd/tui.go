@@ -35,7 +35,7 @@ func init() {
 }
 
 // workingDir is where the command was run, or an empty string when that cannot
-// be determined — which is not a failure, only one fewer place to look.
+// be determined - which is not a failure, only one fewer place to look.
 func workingDir() string {
 	dir, err := os.Getwd()
 	if err != nil {
@@ -53,7 +53,7 @@ func isServerFolder(dir string) bool {
 // openingServer is the server the interface should open on: the one --server
 // names, or the one the current folder is.
 //
-// Finding neither is not a failure — it is the ordinary case of running Osmium
+// Finding neither is not a failure - it is the ordinary case of running Osmium
 // from anywhere else, and the app opens on its home page. A --server that names
 // nothing is a failure, because it says plainly what was wanted.
 func openingServer(store *storage.ServerStore) (*storage.Server, error) {

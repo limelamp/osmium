@@ -294,7 +294,7 @@ func (m ActivityModel) installing() bool {
 //
 // A tick is only delivered to the page that is on screen, so leaving Manage
 // Servers strands the loop: the tick goes to whatever page took over and the
-// console never hears from it again — which is what left the logs frozen until
+// console never hears from it again - which is what left the logs frozen until
 // the app was restarted. Waking starts a fresh generation, and the stranded
 // tick is dropped when it turns up.
 func (m ActivityModel) Wake() (ActivityModel, tea.Cmd) {
@@ -385,7 +385,7 @@ func (m ActivityModel) submit() (tea.Model, tea.Cmd) {
 		return m.say(supervisor.TagOsmium, "select a server to send it commands"), nil
 
 	case !supervisor.Running(current.dir):
-		return m.say(supervisor.TagOsmium, "no server running — start one from the Actions pane"), nil
+		return m.say(supervisor.TagOsmium, "no server running - start one from the Actions pane"), nil
 	}
 
 	// The command is not echoed here: the supervisor writes it to the log, so
@@ -622,7 +622,7 @@ func (m ActivityModel) title() string {
 	}
 
 	// Scrolling away from the tail stops the view following new output. That
-	// is useful — you are reading something — but it looks exactly like a
+	// is useful - you are reading something - but it looks exactly like a
 	// stalled console unless it says so.
 	if !current.follow {
 		title += " · paused"

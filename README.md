@@ -10,7 +10,7 @@
 
 **A terminal Minecraft server manager.**
 
-Create servers, run them, install mods, watch their consoles — from one terminal, or from a script.
+Create servers, run them, install mods, watch their consoles - from one terminal, or from a script.
 
 [![Go](https://img.shields.io/badge/go-1.25%2B-00ADD8?logo=go&logoColor=white)](https://go.dev)
 [![Licence](https://img.shields.io/badge/licence-GPL--3.0-blue)](LICENSE)
@@ -28,7 +28,7 @@ where each server lives and what it runs, installs mods and plugins from Modrint
 server a console you can type into.
 
 Each server runs under a supervisor process of its own, so **quitting Osmium does not stop your
-servers** — reopen it tomorrow and the console is still there, still following, still able to send
+servers** - reopen it tomorrow and the console is still there, still following, still able to send
 commands.
 
 Everything the interface does, a command does too. `osmium` opens the full-screen interface;
@@ -104,8 +104,8 @@ Server details gathers everything about one server, including who is on it:
 │                                                             ┃
 │ PLAYERS                                                     ┃
 │   online        0 / 20                                      ┃
-│   ops           —                                           ┃
-│   banned        —                                           ┃
+│   ops           -                                           ┃
+│   banned        -                                           ┃
 │                                                             ┃
 │ CONTENT                                                     │
 │ [↑/↓] scroll  •  [r] refresh  •  [backspace] back           │
@@ -118,7 +118,7 @@ The create wizard walks through the choices, one at a time:
 ┌ Setup New Server ────────────────────────────────────────────────────────────────────────┐
 │ 3/8 Engine  ━━━─────                                                                     │
 │                                                                                          │
-│ Step 3 — Choose Server Engine                                                            │
+│ Step 3 - Choose Server Engine                                                            │
 │ Pick the software your server runs on.                                                   │
 │                                                                                          │
 │ Vanilla          Plugin           Mod Loader                                             │
@@ -134,7 +134,7 @@ The create wizard walks through the choices, one at a time:
 
 ## Requirements
 
-- **Java** — whatever your server software needs (Java 21 for Minecraft 1.20.5 and newer).
+- **Java** - whatever your server software needs (Java 21 for Minecraft 1.20.5 and newer).
 - A terminal with UTF-8 and 256 colours. Minimum size **60 × 18**; Osmium says so if it has less.
 - **Go 1.25+**, only if you are building it yourself.
 
@@ -153,7 +153,7 @@ make build           # ./bin/osmium
 make install         # into $(go env GOPATH)/bin
 ```
 
-Or take a binary from the [releases](https://github.com/limelamp/osmium/releases) — Linux, macOS and
+Or take a binary from the [releases](https://github.com/limelamp/osmium/releases) - Linux, macOS and
 Windows, amd64 and arm64.
 
 Then set up tab completion, once:
@@ -191,7 +191,7 @@ server folder does the same.
 | Command | What it does |
 |---|---|
 | `osmium` | Open the interface. `-s <name>` opens it on one server |
-| `osmium create` | Create a server — a wizard, or fully specified by flags |
+| `osmium create` | Create a server - a wizard, or fully specified by flags |
 | `osmium list` | Every registered server, what it runs, and whether it is up |
 | `osmium details` | One server in full: engine, disk, players, ops, bans, mods |
 | `osmium start` / `stop` / `restart` | Run it, ask it to shut down, or both |
@@ -201,7 +201,7 @@ server folder does the same.
 | `osmium migrate [-l Paper] [-v 1.21.1]` | Move a server to another loader or version |
 | `osmium destroy` | Delete a server, after typing its name |
 
-**Mods and plugins** — the same six verbs for each:
+**Mods and plugins** - the same six verbs for each:
 
 | Command | What it does |
 |---|---|
@@ -225,7 +225,7 @@ and nothing else. It holds the server's stdin, writes everything the server says
 That is what makes the rest work:
 
 - Quitting Osmium leaves your servers running.
-- Reopening it reattaches — the console shows the last thousand lines and carries on following.
+- Reopening it reattaches - the console shows the last thousand lines and carries on following.
 - `osmium exec` reaches a server whoever started it, from any terminal.
 - Two servers never collide: one supervisor, one socket, one log, per folder.
 

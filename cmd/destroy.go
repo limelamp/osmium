@@ -26,7 +26,7 @@ var destroyflags destroyFlags
 var destroyCmd = &cobra.Command{
 	Use:   "destroy",
 	Short: "Delete a server and everything in it.",
-	Long: `Deletes a server's folder — world included — and removes it from the list.
+	Long: `Deletes a server's folder - world included - and removes it from the list.
 
 This cannot be undone, so it asks you to type the server's name first. A running
 server is refused unless --force is given, which stops it before deleting.
@@ -49,7 +49,7 @@ Examples:
 
 		if supervisor.Running(server.Path) {
 			if !destroyflags.force {
-				return fmt.Errorf("%s is running — stop it first, or pass --force", server.Name)
+				return fmt.Errorf("%s is running - stop it first, or pass --force", server.Name)
 			}
 
 			fmt.Printf("Stopping %s before deleting it", server.Name)
@@ -79,7 +79,7 @@ Examples:
 
 		fmt.Printf("Deleted %s (%s).\n", server.Name, server.Path)
 		if kept != "" {
-			fmt.Printf("Kept its manifest at %s — rebuild from it with 'osmium create'.\n", kept)
+			fmt.Printf("Kept its manifest at %s - rebuild from it with 'osmium create'.\n", kept)
 		}
 		return nil
 	},
@@ -108,7 +108,7 @@ func targetServer() (storage.Server, error) {
 		}
 	}
 
-	return storage.Server{}, fmt.Errorf("this folder is not a registered server — pass --server to name one")
+	return storage.Server{}, fmt.Errorf("this folder is not a registered server - pass --server to name one")
 }
 
 // keepManifest settles whether osmium.json is saved before the folder goes,

@@ -65,7 +65,7 @@ func Present(servers []Server) (present []Server, missing []string) {
 }
 
 // FromManifest builds a record for a folder that holds an osmium.json but is
-// not in the list — a server created outside Osmium, or one rebuilt by hand.
+// not in the list - a server created outside Osmium, or one rebuilt by hand.
 // The folder names it; the manifest describes it.
 func FromManifest(dir string) (Server, error) {
 	absolute, err := filepath.Abs(dir)
@@ -124,7 +124,7 @@ func Register(store *ServerStore, server *Server) error {
 //
 // servers.json keeps a copy of the engine, version and memory so the list can
 // be drawn without opening every server folder, and that copy goes stale the
-// moment something else edits the manifest — a migration, the CLI, or a hand
+// moment something else edits the manifest - a migration, the CLI, or a hand
 // edit. The manifest is the truth, so the copy is refreshed from it whenever
 // the list is read rather than only where Osmium happens to remember to.
 func Sync(servers []Server) ([]Server, bool) {
@@ -174,7 +174,7 @@ func (s *ServerStore) GetFilePath() (string, error) {
 // file is rewritten only when something actually changed. It returns the names
 // of whatever was dropped so the caller can say what happened.
 //
-// Every reader goes through this — the interface and the commands alike — so
+// Every reader goes through this - the interface and the commands alike - so
 // none of them can show a server as something it stopped being.
 func (s *ServerStore) Load() ([]Server, []string, error) {
 	servers, err := s.LoadAll()

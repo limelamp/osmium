@@ -111,7 +111,7 @@ func writeCompletion(shell string, out *os.File) error {
 	case "powershell", "pwsh":
 		return rootCmd.GenPowerShellCompletionWithDesc(out)
 	}
-	return fmt.Errorf("unsupported shell %q — bash, zsh, fish and powershell are supported", shell)
+	return fmt.Errorf("unsupported shell %q - bash, zsh, fish and powershell are supported", shell)
 }
 
 // completionPath is where a shell loads a user's completions from.
@@ -141,7 +141,7 @@ func completionPath(shell string) (string, error) {
 		return filepath.Join(data, "zsh", "site-functions", "_osmium"), nil
 	}
 
-	return "", fmt.Errorf("unsupported shell %q — bash, zsh, fish and powershell are supported", shell)
+	return "", fmt.Errorf("unsupported shell %q - bash, zsh, fish and powershell are supported", shell)
 }
 
 // currentShell is the shell that ran Osmium, as far as the environment says.

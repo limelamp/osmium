@@ -41,7 +41,7 @@ Anything given as a flag is taken as answered; whatever is left is asked for,
 one prompt at a time. Give every flag and nothing is asked at all, which is what
 makes this scriptable.
 
---from rebuilds a server from a manifest — the osmium.json of an existing
+--from rebuilds a server from a manifest - the osmium.json of an existing
 server, or the one 'osmium destroy' kept: the engine, version and memory come
 from it, and every mod and plugin it lists is installed into the new server.
 

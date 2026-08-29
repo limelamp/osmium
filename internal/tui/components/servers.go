@@ -192,7 +192,7 @@ func reportMissing(missing []string) tea.Cmd {
 
 	lines := make([]string, 0, len(missing))
 	for _, name := range missing {
-		lines = append(lines, "removed "+name+" from the list — its folder is gone")
+		lines = append(lines, "removed "+name+" from the list - its folder is gone")
 	}
 	return core.Log(lines...)
 }

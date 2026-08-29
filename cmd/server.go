@@ -70,7 +70,7 @@ func findServer(name string) (storage.Server, error) {
 		}
 	}
 
-	return storage.Server{}, fmt.Errorf("no server named %q — run 'osmium list' to see the registered servers", name)
+	return storage.Server{}, fmt.Errorf("no server named %q - run 'osmium list' to see the registered servers", name)
 }
 
 // serverName is a display name for whatever directory a command resolved to.
@@ -97,7 +97,7 @@ func requireServerDir() (string, error) {
 
 	if _, err := os.Stat(filepath.Join(dir, config.OsmiumFileName)); err != nil {
 		if serverFlag == "" {
-			return "", fmt.Errorf("this folder is not an Osmium server (no %s) — run this from a server folder or pass --server", config.OsmiumFileName)
+			return "", fmt.Errorf("this folder is not an Osmium server (no %s) - run this from a server folder or pass --server", config.OsmiumFileName)
 		}
 		return "", fmt.Errorf("%s has no %s", dir, config.OsmiumFileName)
 	}
@@ -113,7 +113,7 @@ func runningDir() (string, error) {
 	}
 
 	if !supervisor.Running(dir) {
-		return "", fmt.Errorf("%s is not running — start it with 'osmium start'", serverName(dir))
+		return "", fmt.Errorf("%s is not running - start it with 'osmium start'", serverName(dir))
 	}
 	return dir, nil
 }

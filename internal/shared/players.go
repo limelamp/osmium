@@ -18,8 +18,8 @@ import (
 // Player is everything a server records about someone who has played on it, or
 // has been told not to.
 //
-// It is assembled from the files the server keeps beside its jar — ops.json,
-// banned-players.json, whitelist.json and usercache.json — so it can be read
+// It is assembled from the files the server keeps beside its jar - ops.json,
+// banned-players.json, whitelist.json and usercache.json - so it can be read
 // whether the server is running or not. Only Online needs the server itself.
 type Player struct {
 	Name string

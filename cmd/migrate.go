@@ -43,7 +43,7 @@ Examples:
 		}
 
 		if supervisor.Running(dir) {
-			return fmt.Errorf("%s is running — stop it before migrating it", serverName(dir))
+			return fmt.Errorf("%s is running - stop it before migrating it", serverName(dir))
 		}
 
 		wizardConfig := &steps.Config{

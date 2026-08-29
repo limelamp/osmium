@@ -41,7 +41,7 @@ type dragScrollMsg struct{ generation int }
 //
 // A press starts a possible selection but does nothing else: the click is only
 // delivered when the button comes up in the same cell it went down in. That is
-// what lets a drag begin on a list row without also activating it — pressing on
+// what lets a drag begin on a list row without also activating it - pressing on
 // "Start server" and dragging across it would otherwise start the server.
 func (m appModel) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd, bool) {
 	mouse := msg.Mouse()

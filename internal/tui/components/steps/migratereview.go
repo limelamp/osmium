@@ -19,7 +19,7 @@ const (
 // MigrateReviewStep shows what the migration will do and starts it.
 //
 // A migration replaces the server jar and every mod on the server, so it gets
-// the same last look the create wizard gives a build — and both wizards, in the
+// the same last look the create wizard gives a build - and both wizards, in the
 // interface and on the command line, show this same screen.
 type MigrateReviewStep struct {
 	config *Config

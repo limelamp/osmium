@@ -36,7 +36,7 @@ type Config struct {
 	AutoRun  bool
 }
 
-// Step is one screen of the wizard. The wizard renders the themed "Step N —
+// Step is one screen of the wizard. The wizard renders the themed "Step N -
 // Title" heading and the subtitle itself, so a step's View returns its body
 // only and every step's heading looks the same.
 type Step interface {

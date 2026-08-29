@@ -26,7 +26,7 @@ const (
 // end, enter saves, esc restores what it held before.
 //
 // Every field in the app went through the same half-dozen lines to do that, and
-// they did not all agree — one forgot the caret, another cleared instead of
+// they did not all agree - one forgot the caret, another cleared instead of
 // restoring. Here it is written once.
 type Field struct {
 	input textinput.Model

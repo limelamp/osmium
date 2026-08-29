@@ -90,14 +90,14 @@ func (m CreateServerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch msg.String() {
-		// Esc leaves. It is the way out of the wizard from wherever you are —
-		// including out of the folder browser — and the guard above means it
+		// Esc leaves. It is the way out of the wizard from wherever you are -
+		// including out of the folder browser - and the guard above means it
 		// only ever gets here when nothing is being typed.
 		case "esc":
 			return m, core.RouteTo("Home")
 
 		// Backspace and shift+tab step back one screen. A step with somewhere
-		// of its own to go — the folder browser — takes the key first.
+		// of its own to go - the folder browser - takes the key first.
 		case "backspace", "shift+tab":
 			if handled, updated, cmd := m.stepHandlesBack(msg); handled {
 				m.wizard = updated
@@ -169,7 +169,7 @@ func (m CreateServerModel) hints() []styles.Hint {
 // Help lists the keys of the step in view.
 func (m CreateServerModel) Help() []core.HelpSection {
 	return []core.HelpSection{{
-		Title: "Create Server — " + m.current().Title(),
+		Title: "Create Server - " + m.current().Title(),
 		Hints: m.hints(),
 	}}
 }

@@ -172,7 +172,7 @@ func (m MigrateModel) hints() []styles.Hint {
 // Help lists the keys of the step in view.
 func (m MigrateModel) Help() []core.HelpSection {
 	return []core.HelpSection{{
-		Title: "Migrate — " + m.current().Title(),
+		Title: "Migrate - " + m.current().Title(),
 		Hints: m.hints(),
 	}}
 }

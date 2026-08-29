@@ -24,8 +24,8 @@ var logsCmd = &cobra.Command{
 	Short: "Show a server's log.",
 	Long: `Prints what a server has said, and optionally keeps printing as it says more.
 
-Each line is labelled with where it came from — the server itself, Osmium, a
-mod operation, or a command someone typed — so the sources stay apart.
+Each line is labelled with where it came from - the server itself, Osmium, a
+mod operation, or a command someone typed - so the sources stay apart.
 
 Examples:
   osmium logs
