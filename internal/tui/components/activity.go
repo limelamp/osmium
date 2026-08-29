@@ -48,8 +48,8 @@ type console struct {
 	status string
 
 	// live is the progress of whatever is installing into this server: it is
-	// redrawn in place while the operation runs, and kept as an ordinary line
-	// once it finishes, so scrolling back shows what was downloaded.
+	// redrawn in place while the operation runs, and dropped when it ends. The
+	// log keeps what happened, not how far a download had got.
 	live      string
 	liveLabel string
 
@@ -186,6 +186,11 @@ func (m ActivityModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case core.LogMsg:
 		return m.appendVisible(msg.Lines...), nil
+
+	case core.ThemeChangedMsg:
+		// The log's colours are already in the text the viewport was given, so
+		// it is rendered again in the new ones.
+		return m.refresh(), nil
 
 	case core.RestartReadyMsg:
 		// The server asked to restart has finished shutting down.
@@ -360,13 +365,11 @@ func (m ActivityModel) followProgress(c *console) {
 		return
 	}
 
-	// It is over, and this is where it got to: the bar stops being redrawn and
-	// becomes an ordinary line of the log, so scrolling back shows what was
-	// downloaded and how big it was.
-	if c.live != "" {
-		c.say(supervisor.TagMod, c.liveLabel+"  "+c.live)
-	}
-
+	// It is over, so the bar goes: a finished download's percentage and byte
+	// count are of no use in a log that is read for what happened, and left
+	// behind they clutter every scroll back through it. What was installed is
+	// said in the operation's own lines. The command line keeps its bar,
+	// where it is the only record there is.
 	c.live, c.liveLabel = "", ""
 	core.ClearProgress(c.dir)
 }
@@ -547,8 +550,17 @@ func (m ActivityModel) View() tea.View {
 		Foreground(theme.Inactive).
 		Render(strings.Repeat("─", max(m.layout.ContentWidth(), 0)))
 
+	// The command line is restyled every frame so that a theme chosen while
+	// the app is running reaches it; bubbles keeps the styles it was built
+	// with, and View's value receiver makes this local to the frame.
+	m.textInput.SetStyles(core.FieldStyles())
+
 	logs := m.viewport.View()
-	if current := m.visible(); len(current.lines) == 0 {
+
+	// The placeholder only stands in for a console with nothing in it at all.
+	// A download reports before it writes its first line, and the bar is the
+	// one thing on screen saying the work has started.
+	if current := m.visible(); len(current.lines) == 0 && current.liveLabel == "" {
 		logs = styles.Body(lipgloss.NewStyle().Foreground(theme.Inactive).
 			Render(m.emptyMessage()), m.viewport.Width(), m.viewport.Height())
 	}

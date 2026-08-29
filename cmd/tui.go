@@ -9,7 +9,6 @@ import (
 	"github.com/limelamp/osmium/internal/config"
 	"github.com/limelamp/osmium/internal/tui"
 	"github.com/limelamp/osmium/internal/tui/storage"
-	"github.com/limelamp/osmium/internal/tui/theme"
 	"github.com/spf13/cobra"
 )
 
@@ -102,11 +101,7 @@ func openingServer(store *storage.ServerStore) (*storage.Server, error) {
 }
 
 func runTui(cmd *cobra.Command, args []string) error {
-	cfg, err := config.LoadConfig()
-	if err == nil {
-		theme.SetTheme(cfg.Theme)
-	}
-
+	// The theme is applied for every command by the root's PersistentPreRun.
 	store := storage.NewServerStore()
 
 	server, err := openingServer(store)

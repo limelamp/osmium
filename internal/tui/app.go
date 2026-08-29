@@ -215,6 +215,13 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		model, cmd := m.dragScroll(msg)
 		return model, cmd
 
+	case core.ThemeChangedMsg:
+		// A new theme has to reach every page, not only the one in front: a
+		// panel that keeps text it has already rendered, or a component that
+		// was handed its styles when it was built, has to be told to build
+		// them again, and it may well be behind another page when it is.
+		return m.everyPage(msg)
+
 	case copiedMsg:
 		m.copied = copiedReport(msg)
 		return m, clearCopied()
@@ -254,6 +261,39 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.retain(m.activePage)
 
 	return m, tea.Batch(helpCmd, cmd)
+}
+
+// everyPage hands a message to all five pages and keeps the one on screen as
+// the copy that is drawn.
+func (m appModel) everyPage(msg tea.Msg) (tea.Model, tea.Cmd) {
+	cmds := make([]tea.Cmd, 0, 5)
+
+	for _, page := range []Page{m.home, m.createServer, m.manageServers, m.migrate, m.settings} {
+		updated, cmd := page.Update(msg)
+		m.retain(asPage(updated))
+		cmds = append(cmds, cmd)
+	}
+
+	m.activePage = m.stored(m.activePage)
+	return m, tea.Batch(cmds...)
+}
+
+// stored is the app's own copy of a page, which is where retain has just put
+// the updated one.
+func (m appModel) stored(page Page) Page {
+	switch page.(type) {
+	case pages.HomeModel:
+		return m.home
+	case pages.CreateServerModel:
+		return m.createServer
+	case pages.ManageServersModel:
+		return m.manageServers
+	case pages.MigrateModel:
+		return m.migrate
+	case pages.SettingsModel:
+		return m.settings
+	}
+	return page
 }
 
 // retain writes the active page back into its slot, so a page keeps its state

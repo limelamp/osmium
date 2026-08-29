@@ -6,6 +6,8 @@ import (
 	"os"
 
 	"github.com/limelamp/osmium/internal/build"
+	"github.com/limelamp/osmium/internal/config"
+	"github.com/limelamp/osmium/internal/tui/theme"
 	"github.com/spf13/cobra"
 )
 
@@ -31,6 +33,15 @@ Minecraft versions. Install it with:
 	SilenceUsage: true,
 
 	Version: build.Full(),
+
+	// Every command draws in the theme the user chose, not only the
+	// full-screen interface: the progress bars, spinners and marks the
+	// commands print come from the same palette the TUI does.
+	PersistentPreRun: func(*cobra.Command, []string) {
+		if cfg, err := config.LoadConfig(); err == nil {
+			theme.SetTheme(cfg.Theme)
+		}
+	},
 	// Run: func(cmd *cobra.Command, args []string) { // Was used before the refactor
 	// 	mainProcess := tea.NewProgram(internal.NewRootModel(), tea.WithAltScreen())
 	// 	if _, err := mainProcess.Run(); err != nil {

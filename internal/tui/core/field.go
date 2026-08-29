@@ -1,6 +1,7 @@
 package core
 
 import (
+	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -57,8 +58,32 @@ func FieldStyles() textinput.Styles {
 
 	styles.Cursor.Color = theme.Accent
 	styles.Cursor.Blink = false
+
 	styles.Focused.Prompt = lipgloss.NewStyle().Foreground(theme.Primary)
 	styles.Focused.Placeholder = lipgloss.NewStyle().Foreground(theme.Inactive)
+
+	// A field nobody is typing into is dressed in the theme too. Left as
+	// bubbles' own greys it would be the one part of the interface that
+	// belongs to no theme at all — which is how the console's command line
+	// came to look the same whichever theme was chosen.
+	styles.Blurred.Prompt = lipgloss.NewStyle().Foreground(theme.Inactive)
+	styles.Blurred.Placeholder = lipgloss.NewStyle().Foreground(theme.Inactive)
+
+	return styles
+}
+
+// AreaStyles are the same styles for the multi-line field, so a long config
+// value is typed into something that looks like every other input.
+func AreaStyles() textarea.Styles {
+	styles := textarea.DefaultDarkStyles()
+
+	styles.Cursor.Color = theme.Accent
+	styles.Cursor.Blink = false
+
+	styles.Focused.Prompt = lipgloss.NewStyle().Foreground(theme.Primary)
+	styles.Focused.Placeholder = lipgloss.NewStyle().Foreground(theme.Inactive)
+	styles.Blurred.Prompt = lipgloss.NewStyle().Foreground(theme.Inactive)
+	styles.Blurred.Placeholder = lipgloss.NewStyle().Foreground(theme.Inactive)
 
 	return styles
 }
@@ -145,4 +170,11 @@ func (f Field) SetWidth(width int) Field {
 }
 
 // View renders the field.
-func (f Field) View() string { return f.input.View() }
+func (f Field) View() string {
+	// The styles are applied here rather than kept from when the field was
+	// built: the theme can change while the app is running, and bubbles holds
+	// on to whatever styles it was given. View has a value receiver, so this
+	// restyles nothing but the copy being drawn.
+	f.input.SetStyles(FieldStyles())
+	return f.input.View()
+}

@@ -467,11 +467,13 @@ func ProgressBar(width int, done, total int64) string {
 
 	ratio := min(max(float64(done)/float64(total), 0), 1)
 
-	// The bar leaves room for the figures that follow it.
+	// The bar leaves room for the figures that follow it: the percentage, the
+	// separator and two byte counts, which run to about thirty columns when
+	// both of them are at their longest.
 	bar := progress.New(
 		progress.WithColors(theme.Primary, theme.Accent),
 		progress.WithoutPercentage(),
-		progress.WithWidth(max(min(width-28, 40), 8)),
+		progress.WithWidth(max(min(width-32, 40), 8)),
 	)
 
 	figures := lipgloss.NewStyle().Foreground(theme.Inactive).Render(
