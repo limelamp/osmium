@@ -46,6 +46,20 @@ func NewAppModel(store *storage.ServerStore) appModel {
 	}
 }
 
+// NewAppModelFor returns the app already open on a server's Manage Servers
+// page, which is what "osmium --server survival" and running Osmium inside a
+// server folder ask for. A nil server opens the app as usual, on Home.
+func NewAppModelFor(store *storage.ServerStore, server *storage.Server) appModel {
+	m := NewAppModel(store)
+	if server == nil {
+		return m
+	}
+
+	m.manageServers = m.manageServers.OpenServer(server)
+	m.activePage = m.manageServers
+	return m
+}
+
 // titleHeight is how many rows the page title bar takes, which every page below
 // it has to be shifted down by for mouse coordinates to line up.
 func (m appModel) titleHeight(p Page) int {

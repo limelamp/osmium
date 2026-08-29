@@ -2,6 +2,7 @@ package storage
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -58,6 +59,61 @@ func Present(servers []Server) (present []Server, missing []string) {
 		}
 	}
 	return present, missing
+}
+
+// FromManifest builds a record for a folder that holds an osmium.json but is
+// not in the list — a server created outside Osmium, or one rebuilt by hand.
+// The folder names it; the manifest describes it.
+func FromManifest(dir string) (Server, error) {
+	absolute, err := filepath.Abs(dir)
+	if err != nil {
+		return Server{}, err
+	}
+
+	conf, err := config.ReadConfigIn(absolute)
+	if err != nil {
+		return Server{}, err
+	}
+
+	name := filepath.Base(absolute)
+	return Server{
+		ID:      name,
+		Name:    name,
+		Path:    absolute,
+		Version: conf.Version,
+		Type:    strings.ToLower(conf.Loader),
+		Memory:  conf.AllocatedRAM,
+	}, nil
+}
+
+// Register records a server in servers.json.
+//
+// A server is identified by its folder, so registering one that is already
+// listed updates that entry rather than adding a second row for the same
+// files. Only a genuinely new folder is appended, with its id made unique
+// against the ones already in use.
+func Register(store *ServerStore, server *Server) error {
+	servers, err := store.LoadAll()
+	if err != nil {
+		return err
+	}
+
+	taken := make(map[string]bool, len(servers))
+	for i, existing := range servers {
+		if existing.Path == server.Path {
+			server.ID = existing.ID
+			servers[i] = *server
+			return store.SaveAll(servers)
+		}
+		taken[existing.ID] = true
+	}
+
+	base := server.ID
+	for i := 2; taken[server.ID]; i++ {
+		server.ID = fmt.Sprintf("%s-%d", base, i)
+	}
+
+	return store.SaveAll(append(servers, *server))
 }
 
 // Sync refreshes each entry from its server's own osmium.json and reports

@@ -30,6 +30,11 @@ type ServersModel struct {
 	list    core.List
 	isFocus bool
 	err     error
+
+	// pending is a server path to highlight once the list has been read. The
+	// list loads asynchronously, so a selection made before that arrives would
+	// be overwritten the moment it does.
+	pending string
 }
 
 // statusInterval is how often the running indicators are re-checked.
@@ -115,6 +120,7 @@ func (m ServersModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = nil
 		m.servers = msg.Servers
 		m.list = m.list.Resize(len(m.servers), m.rows())
+		m = m.applyPending()
 
 		// In order: the selection first, so the notice about what was pruned
 		// lands in the console the user is now looking at rather than in
@@ -132,6 +138,32 @@ func (m ServersModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+// Select asks for a server to be highlighted as soon as the list has been read,
+// which is how the interface opens straight onto the server named on the
+// command line.
+func (m ServersModel) Select(path string) ServersModel {
+	m.pending = path
+	return m
+}
+
+// applyPending moves the cursor onto the server that was asked for, if it is
+// in the list that just arrived.
+func (m ServersModel) applyPending() ServersModel {
+	if m.pending == "" {
+		return m
+	}
+
+	for i, server := range m.servers {
+		if server.Path == m.pending {
+			m.list = m.list.MoveTo(i)
+			break
+		}
+	}
+
+	m.pending = ""
+	return m
 }
 
 // selectCmd announces the highlighted server to the rest of the page. A server

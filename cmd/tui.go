@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/limelamp/osmium/internal/config"
@@ -26,6 +27,65 @@ Example:
 
 func init() {
 	rootCmd.AddCommand(tuiCmd)
+
+	// Both ways of opening the interface take the same flag, so
+	// "osmium -s survival" and "osmium tui -s survival" mean the same thing.
+	registerServerFlag(tuiCmd)
+	registerServerFlag(rootCmd)
+}
+
+// openingServer is the server the interface should open on: the one --server
+// names, or the one the current folder is.
+//
+// Finding neither is not a failure — it is the ordinary case of running Osmium
+// from anywhere else, and the app opens on its home page. A --server that names
+// nothing is a failure, because it says plainly what was wanted.
+func openingServer(store *storage.ServerStore) (*storage.Server, error) {
+	if serverFlag != "" {
+		server, err := findServer(serverFlag)
+		if err != nil {
+			return nil, err
+		}
+		return &server, nil
+	}
+
+	dir, err := os.Getwd()
+	if err != nil {
+		return nil, nil
+	}
+
+	if _, err := os.Stat(filepath.Join(dir, config.OsmiumFileName)); err != nil {
+		return nil, nil
+	}
+
+	// The folder is a server. If it is already in the list, that entry is the
+	// one to open; the list is the truth about names and ids.
+	servers, _, err := store.Load()
+	if err != nil {
+		return nil, err
+	}
+
+	absolute, err := filepath.Abs(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, server := range servers {
+		if server.Path == absolute {
+			return &server, nil
+		}
+	}
+
+	// A server folder Osmium has never seen is registered on the spot, so that
+	// opening it once is enough for it to stay in the list.
+	server, err := storage.FromManifest(absolute)
+	if err != nil {
+		return nil, err
+	}
+	if err := storage.Register(store, &server); err != nil {
+		return nil, err
+	}
+	return &server, nil
 }
 
 func runTui(cmd *cobra.Command, args []string) error {
@@ -36,54 +96,12 @@ func runTui(cmd *cobra.Command, args []string) error {
 
 	store := storage.NewServerStore()
 
-	//? For testing servers.json in appdata
-	// err := store.SaveAll([]storage.Server{
-	// 	{
-	// 		ID:      "srv-vanilla-survival",
-	// 		Name:    "Vanilla SMP",
-	// 		Path:    "/home/user/.config/osmium/servers/vanilla-smp",
-	// 		Version: "1.21.1",
-	// 		Type:    "vanilla",
-	// 		Memory:  "4G",
-	// 	},
-	// 	{
-	// 		ID:      "srv-paper-lobby",
-	// 		Name:    "Hub/Lobby (Paper)",
-	// 		Path:    "/home/user/.config/osmium/servers/paper-lobby",
-	// 		Version: "1.20.4",
-	// 		Type:    "paper",
-	// 		Memory:  "2G",
-	// 	},
-	// 	{
-	// 		ID:      "srv-fabric-creative",
-	// 		Name:    "Creative World (Fabric)",
-	// 		Path:    "/home/user/.config/osmium/servers/fabric-creative",
-	// 		Version: "1.21.1",
-	// 		Type:    "fabric",
-	// 		Memory:  "3G",
-	// 	},
-	// 	{
-	// 		ID:      "srv-purpur-minigames",
-	// 		Name:    "Minigames PURPUR",
-	// 		Path:    "/home/user/.config/osmium/servers/purpur-minigames",
-	// 		Version: "1.20.2",
-	// 		Type:    "purpur",
-	// 		Memory:  "6G",
-	// 	},
-	// 	{
-	// 		ID:      "srv-velocity-proxy",
-	// 		Name:    "Network Proxy (Velocity)",
-	// 		Path:    "/home/user/.config/osmium/servers/velocity-proxy",
-	// 		Version: "3.3.0",
-	// 		Type:    "velocity",
-	// 		Memory:  "1G",
-	// 	},
-	// })
-	// if err != nil {
-	// 	return err
-	// }
+	server, err := openingServer(store)
+	if err != nil {
+		return err
+	}
 
-	p := tea.NewProgram(tui.NewAppModel(store))
+	p := tea.NewProgram(tui.NewAppModelFor(store, server))
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Alas, there's been an error: %v", err)
 		os.Exit(1)

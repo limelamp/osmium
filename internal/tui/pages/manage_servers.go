@@ -127,6 +127,22 @@ func (m ManageServersModel) setFocus(pane int) ManageServersModel {
 	return m.SetLayout(m.layout).(ManageServersModel)
 }
 
+// OpenServer opens the page on one server rather than on the list.
+//
+// The action pane takes focus: the server was named on the command line or is
+// the folder the user is standing in, so choosing one is not what they came
+// here to do.
+func (m ManageServersModel) OpenServer(server *storage.Server) ManageServersModel {
+	if server == nil {
+		return m
+	}
+
+	m.servers = m.servers.Select(server.Path)
+
+	updated, _ := m.selectServer(server)
+	return updated.(ManageServersModel).setFocus(paneAction)
+}
+
 // paneAt reports which pane covers an absolute terminal coordinate.
 func (m ManageServersModel) paneAt(x, y int) int {
 	switch {

@@ -1,7 +1,6 @@
 package steps
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -161,41 +160,11 @@ func Build(cfg *Config, store *storage.ServerStore, log func(line string)) (*sto
 
 	// 4. Register the server so it shows up in Manage Servers
 	emit("Registering the server")
-	if err := register(store, server); err != nil {
+	if err := storage.Register(store, server); err != nil {
 		return nil, err
 	}
 
 	return server, nil
-}
-
-// register records the new server in servers.json.
-//
-// A server is identified by its folder, so building into a folder that is
-// already registered updates that entry rather than adding a second row for the
-// same files. Only a genuinely new folder gets appended, with its id made
-// unique against the ones already in use.
-func register(store *storage.ServerStore, server *storage.Server) error {
-	servers, err := store.LoadAll()
-	if err != nil {
-		return err
-	}
-
-	taken := make(map[string]bool, len(servers))
-	for i, existing := range servers {
-		if existing.Path == server.Path {
-			server.ID = existing.ID
-			servers[i] = *server
-			return store.SaveAll(servers)
-		}
-		taken[existing.ID] = true
-	}
-
-	base := server.ID
-	for i := 2; taken[server.ID]; i++ {
-		server.ID = fmt.Sprintf("%s-%d", base, i)
-	}
-
-	return store.SaveAll(append(servers, *server))
 }
 
 func (s *BuildStep) Title() string {
