@@ -28,103 +28,24 @@ Osmium aids in the creation and the managing of Minecraft servers, all done from
 Everything the interface does, a command does too. `osmium` opens the full-screen interface; 
 `osmium start -s survival` starts a server from a script.
 
-## Screens
+## Screenshots
 
 The home page lists what is running:
 
-```
-                      ██████  ███████ ███    ███ ██ ██    ██ ███    ███
-                     ██    ██ ██      ████  ████ ██ ██    ██ ████  ████
-                     ██    ██ ███████ ██ ████ ██ ██ ██    ██ ██ ████ ██
-                     ██    ██      ██ ██  ██  ██ ██ ██    ██ ██  ██  ██
-                      ██████  ███████ ██      ██ ██  ██████  ██      ██
+<img width="1313" height="837" alt="Screenshot_20260830_031757" src="https://github.com/user-attachments/assets/3fa8f6e4-7ade-4a72-9f97-3dd8cf3bc335" />
 
-                     ┌ Menu ──────────────────────────────────────────┐
-                     │ ➔ Create server                              c │
-                     │   Manage servers                             m │
-                     │   Migrate server                             g │
-                     │   Settings                                   s │
-                     │   Quit                                       q │
-                     └────────────────────────────────────────────────┘
-                     ┌ Running ───────────────────────────────────────┐
-                     │   ● survival                             up 9s │
-                     └────────────────────────────────────────────────┘
-                     [↑/↓] move  •  [enter] open  •  [?] help
-```
+
 
 Manage Servers puts the list, the actions and the server's console on one screen:
 
-```
-│Osmium                                                                      Manage Servers│
-┌ Servers ──────────────────┐┌ Actions · survival ─────────────────────────────────────────┐
-│ ➔ ● survival       up 50s ││ SERVER                                                      ┃
-│   ○ creative              ││ ➔ Server details                               Paper 1.21.1 ┃
-│   ○ testbed               ││   Players                                           0 known ┃
-│                           ││                                                             ┃
-│                           ││ PROCESS                                                     ┃
-│                           ││   Start server                                    ● running ┃
-│                           ││   Stop server                                               ┃
-│                           ││   Restart server                                            ┃
-│                           ││                                                             │
-│                           ││ CONTENT                                                     │
-│                           ││   Mods                                                      │
-│                           ││   Plugins                                                   │
-│                           ││   Install everything tracked                                │
-│                           ││   Track installed files                                     │
-│                           ││                                                             │
-│                           ││ [↑/↓] move  •  [enter] run  •  [ctrl+b] hide servers        │
-│                           │└─────────────────────────────────────────────────────────────┘
-│                           │┌ Activity · survival ────────────────────────────────────────┐
-│                           ││ you    │ › list                                             │
-│                           ││ server │ [23:03:44 INFO]: There are 0 of a max of 20        │
-│                           ││          players online:                                    │
-│                           ││ ─────────────────────────────────────────────────────────── │
-│ [↑/↓] select              ││ › Enter a command...                                        ┃
-└───────────────────────────┘└─────────────────────────────────────────────────────────────┘
-```
+<img width="1313" height="837" alt="Screenshot_20260830_031843" src="https://github.com/user-attachments/assets/25a4c638-6624-4ee0-abf1-3a65f4abbebc" />
 
-Server details gathers everything about one server, including who is on it:
 
-```
-┌ Server Details · survival ──────────────────────────────────┐
-│ STATUS                                                      ┃
-│   state         running   up 1m · pid 3191536               ┃
-│   memory        2G                                          ┃
-│                                                             ┃
-│ SERVER                                                      ┃
-│   engine        Paper 1.21.1                                ┃
-│   folder        ~/servers/survival                          ┃
-│   size on disk  217.7 MB                                    ┃
-│                                                             ┃
-│ PLAYERS                                                     ┃
-│   online        0 / 20                                      ┃
-│   ops           -                                           ┃
-│   banned        -                                           ┃
-│                                                             ┃
-│ CONTENT                                                     │
-│ [↑/↓] scroll  •  [r] refresh  •  [backspace] back           │
-└─────────────────────────────────────────────────────────────┘
-```
 
 The create wizard walks through the choices, one at a time:
 
-```
-┌ Setup New Server ────────────────────────────────────────────────────────────────────────┐
-│ 3/8 Engine  ━━━─────                                                                     │
-│                                                                                          │
-│ Step 3 - Choose Server Engine                                                            │
-│ Pick the software your server runs on.                                                   │
-│                                                                                          │
-│ Vanilla          Plugin           Mod Loader                                             │
-│                                                                                          │
-│ ➔ Vanilla          Paper            Forge                                                │
-│                    Purpur           NeoForge                                             │
-│                    Spigot           Fabric                                               │
-│                    Bukkit           Quilt                                                │
-│                                                                                          │
-│ The official, unmodified Minecraft server software.                                      │
-└──────────────────────────────────────────────────────────────────────────────────────────┘
-```
+<img width="1313" height="837" alt="Screenshot_20260830_031951" src="https://github.com/user-attachments/assets/5400497c-0deb-4d5d-a618-dab38565e361" />
+
 
 ## Requirements
 
