@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/limelamp/osmium/internal/shared"
 	"github.com/limelamp/osmium/internal/supervisor"
 	"github.com/limelamp/osmium/internal/tui/core"
@@ -25,38 +25,24 @@ type PlayersModel struct {
 	base
 
 	players []shared.Player
-	table   table.Model
 	max     int
 
 	ticker core.Ticker
 }
 
+// The widths of the columns after the name, which takes what is left.
+const (
+	statusWidth   = 9
+	roleWidth     = 8
+	lastSeenWidth = 10
+	headerRows    = 1
+)
+
 func NewPlayersModel() PlayersModel {
 	return PlayersModel{
 		base:   newBase(),
-		table:  newPlayerTable(),
 		ticker: core.NewTicker("players", playersInterval),
 	}
-}
-
-// newPlayerTable builds the table in the app's colours.
-func newPlayerTable() table.Model {
-	built := table.New(
-		table.WithColumns([]table.Column{
-			{Title: "PLAYER", Width: 18},
-			{Title: "STATUS", Width: 9},
-			{Title: "ROLE", Width: 8},
-			{Title: "LAST SEEN", Width: 12},
-		}),
-		table.WithFocused(true),
-	)
-
-	styling := table.DefaultStyles()
-	styling.Header = styling.Header.Foreground(theme.Inactive).Bold(false)
-	styling.Selected = styling.Selected.Foreground(theme.Primary).Bold(true)
-	built.SetStyles(styling)
-
-	return built
 }
 
 func (m PlayersModel) Init() tea.Cmd {
@@ -83,7 +69,19 @@ func (m PlayersModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.ticker = armed
 		return m.reload(), tea.Batch(cmd, m.ask())
 
+	case tea.MouseMsg:
+		// The header sits above the rows, so a click is one row further down
+		// than it looks from the panel's edge.
+		updated, _ := m.list.HandleMouse(msg, m.layout.Inner(), headerRows)
+		m.list = updated
+		return m, nil
+
 	case tea.KeyPressMsg:
+		if list, handled := m.list.HandleKey(msg.String()); handled {
+			m.list = list
+			return m, nil
+		}
+
 		switch msg.String() {
 		case "backspace":
 			return m, core.CloseAction()
@@ -101,9 +99,7 @@ func (m PlayersModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	updated, cmd := m.table.Update(msg)
-	m.table = updated
-	return m, cmd
+	return m, nil
 }
 
 // reload re-reads the player files and who the server last said was online.
@@ -119,15 +115,20 @@ func (m PlayersModel) reload() PlayersModel {
 	}
 
 	m.max = shared.MaxPlayers(m.dir())
-	if names, _, max, ok := onlineNow(m.dir()); ok {
-		players = shared.MarkOnline(players, names)
-		if max > 0 {
-			m.max = max
+
+	// Who was online is read from the server's own answer in the log, which is
+	// only true of a server that is still running.
+	if supervisor.Running(m.dir()) {
+		if names, _, max, ok := onlineNow(m.dir()); ok {
+			players = shared.MarkOnline(players, names)
+			if max > 0 {
+				m.max = max
+			}
 		}
 	}
 
 	m.players = players
-	m.table.SetRows(m.rows())
+	m.base = m.setCount(len(players))
 	return m
 }
 
@@ -144,27 +145,51 @@ func (m PlayersModel) ask() tea.Cmd {
 	}
 }
 
-// rows renders the players as table rows.
-func (m PlayersModel) rows() []table.Row {
-	rows := make([]table.Row, 0, len(m.players))
+// header names the columns, indented by the width of the cursor marker so the
+// titles sit over the values they name.
+func (m PlayersModel) header() string {
+	return lipgloss.NewStyle().Foreground(theme.Inactive).Render("  " + m.columns(
+		"PLAYER", "STATUS", "ROLE", "LAST SEEN"))
+}
 
-	for _, player := range m.players {
-		status := "offline"
-		switch {
-		case player.Banned:
-			status = "banned"
-		case player.Online:
-			status = "online"
-		}
+// row renders one player across the columns, with the cursor's marker.
+func (m PlayersModel) playerRow(index int) string {
+	player := m.players[index]
 
-		role := "—"
-		if player.Op {
-			role = fmt.Sprintf("op %d", player.Level)
-		}
-
-		rows = append(rows, table.Row{player.Name, status, role, lastSeen(player)})
+	status := "offline"
+	switch {
+	case player.Banned:
+		status = "banned"
+	case player.Online:
+		status = "online"
 	}
-	return rows
+
+	role := "—"
+	if player.Op {
+		role = fmt.Sprintf("op %d", player.Level)
+	}
+
+	marker := "  "
+	style := lipgloss.NewStyle()
+	if index == m.list.Cursor {
+		marker = "➔ "
+		style = style.Foreground(theme.Primary).Bold(true)
+	}
+
+	return style.Render(marker + m.columns(player.Name, status, role, lastSeen(player)))
+}
+
+// columns lays four values out in the panel's fixed columns, so the header and
+// the rows line up whatever the values are.
+func (m PlayersModel) columns(name, status, role, seen string) string {
+	nameWidth := max(m.layout.ContentWidth()-statusWidth-roleWidth-lastSeenWidth-2, 8)
+
+	cell := func(value string, width int) string {
+		return lipgloss.NewStyle().Width(width).MaxWidth(width).Render(value)
+	}
+
+	return cell(name, nameWidth) + cell(status, statusWidth) +
+		cell(role, roleWidth) + cell(seen, lastSeenWidth)
 }
 
 // command sends a console command for the player under the cursor.
@@ -194,11 +219,10 @@ func (m PlayersModel) say(text string, failed bool) (tea.Model, tea.Cmd) {
 
 // selected is the name in the highlighted row.
 func (m PlayersModel) selected() string {
-	row := m.table.SelectedRow()
-	if len(row) == 0 {
+	if m.list.Cursor < 0 || m.list.Cursor >= len(m.players) {
 		return ""
 	}
-	return row[0]
+	return m.players[m.list.Cursor].Name
 }
 
 // lastSeen renders when a player was last on, roughly.
@@ -234,10 +258,8 @@ func (m PlayersModel) View() tea.View {
 			styles.Hint{Key: "backspace", Desc: "back"})
 	}
 
-	m.table.SetHeight(max(m.layout.ContentHeight()-2, 3))
-	m.table.SetWidth(max(m.layout.ContentWidth(), 20))
-
-	return m.panelView(m.title(), m.table.View(), m.Hints()...)
+	return m.panelView(m.title(),
+		m.header()+"\n"+m.list.Render(m.playerRow), m.Hints()...)
 }
 
 // title names the panel and how many players are on right now.
@@ -266,6 +288,7 @@ func (m PlayersModel) Hints() []styles.Hint {
 	}
 
 	return []styles.Hint{
+		{Key: "↑/↓", Desc: "move"},
 		{Key: "o/d", Desc: "op / deop"},
 		{Key: "k", Desc: "kick"},
 		{Key: "b/p", Desc: "ban / pardon"},
@@ -281,12 +304,10 @@ func (m PlayersModel) Title() string {
 func (m PlayersModel) SetLayout(l core.Layout) core.Action {
 	m.layout = l
 
-	// The name column takes whatever the fixed columns leave.
-	columns := m.table.Columns()
-	if len(columns) == 4 {
-		columns[0].Width = max(l.ContentWidth()-33, 10)
-		m.table.SetColumns(columns)
-	}
+	// One row goes to the header, and the footer takes the rest.
+	m.base = m.setCount(len(m.players))
+	m.list = m.list.Resize(len(m.players), max(l.ContentHeight()-hintRows-headerRows, 1))
+
 	return m
 }
 

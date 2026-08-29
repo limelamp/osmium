@@ -174,7 +174,13 @@ func (m ManageServersModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		servers, serversCmd := m.servers.Update(msg)
 		m.servers = servers.(components.ServersModel)
 
-		return m, tea.Batch(activityCmd, serversCmd)
+		// The action panel is woken too: a panel that was parked while another
+		// server was selected has had its timer stranded, and it is the wake
+		// that starts it again.
+		action, actionCmd := m.activeAction.Update(msg)
+		m.activeAction = action.(core.Action)
+
+		return m, tea.Batch(activityCmd, serversCmd, actionCmd)
 
 	// A finished operation is two things: output for the console, and a reason
 	// for the panel that started it to re-read what it shows.
@@ -216,6 +222,13 @@ func (m ManageServersModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		return m.forwardToPane(msg, pane)
+
+	case core.OperationStartedMsg:
+		// Something is installing: the console starts polling so it can draw
+		// the progress of it.
+		activity, cmd := m.activity.Wake()
+		m.activity = activity
+		return m, cmd
 
 	case tea.KeyPressMsg:
 		// A pane with an open text field keeps the two keys the page would
@@ -298,8 +311,10 @@ func (m ManageServersModel) selectServer(server *storage.Server) (tea.Model, tea
 	activity, activityCmd := m.activity.SetServer(server)
 	m.activity = activity
 
+	// A panel being shown again was not initialised, so it is woken instead:
+	// whatever it runs on a timer has to start over.
 	if remembered {
-		return m, activityCmd
+		return m, tea.Batch(activityCmd, core.Wake())
 	}
 	return m, tea.Batch(activityCmd, m.activeAction.Init())
 }

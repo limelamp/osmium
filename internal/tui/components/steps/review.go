@@ -49,8 +49,20 @@ func (s *ReviewStep) Subtitle() string {
 func (s *ReviewStep) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.MouseMsg:
-		// The buttons sit under the summary block, so clicks are offset by it.
 		mouse := msg.Mouse()
+
+		// The wheel reads the summary, which can be taller than the step.
+		if wheel, ok := msg.(tea.MouseWheelMsg); ok && s.layout.Hit(mouse.X, mouse.Y) {
+			step := core.WheelStep
+			if wheel.Button == tea.MouseWheelUp {
+				step = -step
+			}
+
+			s.scroll, s.manual = s.scroll.By(step), true
+			return s, nil
+		}
+
+		// The buttons sit under the summary block, so clicks are offset by it.
 		if _, isClick := msg.(tea.MouseClickMsg); !isClick || !s.layout.Hit(mouse.X, mouse.Y) {
 			return s, nil
 		}

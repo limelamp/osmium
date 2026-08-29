@@ -118,6 +118,12 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	// The click that dismissed the help modal is spent on dismissing it: it
+	// must not also land on whatever it was covering.
+	if _, ok := msg.(tea.MouseClickMsg); ok && wasVisible {
+		return m, helpCmd
+	}
+
 	// 3. Process normal system and application events
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:

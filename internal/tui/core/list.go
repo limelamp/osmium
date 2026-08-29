@@ -87,6 +87,35 @@ func (l List) HandleKey(key string) (List, bool) {
 	return l, false
 }
 
+// Settle moves a cursor off a row that cannot be selected — a heading, a blank
+// — onto the next one that can, in the direction it was travelling, wrapping at
+// the ends the way the arrow keys do.
+//
+// Two lists in the app are drawn with headings inside them; this is how both
+// keep the headings visible without ever landing on one.
+func Settle(list List, direction int, selectable func(index int) bool) List {
+	if direction == 0 {
+		direction = 1
+	}
+
+	// Nothing to settle on: leave the cursor where it is rather than spin.
+	usable := false
+	for i := range list.Scroll.Total {
+		if selectable(i) {
+			usable = true
+			break
+		}
+	}
+	if !usable {
+		return list
+	}
+
+	for !selectable(list.Cursor) {
+		list = list.Cycle(direction)
+	}
+	return list
+}
+
 // Render draws the rows currently in view, one line each, in the order they
 // appear. Every list in the app is drawn this way — the panel says what a row
 // looks like, the list says which rows are on screen.

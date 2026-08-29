@@ -41,6 +41,12 @@ func (m HelpModel) Update(msg tea.Msg) (HelpModel, tea.Cmd) {
 		case !m.showHelp && key == "?":
 			m.showHelp = true
 		}
+
+	case tea.MouseClickMsg:
+		// Clicking away from a dialog closes it, as it does anywhere else.
+		if m.showHelp {
+			m.showHelp = false
+		}
 	}
 	return m, nil
 }

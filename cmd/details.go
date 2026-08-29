@@ -52,10 +52,12 @@ Examples:
 		if supervisor.Running(dir) {
 			_ = supervisor.Exec(dir, "list")
 		}
-		if names, _, limit, ok := onlineFromLog(dir); ok {
-			players = shared.MarkOnline(players, names)
-			if limit > 0 {
-				maxPlayers = limit
+		if supervisor.Running(dir) {
+			if names, _, limit, ok := onlineFromLog(dir); ok {
+				players = shared.MarkOnline(players, names)
+				if limit > 0 {
+					maxPlayers = limit
+				}
 			}
 		}
 

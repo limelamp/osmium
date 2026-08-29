@@ -184,19 +184,9 @@ func (m ActionsModel) selectable(index int) bool {
 }
 
 // settle moves the cursor off a heading or a blank onto the next entry in the
-// direction it was travelling, wrapping at the ends the way the lists do, so
-// the headings are seen but never landed on.
+// direction it was travelling, so the headings are seen but never landed on.
 func (m ActionsModel) settle(direction int) ActionsModel {
-	if !m.hasEntries() {
-		return m
-	}
-	if direction == 0 {
-		direction = 1
-	}
-
-	for !m.selectable(m.list.Cursor) {
-		m.list = m.list.Cycle(direction)
-	}
+	m.list = core.Settle(m.list, direction, m.selectable)
 	return m
 }
 
@@ -204,17 +194,6 @@ func (m ActionsModel) settle(direction int) ActionsModel {
 func (m ActionsModel) move(delta int) ActionsModel {
 	m.list = m.list.Cycle(delta)
 	return m.settle(delta)
-}
-
-// hasEntries reports whether there is anything the cursor could rest on, which
-// is what stops settle from searching a list of nothing but headings forever.
-func (m ActionsModel) hasEntries() bool {
-	for i := range m.rows {
-		if m.rows[i].entry != nil {
-			return true
-		}
-	}
-	return false
 }
 
 // current is the entry under the cursor.
@@ -261,7 +240,7 @@ func (m *ActionsModel) run(label string, op func(scope.Scope) error) tea.Cmd {
 	ticker, tick := m.spinner.Restart()
 	m.spinner = ticker
 
-	return tea.Batch(actions.Run(m.server.Path, label, op), tick)
+	return tea.Batch(actions.Run(m.server.Path, label, op), tick, core.OperationStarted())
 }
 
 // refreshDetails re-reads what the indicators show.

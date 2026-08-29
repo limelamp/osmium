@@ -30,6 +30,17 @@ type WakeMsg struct{}
 // operation changed it on disk.
 type RefreshMsg struct{}
 
+// OperationStartedMsg says a background operation has begun, so anything that
+// draws its progress can start looking.
+type OperationStartedMsg struct{}
+
+// OperationStarted announces the beginning of a background operation.
+func OperationStarted() tea.Cmd {
+	return func() tea.Msg {
+		return OperationStartedMsg{}
+	}
+}
+
 // OperationDoneMsg reports a finished background operation: what it said, and
 // the fact that it finished. The page splits it in two — the lines go to the
 // console, the completion refreshes whichever panel started it — so a panel

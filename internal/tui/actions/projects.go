@@ -38,6 +38,16 @@ const (
 	stateAdd
 	stateRemove
 	stateUpdate
+	stateProject
+)
+
+// The root screen's rows: the operations, then a blank and a heading, then one
+// row per installed project. The cursor walks the whole way down, which is what
+// lets a long list of mods be reached at all.
+var (
+	installedBlank   = len(projectOperations)
+	installedHeading = installedBlank + 1
+	installedFirst   = installedHeading + 1
 )
 
 // projectOperations are the entries of the panel's root list, in order.
@@ -55,6 +65,9 @@ type ProjectsModel struct {
 
 	kind  projectKind
 	state projectState
+
+	// chosen is the installed project the per-project screen is about.
+	chosen string
 
 	// installed is the slug list read from the server's osmium.json, and
 	// versions is what is installed for each of them.
@@ -155,10 +168,31 @@ func (m ProjectsModel) itemCount() int {
 		return len(m.installed) + 1 // plus the "update everything" row
 	case stateAdd:
 		return 0
+	case stateProject:
+		return len(projectActions)
 	default:
-		return len(projectOperations)
+		return installedFirst + len(m.installed)
 	}
 }
+
+// selectableRow reports whether the cursor may rest on a row of the root
+// screen: everything but the blank and the heading above the installed list.
+func (m ProjectsModel) selectableRow(index int) bool {
+	return index != installedBlank && index != installedHeading
+}
+
+// chosenProject is the installed project the cursor is on, or an empty string
+// when it is on one of the operations.
+func (m ProjectsModel) chosenProject() string {
+	index := m.list.Cursor - installedFirst
+	if m.state != stateOperations || index < 0 || index >= len(m.installed) {
+		return ""
+	}
+	return m.installed[index]
+}
+
+// projectActions are what can be done to one installed project.
+var projectActions = []string{"Update %s", "Remove %s"}
 
 func (m ProjectsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if updated, cmd, handled := m.base.common(msg); handled {
@@ -213,6 +247,14 @@ func (m ProjectsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if list, handled := m.list.HandleKey(msg.String()); handled {
 			m.list = list
+
+			if m.state == stateOperations {
+				direction := 1
+				if key := msg.String(); key == "up" || key == "k" || key == "pgup" {
+					direction = -1
+				}
+				m.list = core.Settle(m.list, direction, m.selectableRow)
+			}
 			return m, nil
 		}
 
@@ -251,7 +293,26 @@ func (m ProjectsModel) activate() (tea.Model, tea.Cmd) {
 	folder := m.kind.folder
 
 	switch m.state {
+	case stateProject:
+		slug := m.chosen
+		if m.list.Cursor == 0 {
+			return m.start(0, "Updating "+slug+"…", func(sc scope.Scope) error {
+				return shared.UpdateProject(sc, slug, folder)
+			})
+		}
+
+		return m.start(1, "Removing "+slug+"…", func(sc scope.Scope) error {
+			return shared.RemoveProjectByID(sc, slug, folder)
+		})
+
 	case stateOperations:
+		// A row below the operations is an installed project: open what can be
+		// done to that one.
+		if slug := m.chosenProject(); slug != "" {
+			m.chosen = slug
+			return m.gotoState(stateProject), nil
+		}
+
 		switch m.list.Cursor {
 		case 0:
 			m = m.gotoState(stateAdd)
@@ -397,35 +458,36 @@ func (m ProjectsModel) View() tea.View {
 			return m.row(i, m.base.rowMarker(i)+slug, m.versions[slug])
 		}, m.Hints()...)
 
+	case stateProject:
+		return m.listView(m.Title()+" · "+m.chosen, func(i int) string {
+			return m.row(i, m.base.rowMarker(i)+fmt.Sprintf(projectActions[i], m.chosen),
+				m.versions[m.chosen])
+		}, m.Hints()...)
+
 	default:
-		labels := m.operations()
-
-		operations := m.list.Render(func(i int) string {
-			return m.row(i, m.base.rowMarker(i)+labels[i], "")
-		})
-
-		return m.panelView(m.Title(),
-			lipgloss.JoinVertical(lipgloss.Left, operations, "", m.installedList()),
-			m.Hints()...)
+		return m.listView(m.Title(), m.rootRow, m.Hints()...)
 	}
 }
 
-// installedList names what the server has tracked, with the version of each.
-// Seeing it without opening anything is the point of the panel.
-func (m ProjectsModel) installedList() string {
+// rootRow draws one row of the root screen: the operations, then the installed
+// projects under their heading. It is one list so that the cursor can walk from
+// the operations into the projects, and so a long list scrolls.
+func (m ProjectsModel) rootRow(index int) string {
 	muted := lipgloss.NewStyle().Foreground(theme.Inactive)
 
-	if len(m.installed) == 0 {
-		return muted.Render("INSTALLED (0)")
+	switch {
+	case index < len(projectOperations):
+		return m.row(index, m.base.rowMarker(index)+m.operations()[index], "")
+
+	case index == installedBlank:
+		return ""
+
+	case index == installedHeading:
+		return muted.Render(fmt.Sprintf("INSTALLED (%d)", len(m.installed)))
 	}
 
-	rows := []string{muted.Render("INSTALLED (" + fmt.Sprint(len(m.installed)) + ")")}
-	for _, slug := range m.installed {
-		rows = append(rows, styles.ListRow(m.layout.ContentWidth(), false,
-			"  "+slug, m.versions[slug]))
-	}
-
-	return lipgloss.JoinVertical(lipgloss.Left, rows...)
+	slug := m.installed[index-installedFirst]
+	return m.row(index, m.base.rowMarker(index)+slug, m.versions[slug])
 }
 
 // Hints are the keys this panel responds to, which depend on which of its
@@ -453,10 +515,22 @@ func (m ProjectsModel) Hints() []styles.Hint {
 			{Key: "backspace", Desc: "back"},
 		}
 
-	default:
+	case stateProject:
 		return []styles.Hint{
 			{Key: "↑/↓", Desc: "move"},
-			{Key: "enter", Desc: "select"},
+			{Key: "enter", Desc: "run"},
+			{Key: "backspace", Desc: "back"},
+		}
+
+	default:
+		what := "select"
+		if m.chosenProject() != "" {
+			what = "update or remove this " + m.kind.noun
+		}
+
+		return []styles.Hint{
+			{Key: "↑/↓", Desc: "move"},
+			{Key: "enter", Desc: what},
 			{Key: "backspace", Desc: "back"},
 		}
 	}

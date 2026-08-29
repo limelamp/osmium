@@ -46,6 +46,12 @@ type console struct {
 	tail   *supervisor.Tailer
 	status string
 
+	// live is the progress of whatever is installing into this server: it is
+	// redrawn in place while the operation runs, and kept as an ordinary line
+	// once it finishes, so scrolling back shows what was downloaded.
+	live      string
+	liveLabel string
+
 	// offset and follow remember this console's scroll position across
 	// selection changes.
 	offset int
@@ -105,6 +111,7 @@ func NewActivityModel() ActivityModel {
 	ti.Placeholder = "Enter a command..."
 	ti.Prompt = "› "
 	ti.CharLimit = 500
+	ti.SetStyles(core.FieldStyles())
 
 	vp := viewport.New()
 
@@ -245,9 +252,10 @@ func (m ActivityModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// poll schedules the next log read, if anything is being followed.
+// poll schedules the next log read, if anything is being followed or anything
+// is installing.
 func (m ActivityModel) poll() (ActivityModel, tea.Cmd) {
-	if !m.following() {
+	if !m.following() && !m.installing() {
 		return m, nil
 	}
 
@@ -260,6 +268,20 @@ func (m ActivityModel) poll() (ActivityModel, tea.Cmd) {
 func (m ActivityModel) following() bool {
 	for _, c := range m.consoles {
 		if c.tail != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// installing reports whether any console's server has an operation running,
+// which is what keeps the poll going long enough to draw its bar.
+func (m ActivityModel) installing() bool {
+	for _, c := range m.consoles {
+		if c.dir == "" {
+			continue
+		}
+		if _, reported := core.Progress(c.dir); reported || c.liveLabel != "" {
 			return true
 		}
 	}
@@ -292,6 +314,8 @@ func (m ActivityModel) drain() (tea.Model, tea.Cmd) {
 	checkStatus := m.polls%statusEvery == 0
 
 	for _, c := range m.consoles {
+		m.followProgress(c)
+
 		if c.tail == nil {
 			continue
 		}
@@ -308,6 +332,41 @@ func (m ActivityModel) drain() (tea.Model, tea.Cmd) {
 
 	m = m.refresh()
 	return m.poll()
+}
+
+// followProgress keeps a console's live line in step with the operation running
+// in its folder, and commits the last one when the operation ends.
+func (m ActivityModel) followProgress(c *console) {
+	if c.dir == "" {
+		return
+	}
+
+	operation, reported := core.Progress(c.dir)
+	if !reported {
+		return
+	}
+
+	c.liveLabel = operation.Label
+
+	c.live = ""
+	if operation.Total > 0 {
+		c.live = styles.ProgressBar(max(m.viewport.Width()-12, 20),
+			operation.Done, operation.Total)
+	}
+
+	if !operation.Finished {
+		return
+	}
+
+	// It is over, and this is where it got to: the bar stops being redrawn and
+	// becomes an ordinary line of the log, so scrolling back shows what was
+	// downloaded and how big it was.
+	if c.live != "" {
+		c.say(supervisor.TagMod, c.liveLabel+"  "+c.live)
+	}
+
+	c.live, c.liveLabel = "", ""
+	core.ClearProgress(c.dir)
 }
 
 // submit sends the typed line to the visible server's supervisor.
@@ -455,9 +514,16 @@ func (m ActivityModel) rememberScroll() {
 func (m ActivityModel) refresh() ActivityModel {
 	current := m.visible()
 
-	rows := make([]string, 0, len(current.lines))
+	rows := make([]string, 0, len(current.lines)+1)
 	for _, line := range current.lines {
 		rows = append(rows, styles.LogRow(m.viewport.Width(), string(line.Tag), line.Text))
+	}
+
+	// The operation in progress is the newest line, redrawn where it stands
+	// rather than added to the log over and over.
+	if current.liveLabel != "" {
+		rows = append(rows, styles.LogRow(m.viewport.Width(), string(supervisor.TagMod),
+			strings.TrimSpace(current.liveLabel+"  "+current.live)))
 	}
 
 	rendered := strings.Join(rows, "\n")

@@ -96,6 +96,12 @@ func NewManageConfigsModel() ManageConfigsModel {
 	area.ShowLineNumbers = false
 	area.SetHeight(4)
 
+	// The same steady block the single-line fields use.
+	areaStyles := textarea.DefaultDarkStyles()
+	areaStyles.Cursor.Color = theme.Accent
+	areaStyles.Cursor.Blink = false
+	area.SetStyles(areaStyles)
+
 	return ManageConfigsModel{
 		base:    newBase(),
 		step:    stepPickFile,

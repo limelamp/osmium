@@ -106,7 +106,9 @@ func (m SettingsModel) settingsCount() int {
 // syncSettings reflows the settings container to the selected section.
 func (m SettingsModel) syncSettings() SettingsModel {
 	m.settings = m.settings.Resize(m.settingsCount(), max(m.detailLayout().ContentHeight()-2, 1))
-	return m
+	m.detail = core.Scroll{}
+
+	return m.syncDetail()
 }
 
 func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -251,9 +253,32 @@ func (m SettingsModel) save() tea.Cmd {
 	return nil
 }
 
-// handleMouse focuses a container and moves its cursor to the clicked row.
+// handleMouse focuses a container and moves its cursor to the clicked row, or
+// scrolls whichever container the wheel was turned over.
 func (m SettingsModel) handleMouse(msg tea.MouseMsg) SettingsModel {
 	mouse := msg.Mouse()
+
+	if wheel, ok := msg.(tea.MouseWheelMsg); ok {
+		step := core.WheelStep
+		if wheel.Button == tea.MouseWheelUp {
+			step = -step
+		}
+
+		switch {
+		case m.sectionsLayout().Hit(mouse.X, mouse.Y):
+			m.sections = m.sections.Move(step)
+			m.settings.Cursor = 0
+			return m.syncSettings()
+
+		case m.detailLayout().Hit(mouse.X, mouse.Y):
+			if m.settingsCount() > 0 {
+				m.settings = m.settings.Move(step)
+				return m
+			}
+			m.detail = m.detail.By(step)
+		}
+		return m
+	}
 
 	if sections := m.sectionsLayout(); sections.Hit(mouse.X, mouse.Y) {
 		row := mouse.Y - sections.Inner().Y
@@ -321,7 +346,7 @@ func (m SettingsModel) View() tea.View {
 			styles.Hints(sections.ContentWidth(), styles.Hint{Key: "tab", Desc: "switch pane"}),
 	})
 
-	body, scroll := m.detailBody(detail)
+	body, scroll := m.detailBody()
 
 	detailPane := styles.Container(styles.ContainerOpts{
 		Width:   detail.Width,
@@ -387,11 +412,10 @@ func (m SettingsModel) Help() []core.HelpSection {
 
 // detailBody is the visible part of the section's content, and how much of it
 // is off screen. Content taller than the pane scrolls rather than being cut.
-func (m SettingsModel) detailBody(detail core.Layout) (string, core.Scroll) {
+func (m SettingsModel) detailBody() (string, core.Scroll) {
 	rows := strings.Split(m.detailView(), "\n")
-	visible := max(detail.ContentHeight()-1, 1)
 
-	scroll := m.detail.Resize(len(rows), visible)
+	scroll := m.detail
 	if m.settingsCount() > 0 {
 		// A section with a cursor follows it; the row it is on is the one that
 		// has to stay in view.
@@ -399,7 +423,16 @@ func (m SettingsModel) detailBody(detail core.Layout) (string, core.Scroll) {
 	}
 
 	start, end := scroll.Window()
-	return strings.Join(rows[start:end], "\n"), scroll
+	return strings.Join(rows[start:min(end, len(rows))], "\n"), scroll
+}
+
+// syncDetail records how tall the section's content is, so the keys that scroll
+// it have something to scroll within. It is kept here rather than in View,
+// which cannot store what it works out.
+func (m SettingsModel) syncDetail() SettingsModel {
+	rows := strings.Count(m.detailView(), "\n") + 1
+	m.detail = m.detail.Resize(rows, max(m.detailLayout().ContentHeight()-1, 1))
+	return m
 }
 
 // cursorRow is the display row the selected setting is drawn on.
@@ -544,7 +577,7 @@ func (m SettingsModel) SetLayout(l core.Layout) tea.Model {
 	m.dir = m.dir.SetWidth(width)
 	m.ram = m.ram.SetWidth(min(width, 24))
 
-	return m.syncSettings()
+	return m.syncSettings().syncDetail()
 }
 
 // defaultOr falls back to a placeholder when a setting has never been set.

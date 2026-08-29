@@ -3,6 +3,8 @@ package core
 import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	"github.com/limelamp/osmium/internal/tui/theme"
 )
 
 // FieldResult is what a key did to a field.
@@ -39,8 +41,26 @@ func NewField(placeholder string) Field {
 	input.Placeholder = placeholder
 	input.Prompt = "› "
 	input.CharLimit = 500
+	input.SetStyles(FieldStyles())
 
 	return Field{input: input}
+}
+
+// FieldStyles are the text-input styles every field in the app uses.
+//
+// The cursor is a steady block in the theme's accent colour. Bubbles blinks it
+// by default, which needs blink messages routed into every input and puts one
+// more moving thing on a screen that already has a spinner and a live log; a
+// cursor that simply sits where you are typing is easier to find.
+func FieldStyles() textinput.Styles {
+	styles := textinput.DefaultDarkStyles()
+
+	styles.Cursor.Color = theme.Accent
+	styles.Cursor.Blink = false
+	styles.Focused.Prompt = lipgloss.NewStyle().Foreground(theme.Primary)
+	styles.Focused.Placeholder = lipgloss.NewStyle().Foreground(theme.Inactive)
+
+	return styles
 }
 
 // WithPrompt changes the marker drawn before the text.

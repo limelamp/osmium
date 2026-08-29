@@ -33,11 +33,12 @@ type sizeReadyMsg struct {
 type DetailsModel struct {
 	base
 
-	conf    *config.OsmiumConfig
-	players []shared.Player
-	max     int
-	size    int64
-	sized   bool
+	conf      *config.OsmiumConfig
+	players   []shared.Player
+	max       int
+	size      int64
+	sized     bool
+	measuring bool
 
 	ticker core.Ticker
 	scroll core.Scroll
@@ -75,9 +76,19 @@ func (m DetailsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		armed, cmd := ticker.Arm()
 		m.ticker = armed
+
+		// Coming back to a panel that was already open does not run Init
+		// again, so the measurement is started here instead — otherwise
+		// switching servers leaves it saying "measuring…" for good.
+		if !m.sized && !m.measuring {
+			m.measuring = true
+			return m.reload(), tea.Batch(cmd, m.measure())
+		}
+
 		return m.reload(), cmd
 
 	case sizeReadyMsg:
+		m.measuring = false
 		if msg.dir == m.dir() {
 			m.size, m.sized = msg.size, true
 		}
@@ -125,14 +136,28 @@ func (m DetailsModel) reload() DetailsModel {
 
 	players, err := shared.Players(m.dir())
 	if err == nil {
-		if names, _, max, ok := onlineNow(m.dir()); ok {
-			players = shared.MarkOnline(players, names)
-			if max > 0 {
-				m.max = max
+		// A stopped server has nobody on it, whatever its log last said.
+		if supervisor.Running(m.dir()) {
+			if names, _, max, ok := onlineNow(m.dir()); ok {
+				players = shared.MarkOnline(players, names)
+				if max > 0 {
+					m.max = max
+				}
 			}
 		}
 		m.players = players
 	}
+
+	return m.measured()
+}
+
+// measured records how tall the panel's content is now.
+//
+// The scroll has to be sized where the model is kept, not in View: View has a
+// value receiver, so a size worked out there is thrown away, and the scroll
+// then clamps every movement back to the top.
+func (m DetailsModel) measured() DetailsModel {
+	m.scroll = m.scroll.Resize(len(m.rows()), max(m.layout.ContentHeight()-1, 1))
 	return m
 }
 
@@ -184,9 +209,9 @@ func (m DetailsModel) View() tea.View {
 	}
 
 	rows := m.rows()
-	m.scroll = m.scroll.Resize(len(rows), max(m.layout.ContentHeight()-1, 1))
 
 	start, end := m.scroll.Window()
+	end = min(end, len(rows))
 	return m.panelViewScrolled(m.Title()+" · "+m.server.Name,
 		strings.Join(rows[start:end], "\n"), m.scroll, m.Hints()...)
 }
@@ -343,7 +368,7 @@ func (m DetailsModel) Title() string {
 
 func (m DetailsModel) SetLayout(l core.Layout) core.Action {
 	m.layout = l
-	return m
+	return m.measured()
 }
 
 func (m DetailsModel) SetFocus(focused bool) core.Action {
@@ -353,6 +378,8 @@ func (m DetailsModel) SetFocus(focused bool) core.Action {
 
 func (m DetailsModel) SetServer(server *storage.Server) core.Action {
 	m.server = server
-	m.sized, m.size = false, 0
+	m.sized, m.size, m.measuring = false, 0, false
+	m.scroll = core.Scroll{}
+
 	return m.reload()
 }

@@ -1,12 +1,17 @@
 package actions
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/limelamp/osmium/internal/scope"
 	"github.com/limelamp/osmium/internal/supervisor"
 	"github.com/limelamp/osmium/internal/tui/core"
+	"github.com/limelamp/osmium/internal/tui/storage"
 )
 
 // An operation has to be visible while it runs and answerable when it ends:
@@ -74,5 +79,35 @@ func TestPanelReportsFailures(t *testing.T) {
 	}
 	if !finished.failed {
 		t.Error("the panel does not know the operation failed")
+	}
+}
+
+// Read-only panels have to scroll: the details panel is taller than the pane it
+// is drawn in as soon as a server has players, and the wheel and the arrow keys
+// both have to move it.
+func TestDetailsPanelScrolls(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "osmium.json"),
+		[]byte(`{"loader":"Paper","version":"1.21.1","ram":"4G"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	panel := NewDetailsModel().
+		SetServer(&storage.Server{Name: "survival", Path: dir}).
+		SetLayout(core.Layout{Width: 60, Height: 8})
+
+	before := strings.Split(ansi.Strip(panel.View().Content), "\n")
+
+	scrolled, _ := panel.Update(tea.MouseWheelMsg{X: 2, Y: 2, Button: tea.MouseWheelDown})
+	after := strings.Split(ansi.Strip(scrolled.(DetailsModel).View().Content), "\n")
+
+	if before[2] == after[2] {
+		t.Errorf("the wheel did not scroll the panel; it still shows:\n%s", after[2])
+	}
+
+	// And back up again with the keyboard.
+	back, _ := scrolled.(DetailsModel).Update(tea.KeyPressMsg{Code: tea.KeyUp})
+	if row := strings.Split(ansi.Strip(back.(DetailsModel).View().Content), "\n")[2]; row == after[2] {
+		t.Errorf("the arrow keys did not scroll the panel; it still shows:\n%s", row)
 	}
 }

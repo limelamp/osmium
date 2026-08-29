@@ -68,7 +68,7 @@ func (b base) begin(row int, label string, op func(scope.Scope) error) (base, te
 	ticker, tick := b.spinner.Restart()
 	b.spinner = ticker
 
-	return b, tea.Batch(Run(b.dir(), label, op), tick)
+	return b, tea.Batch(Run(b.dir(), label, op), tick, core.OperationStarted())
 }
 
 // finished clears the busy state and records what the operation said, which the
@@ -267,9 +267,21 @@ func (b base) run(label string, op func(scope.Scope) error) tea.Cmd {
 func Run(dir string, label string, op func(scope.Scope) error) tea.Cmd {
 	return func() tea.Msg {
 		lines := []supervisor.Line{{Tag: supervisor.TagMod, Text: label}}
-		sc := scope.Scope{Dir: dir, Log: func(line string) {
-			lines = append(lines, supervisor.Line{Tag: supervisor.TagMod, Text: line})
-		}}
+
+		sc := scope.Scope{
+			Dir: dir,
+			Log: func(line string) {
+				lines = append(lines, supervisor.Line{Tag: supervisor.TagMod, Text: line})
+			},
+			// Downloads report as they go, so the console can draw a bar for
+			// them the way the command line does.
+			Progress: func(file string, done, total int64) {
+				core.Report(dir, file, done, total)
+			},
+		}
+
+		core.Report(dir, label, 0, 0)
+		defer core.Finish(dir)
 
 		if err := op(sc); err != nil {
 			lines = append(lines, supervisor.Line{Tag: supervisor.TagError, Text: err.Error()})

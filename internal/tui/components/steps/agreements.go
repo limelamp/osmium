@@ -43,9 +43,20 @@ func (s *AgreementsStep) Subtitle() string {
 func (s *AgreementsStep) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.MouseMsg:
+		mouse := msg.Mouse()
+
+		if wheel, ok := msg.(tea.MouseWheelMsg); ok && s.layout.Hit(mouse.X, mouse.Y) {
+			step := core.WheelStep
+			if wheel.Button == tea.MouseWheelUp {
+				step = -step
+			}
+
+			s.scroll = s.scroll.By(step)
+			return s, nil
+		}
+
 		// The rows are spaced out with a link line and blanks, so clicks are
 		// mapped through the display layout rather than by row number.
-		mouse := msg.Mouse()
 		if _, isClick := msg.(tea.MouseClickMsg); !isClick || !s.layout.Hit(mouse.X, mouse.Y) {
 			return s, nil
 		}
