@@ -2,6 +2,7 @@ package supervisor
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"os"
 	"strings"
@@ -66,12 +67,12 @@ type Log struct {
 
 // OpenLog opens (or creates) a server's log file for appending.
 func OpenLog(serverDir string) (*Log, error) {
-	if err := os.MkdirAll(StateDir(serverDir), 0755); err != nil {
+	if err := os.MkdirAll(StateDir(serverDir), 0o750); err != nil {
 		return nil, err
 	}
 
 	path := LogPath(serverDir)
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return nil, err
 	}
@@ -112,10 +113,10 @@ func (l *Log) write(line Line) {
 // rotate moves the current log aside and starts an empty one, keeping exactly
 // one previous file.
 func (l *Log) rotate() {
-	l.file.Close()
+	_ = l.file.Close()
 	_ = os.Rename(l.path, l.path+".1")
 
-	file, err := os.OpenFile(l.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	file, err := os.OpenFile(l.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		l.file = nil
 		return
@@ -185,7 +186,7 @@ func ReadLast(path string, n int) ([]Line, error) {
 		}
 		return nil, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	info, err := file.Stat()
 	if err != nil {
@@ -249,7 +250,7 @@ func (t *Tailer) Read() []Line {
 	if err != nil {
 		return nil
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	info, err := file.Stat()
 	if err != nil {
@@ -266,7 +267,7 @@ func (t *Tailer) Read() []Line {
 
 	data := make([]byte, info.Size()-t.offset)
 	read, err := file.ReadAt(data, t.offset)
-	if err != nil && err != io.EOF {
+	if err != nil && !errors.Is(err, io.EOF) {
 		return nil
 	}
 	t.offset += int64(read)

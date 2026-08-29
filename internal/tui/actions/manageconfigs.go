@@ -90,6 +90,7 @@ type ManageConfigsModel struct {
 	wrapped bool
 }
 
+// NewManageConfigsModel returns the panel that edits a server's config files.
 func NewManageConfigsModel() ManageConfigsModel {
 	area := textarea.New()
 	area.Placeholder = "Enter a value..."
@@ -299,7 +300,7 @@ func (m ManageConfigsModel) commitEdit() (tea.Model, tea.Cmd) {
 		}
 	}
 
-	if err := os.WriteFile(m.fileName, []byte(strings.Join(lines, "\n")+"\n"), 0644); err != nil {
+	if err := os.WriteFile(m.fileName, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
 		m.err = err
 		return m, nil
 	}
@@ -414,7 +415,7 @@ func (m *ManageConfigsModel) loadPropertiesConfig(path string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	var keys, values []string
 	scanner := bufio.NewScanner(file)
@@ -450,7 +451,7 @@ func (m *ManageConfigsModel) loadYamlConfig(path string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	m.configOptionKeys = nil
 	m.configOptionValues = nil
@@ -519,9 +520,12 @@ func (m *ManageConfigsModel) loadRawConfig(path string) error {
 func configFilesIn(dir string) []configFile {
 	var configEntries []configFile // Entries that are configs
 
-	filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error { // Walking through the whole folder
+	// A folder Osmium cannot read is skipped rather than failing the listing:
+	// a server with one unreadable corner still has configs worth editing.
+	_ = filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
-			return nil // skip unreadable entries
+			//nolint:nilerr // an unreadable entry is skipped, not fatal
+			return nil
 		}
 
 		if entry.IsDir() {
@@ -542,7 +546,6 @@ func configFilesIn(dir string) []configFile {
 	return configEntries
 }
 
-// additional methods
 func (m ManageConfigsModel) Title() string {
 	return "Manage Configs"
 }

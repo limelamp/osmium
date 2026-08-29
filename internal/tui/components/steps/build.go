@@ -62,9 +62,10 @@ type BuildStep struct {
 	server *storage.Server
 }
 
-func NewBuildStep(config *Config, store *storage.ServerStore) *BuildStep {
+// NewBuildStep returns the step that creates the server.
+func NewBuildStep(cfg *Config, store *storage.ServerStore) *BuildStep {
 	return &BuildStep{
-		config:   config,
+		config:   cfg,
 		store:    store,
 		viewport: viewport.New(),
 		spinner:  core.NewTicker("build.spinner", spinnerInterval),
@@ -144,7 +145,7 @@ func Build(cfg *Config, store *storage.ServerStore, sc scope.Scope) (*storage.Se
 	}
 
 	emit("Creating %s", target)
-	if err := os.MkdirAll(target, 0755); err != nil {
+	if err := os.MkdirAll(target, 0o750); err != nil {
 		return nil, err
 	}
 
@@ -175,7 +176,7 @@ func Build(cfg *Config, store *storage.ServerStore, sc scope.Scope) (*storage.Se
 		content := "#By changing the setting below to TRUE you are indicating your agreement to our EULA (https://aka.ms/MinecraftEULA).\n"
 		content += "eula=true\n"
 
-		if err := os.WriteFile(filepath.Join(target, "eula.txt"), []byte(content), 0644); err != nil {
+		if err := os.WriteFile(filepath.Join(target, "eula.txt"), []byte(content), 0o600); err != nil {
 			return nil, err
 		}
 	}
@@ -237,11 +238,15 @@ func (s *BuildStep) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			s.err = msg.err
 			if msg.err != nil {
-				return s, s.appendLog("error: " + msg.err.Error())
+				s.appendLog("error: " + msg.err.Error())
+				return s, nil
 			}
-			return s, s.appendLog("✓ Done.")
+
+			s.appendLog("✓ Done.")
+			return s, nil
 		}
-		return s, tea.Batch(s.appendLog(msg.line), waitForBuildEvent(s.events))
+		s.appendLog(msg.line)
+		return s, waitForBuildEvent(s.events)
 
 	case tea.MouseMsg:
 		mouse := msg.Mouse()
@@ -262,11 +267,10 @@ func (s *BuildStep) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // appendLog adds a line to the build log and keeps the view pinned to the tail.
-func (s *BuildStep) appendLog(line string) tea.Cmd {
+func (s *BuildStep) appendLog(line string) {
 	s.logs = append(s.logs, line)
 	s.refresh()
 	s.viewport.GotoBottom()
-	return nil
 }
 
 // refresh re-wraps the log to the current width.

@@ -1,3 +1,5 @@
+// Package storage is the registry of the servers Osmium manages: reading and
+// writing servers.json, and keeping it in step with what is on disk.
 package storage
 
 import (
@@ -11,6 +13,7 @@ import (
 	"github.com/limelamp/osmium/internal/config"
 )
 
+// ServersFileName is the registry inside the app directory.
 const ServersFileName = "servers.json"
 
 // Server represents a managed Minecraft server instance.
@@ -236,5 +239,5 @@ func (s *ServerStore) SaveAll(servers []Server) error {
 		return err
 	}
 
-	return os.WriteFile(filePath, data, 0644)
+	return os.WriteFile(filePath, data, 0o600)
 }

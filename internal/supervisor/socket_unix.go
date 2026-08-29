@@ -16,7 +16,7 @@ func listen(serverDir string) (net.Listener, error) {
 
 	// The fallback location outside the server folder has to be created; the
 	// in-folder one is made along with the log.
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, err
 	}
 

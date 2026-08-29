@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 )
 
+// AppFolderName is the directory Osmium keeps under the user config directory.
 const AppFolderName = "osmium"
 
 // GetAppDir returns the platform-specific config/data directory.
@@ -29,7 +30,7 @@ func EnsureAppDirExists() (string, error) {
 	}
 
 	// Ensure directory structure exists (e.g., ~/.config/osmium)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return "", err
 	}
 	return dir, nil

@@ -1,0 +1,117 @@
+# golangci-lint configuration for Osmium.
+#
+# The set below is chosen for what actually goes wrong in this codebase: a TUI
+# that writes files, spawns processes and talks to the network. Every linter
+# carries a one-line note saying what it is here for.
+#
+# Run it with `make lint`, and `make lint-fix` for the ones that can fix
+# themselves.
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    - bodyclose     # every HTTP response body is closed, or the connection leaks
+    - copyloopvar   # loop variables captured by closures point at what you meant
+    - dupword       # catches "the the" and its friends in comments
+    - durationcheck # no multiplying two durations into nonsense
+    - errcheck      # every returned error is handled, or ignored on purpose
+    - errorlint     # errors are wrapped and compared the way errors.Is expects
+    - gocritic      # a broad net for suspicious, ugly and slow constructs
+    - goprintffuncname # printf-style helpers are named so vet can check them
+    - gosec         # file permissions, command execution, weak crypto
+    - govet         # the compiler's own suspicious-construct checks
+    - ineffassign   # values assigned and never read
+    - misspell      # spelling in comments, strings and names
+    - nilerr        # never return nil when the error you checked is non-nil
+    - revive        # the golint successor: naming, exported comments, style
+    - staticcheck   # bugs, dead code, and simplifications worth making
+    - unconvert     # conversions that convert nothing
+    - unparam       # parameters and results that nobody uses
+    - unused        # declarations nothing refers to
+    - usestdlibvars # standard library constants instead of magic strings
+    - wastedassign  # assignments overwritten before they are read
+    - whitespace    # no leading or trailing blank lines inside a block
+
+  settings:
+    errcheck:
+      # Ignoring an error has to be written down, so `_ =` is accepted and a
+      # bare call is not.
+      check-blank: false
+      check-type-assertions: true
+      exclude-functions:
+        # Printing to a terminal or an in-memory tabwriter: there is nothing to
+        # do about a failure and nowhere left to report it.
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - performance
+        - style
+      disabled-checks:
+        # The interface is written for reading, and these argue with prose.
+        - ifElseChain
+        - singleCaseSwitch
+        - commentFormatting
+        # Bubble Tea models are values by design: Update takes and returns a
+        # copy, which is what makes the update loop safe. Passing them by
+        # pointer would fight the framework, not improve it.
+        - hugeParam
+
+    gosec:
+      excludes:
+        # Osmium's whole job is running the server binary the user chose and
+        # reading files in the folder they pointed it at.
+        - G204 # subprocess launched with a variable
+        - G304 # file path from a variable
+        - G306 # 0644 is the right mode for a config file
+
+    govet:
+      # Everything but the shadow check, which cannot tell an idiomatic
+      # `if err := f(); err != nil` from a genuinely lost error and flags
+      # hundreds of the former.
+      enable-all: true
+      disable:
+        - shadow
+        - fieldalignment # struct fields are grouped by meaning, not by size
+
+    revive:
+      rules:
+        - name: exported
+          arguments:
+            - checkPrivateReceivers
+            - disableStutteringCheck
+            # Init, Update and View are Bubble Tea's interface, implemented by
+            # a dozen models: a comment on each says only what the framework
+            # already says. Types, functions and values still need one.
+            - disableChecksOnMethods
+        - name: indent-error-flow
+        - name: unreachable-code
+        - name: redefines-builtin-id
+
+    staticcheck:
+      checks:
+        - all
+        # Bubble Tea models are value receivers by design, and its Update
+        # methods return the interface type; ST1016 and ST1003 argue with both.
+        - -ST1003
+
+  exclusions:
+    generated: lax
+    rules:
+      # Tests may be blunt about errors they are provoking on purpose.
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gosec
+          - unparam
+
+formatters:
+  enable:
+    - gofumpt   # gofmt, with the extra rules it will not apply itself
+    - goimports # imports grouped and ordered, standard library first

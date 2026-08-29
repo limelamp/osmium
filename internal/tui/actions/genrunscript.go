@@ -18,6 +18,7 @@ type GenRunScriptModel struct {
 	options []string
 }
 
+// NewGenRunScriptModel returns the panel that writes a start script.
 func NewGenRunScriptModel() GenRunScriptModel {
 	m := GenRunScriptModel{
 		base:    newBase(),
@@ -84,7 +85,7 @@ func (m GenRunScriptModel) generate() (tea.Model, tea.Cmd) {
 	}
 
 	path := m.scope(nil).Path(outputFile)
-	if err := os.WriteFile(path, content, 0755); err != nil {
+	if err := os.WriteFile(path, content, 0o750); err != nil {
 		m.err = err
 		return m, nil
 	}
@@ -112,7 +113,6 @@ func (m GenRunScriptModel) Hints() []styles.Hint {
 	}
 }
 
-// additional methods
 func (m GenRunScriptModel) Title() string {
 	return "Generate Run Script"
 }

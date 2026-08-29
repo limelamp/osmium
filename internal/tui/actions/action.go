@@ -1,3 +1,5 @@
+// Package actions are the panels of the Manage Servers action pane: what can be
+// done to the selected server, one panel per thing.
 package actions
 
 import (
@@ -210,7 +212,7 @@ func (b base) footer(hints ...styles.Hint) string {
 }
 
 // panelView draws an arbitrary body with the footer pinned to the bottom.
-func (b base) panelView(title string, body string, hints ...styles.Hint) tea.View {
+func (b base) panelView(title, body string, hints ...styles.Hint) tea.View {
 	content := styles.Body(body, b.layout.ContentWidth(), b.layout.ContentHeight()-1)
 
 	return tea.NewView(styles.Container(styles.ContainerOpts{
@@ -248,13 +250,8 @@ func (b base) listView(title string, renderRow func(index int) string, hints ...
 }
 
 // row renders one list row in the app's shared list style.
-func (b base) row(index int, label string, suffix string) string {
+func (b base) row(index int, label, suffix string) string {
 	return styles.ListRow(b.layout.ContentWidth(), index == b.list.Cursor, label, suffix)
-}
-
-// run executes a scoped operation in the panel's server directory.
-func (b base) run(label string, op func(scope.Scope) error) tea.Cmd {
-	return Run(b.dir(), label, op)
 }
 
 // Run executes a scoped operation in the background, collecting its progress
@@ -264,7 +261,7 @@ func (b base) run(label string, op func(scope.Scope) error) tea.Cmd {
 // It is exported because the Actions menu runs the whole-server operations —
 // installing everything tracked, updating everything — without opening a panel
 // of its own, and those must report exactly the way a panel's operations do.
-func Run(dir string, label string, op func(scope.Scope) error) tea.Cmd {
+func Run(dir, label string, op func(scope.Scope) error) tea.Cmd {
 	return func() tea.Msg {
 		lines := []supervisor.Line{{Tag: supervisor.TagMod, Text: label}}
 
@@ -309,7 +306,7 @@ func (b base) noServerView(title string) tea.View {
 
 // emptyView is the placeholder a panel shows when it has nothing to list, so an
 // empty panel explains itself instead of looking broken.
-func (b base) emptyView(title string, message string, hints ...styles.Hint) tea.View {
+func (b base) emptyView(title, message string, hints ...styles.Hint) tea.View {
 	return b.panelView(title,
 		lipgloss.NewStyle().Foreground(theme.Inactive).Render(message),
 		hints...,

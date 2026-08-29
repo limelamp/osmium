@@ -88,7 +88,7 @@ func TestPanelReportsFailures(t *testing.T) {
 func TestDetailsPanelScrolls(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "osmium.json"),
-		[]byte(`{"loader":"Paper","version":"1.21.1","ram":"4G"}`), 0644); err != nil {
+		[]byte(`{"loader":"Paper","version":"1.21.1","ram":"4G"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 

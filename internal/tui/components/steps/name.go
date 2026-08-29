@@ -26,9 +26,10 @@ type NameStep struct {
 	warn  string
 }
 
-func NewNameStep(config *Config) *NameStep {
+// NewNameStep returns the step that names the server.
+func NewNameStep(cfg *Config) *NameStep {
 	return &NameStep{
-		config: config,
+		config: cfg,
 		field:  core.NewField("My survival server").WithLimit(60),
 	}
 }
@@ -55,7 +56,8 @@ func (s *NameStep) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		s.field = field
 
 		if result == core.FieldCommitted {
-			return s, s.commit()
+			cmd := s.commit()
+			return s, cmd
 		}
 		s.warn = ""
 		return s, cmd

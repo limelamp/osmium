@@ -6,6 +6,8 @@ import (
 
 var executables = []string{"server.jar", "run.bat", "run.sh"}
 
+// FindExecutable is the path of the running binary, or an empty string when it
+// cannot be determined.
 func FindExecutable() string {
 	for _, exe := range executables {
 		if _, err := os.Stat(exe); !os.IsNotExist(err) {

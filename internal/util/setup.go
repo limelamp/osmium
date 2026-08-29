@@ -1,8 +1,11 @@
+// Package util downloads and installs the server software itself: the jars,
+// the loader installers, and the command each of them is started with.
 package util
 
 import (
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -71,22 +74,9 @@ type forgeVersion struct {
 	Versions []string `xml:"versioning>versions>version"`
 }
 
-// Quilt API structs
-type quiltLoaderVersion struct {
-	Version string `json:"version"`
-}
-
 type quiltInstallerVersion struct {
 	URL     string `json:"url"`
 	Version string `json:"version"`
-}
-
-// Youer/Mohist API structs
-type mohistBuildResponse struct {
-	Number    int    `json:"number"`
-	ForgeVer  string `json:"forgeVersion"`
-	FileMd5   string `json:"fileMd5"`
-	CreatedAt int64  `json:"createdAt"`
 }
 
 var setupHTTPClient = &http.Client{Timeout: 30 * time.Second}
@@ -98,7 +88,7 @@ func getWithStatus(url string) (*http.Response, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		return nil, fmt.Errorf("request failed: %s", resp.Status)
 	}
 
@@ -107,13 +97,13 @@ func getWithStatus(url string) (*http.Response, error) {
 
 // Note: modrinthVersion struct is defined in plugin.go and shared across the package
 
-// General functions ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+// GetMinecraftVersionsManifest fetches the manifest of every Minecraft version
 func GetMinecraftVersionsManifest() (*vanillaVersionManifest, error) {
 	resp, err := getWithStatus("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json")
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var manifest vanillaVersionManifest
 	if err := json.NewDecoder(resp.Body).Decode(&manifest); err != nil {
@@ -123,6 +113,7 @@ func GetMinecraftVersionsManifest() (*vanillaVersionManifest, error) {
 	return &manifest, nil
 }
 
+// GetVersionStrings lists the Minecraft versions of a kind, newest first.
 func GetVersionStrings(version_type string) ([]string, error) {
 	manifest, err := GetMinecraftVersionsManifest()
 	if err != nil {
@@ -135,7 +126,6 @@ func GetVersionStrings(version_type string) ([]string, error) {
 			// v.ID is the string like "1.20.1" or "rd-132211"
 			versionList = append(versionList, v.ID)
 		}
-
 	}
 
 	return versionList, nil
@@ -147,7 +137,7 @@ func getVanillaServerURL(targetVersion string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var manifest vanillaVersionManifest
 	if err := json.NewDecoder(resp.Body).Decode(&manifest); err != nil {
@@ -172,7 +162,7 @@ func getVanillaServerURL(targetVersion string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var pkg vanillaVersionPackage
 	if err := json.NewDecoder(resp.Body).Decode(&pkg); err != nil {
@@ -193,7 +183,7 @@ func getPaperServerURL(version string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var builds []paperBuild
 	if err := json.NewDecoder(resp.Body).Decode(&builds); err != nil {
@@ -228,7 +218,7 @@ func getFabricServerURL(mcVersion string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer loaderResp.Body.Close()
+	defer func() { _ = loaderResp.Body.Close() }()
 
 	var loaders []fabricLoaderVersion
 	if err := json.NewDecoder(loaderResp.Body).Decode(&loaders); err != nil {
@@ -252,7 +242,7 @@ func getFabricServerURL(mcVersion string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer installerResp.Body.Close()
+	defer func() { _ = installerResp.Body.Close() }()
 
 	var installers []fabricInstallerVersion
 	if err := json.NewDecoder(installerResp.Body).Decode(&installers); err != nil {
@@ -283,7 +273,7 @@ func getNeoForgeVersionMap() map[string]string {
 	if err != nil {
 		return nil
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var metadata neoForgeVersion
 	if err := xml.NewDecoder(resp.Body).Decode(&metadata); err != nil {
@@ -320,7 +310,7 @@ func getNeoForgeVersionMap() map[string]string {
 }
 
 // getNeoForgeServerURL returns the installer JAR URL for NeoForge
-func getNeoForgeServerURL(mcVersion string) (string, string, error) {
+func getNeoForgeServerURL(mcVersion string) (url, installer string, err error) {
 	stableVersions := getNeoForgeVersionMap()
 
 	neoforgeVersion, ok := stableVersions[mcVersion]
@@ -330,17 +320,16 @@ func getNeoForgeServerURL(mcVersion string) (string, string, error) {
 
 	// Construct installer URL
 	// Format: https://maven.neoforged.net/releases/net/neoforged/neoforge/{version}/neoforge-{version}-installer.jar
-	url := fmt.Sprintf("https://maven.neoforged.net/releases/net/neoforged/neoforge/%s/neoforge-%s-installer.jar",
+	url = fmt.Sprintf("https://maven.neoforged.net/releases/net/neoforged/neoforge/%s/neoforge-%s-installer.jar",
 		neoforgeVersion, neoforgeVersion)
 
 	return url, neoforgeVersion, nil
 }
 
 // getYouerServerURL returns the direct download URL for Youer (NeoForge + Paper hybrid)
-func getYouerServerURL(mcVersion string) (string, error) {
+func getYouerServerURL(mcVersion string) string {
 	// Youer API: https://mohistmc.com/api/v2/projects/youer/versions/{version}/builds/latest/download
-	url := fmt.Sprintf("https://mohistmc.com/api/v2/projects/youer/versions/%s/builds/latest/download", mcVersion)
-	return url, nil
+	return fmt.Sprintf("https://mohistmc.com/api/v2/projects/youer/versions/%s/builds/latest/download", mcVersion)
 }
 
 func getForgeVersionMap() map[string]string {
@@ -348,7 +337,7 @@ func getForgeVersionMap() map[string]string {
 	if err != nil {
 		return nil
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var metadata forgeVersion
 	if err := xml.NewDecoder(resp.Body).Decode(&metadata); err != nil {
@@ -382,29 +371,29 @@ func getForgeVersionMap() map[string]string {
 }
 
 // getForgeServerURL returns the installer JAR URL for Forge
-func getForgeServerURL(mcVersion string) (string, string, error) {
+func getForgeServerURL(mcVersion string) (url, installer string, err error) {
 	forgeVersionMap := getForgeVersionMap()
 	forgeVersion, ok := forgeVersionMap[mcVersion]
 	if !ok {
-		return "", "", fmt.Errorf("Forge version not found for Minecraft %s", mcVersion)
+		return "", "", fmt.Errorf("no forge version for minecraft %s", mcVersion)
 	}
 
 	// Construct installer URL
 	// Format: https://maven.minecraftforge.net/net/minecraftforge/forge/{forgeVer}/forge-{forgeVer}-installer.jar
-	url := fmt.Sprintf("https://maven.minecraftforge.net/net/minecraftforge/forge/%s/forge-%s-installer.jar",
+	url = fmt.Sprintf("https://maven.minecraftforge.net/net/minecraftforge/forge/%s/forge-%s-installer.jar",
 		forgeVersion, forgeVersion)
 
 	return url, forgeVersion, nil
 }
 
 // getQuiltInstallerURL returns the Quilt installer JAR URL
-func getQuiltInstallerURL() (string, string, error) {
+func getQuiltInstallerURL() (url, version string, err error) {
 	// Get the latest installer version from Quilt meta API
 	resp, err := getWithStatus("https://meta.quiltmc.org/v3/versions/installer")
 	if err != nil {
 		return "", "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var installers []quiltInstallerVersion
 	if err := json.NewDecoder(resp.Body).Decode(&installers); err != nil {
@@ -417,7 +406,7 @@ func getQuiltInstallerURL() (string, string, error) {
 
 	// Use the first (latest) installer
 	installerVersion := installers[0].Version
-	url := fmt.Sprintf("https://maven.quiltmc.org/repository/release/org/quiltmc/quilt-installer/%s/quilt-installer-%s.jar",
+	url = fmt.Sprintf("https://maven.quiltmc.org/repository/release/org/quiltmc/quilt-installer/%s/quilt-installer-%s.jar",
 		installerVersion, installerVersion)
 
 	return url, installerVersion, nil
@@ -437,7 +426,7 @@ func getQuiltInstallerURL() (string, string, error) {
 // 	if err != nil {
 // 		return "", "", err
 // 	}
-// 	defer resp.Body.Close()
+// 	defer func() { _ = resp.Body.Close() }()
 
 // 	if resp.StatusCode != http.StatusOK {
 // 		return "", "", fmt.Errorf("Modrinth API error: %s", resp.Status)
@@ -497,7 +486,7 @@ func getQuiltInstallerURL() (string, string, error) {
 // // DownloadFabricAPI downloads the Fabric API mod to the mods folder
 // func DownloadFabricAPI(mcVersion string) error {
 // 	// Create mods folder if it doesn't exist
-// 	if err := os.MkdirAll("mods", 0755); err != nil {
+// 	if err := os.MkdirAll("mods", 0o750); err != nil {
 // 		return fmt.Errorf("failed to create mods folder: %w", err)
 // 	}
 
@@ -511,7 +500,7 @@ func getQuiltInstallerURL() (string, string, error) {
 
 // 	// Download with proper User-Agent
 // 	client := &http.Client{}
-// 	req, err := http.NewRequest("GET", url, nil)
+// 	req, err := http.NewRequest(http.MethodGet, url, http.NoBody)
 // 	if err != nil {
 // 		return err
 // 	}
@@ -521,7 +510,7 @@ func getQuiltInstallerURL() (string, string, error) {
 // 	if err != nil {
 // 		return err
 // 	}
-// 	defer resp.Body.Close()
+// 	defer func() { _ = resp.Body.Close() }()
 
 // 	if resp.StatusCode != http.StatusOK {
 // 		return fmt.Errorf("download failed: %s", resp.Status)
@@ -533,7 +522,7 @@ func getQuiltInstallerURL() (string, string, error) {
 // 	if err != nil {
 // 		return err
 // 	}
-// 	defer out.Close()
+// 	defer func() { _ = out.Close() }()
 
 // 	_, err = io.Copy(out, resp.Body)
 // 	if err != nil {
@@ -559,13 +548,13 @@ func (w *progressWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func downloadFile(sc scope.Scope, url string, filepath string, label string) error {
+func downloadFile(sc scope.Scope, url, target, label string) error {
 	// Create the output file
-	out, err := os.Create(filepath)
+	out, err := os.Create(target)
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	defer func() { _ = out.Close() }()
 
 	// Create a custom HTTP client with NO timeout (0 means no timeout limit)
 	// This prevents the "context deadline exceeded" error on large files
@@ -574,7 +563,7 @@ func downloadFile(sc scope.Scope, url string, filepath string, label string) err
 	}
 
 	// Create the request
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest(http.MethodGet, url, http.NoBody)
 	if err != nil {
 		return err
 	}
@@ -587,7 +576,7 @@ func downloadFile(sc scope.Scope, url string, filepath string, label string) err
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Check for a valid response code
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -609,14 +598,14 @@ func downloadFile(sc scope.Scope, url string, filepath string, label string) err
 // DownloadJar downloads (and, for mod loaders, installs) the server files into
 // the process working directory, printing progress to stdout. It is the form
 // the Cobra commands use.
-func DownloadJar(jarType string, jarVersion string) error {
+func DownloadJar(jarType, jarVersion string) error {
 	return DownloadJarInto(scope.For("."), jarType, jarVersion)
 }
 
 // DownloadJarInto downloads the server files into the scope's directory and
 // reports progress through the scope, so the TUI can show a build log instead
 // of writing over the screen.
-func DownloadJarInto(sc scope.Scope, jarType string, jarVersion string) error {
+func DownloadJarInto(sc scope.Scope, jarType, jarVersion string) error {
 	// Deciding which url
 	url := ""
 	var err error
@@ -666,10 +655,7 @@ func DownloadJarInto(sc scope.Scope, jarType string, jarVersion string) error {
 		installerFilename = fmt.Sprintf("quilt-installer-%s.jar", quiltInstallerVer)
 		isInstaller = true
 	case "Youer":
-		url, err = getYouerServerURL(jarVersion)
-		if err != nil {
-			return err
-		}
+		url = getYouerServerURL(jarVersion)
 	}
 
 	// Determine output filename
@@ -714,7 +700,7 @@ func DownloadJarInto(sc scope.Scope, jarType string, jarVersion string) error {
 }
 
 // RunModLoaderInstaller runs the mod loader installer to set up the server (for NeoForge, Forge, Quilt)
-func RunModLoaderInstaller(sc scope.Scope, loaderType string, installerFile string, mcVersion ...string) error {
+func RunModLoaderInstaller(sc scope.Scope, loaderType, installerFile string, mcVersion ...string) error {
 	var cmd *exec.Cmd
 
 	switch loaderType {
@@ -727,7 +713,7 @@ func RunModLoaderInstaller(sc scope.Scope, loaderType string, installerFile stri
 	case "Quilt":
 		// java -jar quilt-installer.jar install server {mcVersion} --download-server
 		if len(mcVersion) == 0 {
-			return fmt.Errorf("Quilt requires mcVersion parameter")
+			return errors.New("quilt needs a minecraft version")
 		}
 		cmd = exec.Command("java", "-jar", installerFile, "install", "server", mcVersion[0], "--download-server")
 	default:
@@ -755,14 +741,14 @@ func RunModLoaderInstaller(sc scope.Scope, loaderType string, installerFile stri
 }
 
 // Unnecessarily complicated function to append some text to a file
-func appendToFile(filepath string, line string) error {
-	// Open the file in Append mode, Create it if it doesn't exist, and open as Write-Only.
-	// 0644 are standard file permissions (readable by all, writable by owner).
-	file, err := os.OpenFile(filepath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+func appendToFile(path, line string) error {
+	// Open the file in Append mode, Create it if it doesn't exist, and open as
+	// Write-Only. 0o600: readable and writable by the user who runs Osmium.
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Write the string to the file
 	_, err = file.WriteString(line)
@@ -776,11 +762,13 @@ func appendToFile(filepath string, line string) error {
 // GetServerRunCommand returns the command needed to run the server for a given
 // jar type. dir is the server directory; it is where the loader-specific JVM
 // argument file is written.
-func GetServerRunCommand(dir string, jarType string, ram string) (string, []string) {
+func GetServerRunCommand(dir, jarType, ram string) (command string, args []string) {
 	switch jarType {
 	case "NeoForge", "Forge":
 		// Since NeoForge & Forge both accept arguments only through writing to a specific text file, here it is.
-		appendToFile(filepath.Join(dir, "user_jvm_args.txt"), "\n"+"-Xms"+ram+"\n"+"-Xmx"+ram+"\n")
+		// A heap size the loader cannot be told any other way. If the file
+		// cannot be written the server still starts, on its own defaults.
+		_ = appendToFile(filepath.Join(dir, "user_jvm_args.txt"), "\n-Xms"+ram+"\n-Xmx"+ram+"\n")
 		// NeoForge and Forge create run.bat/run.sh after installation - use those directly
 		switch runtime.GOOS {
 		case "windows": // On Windows specifically, run the batch file

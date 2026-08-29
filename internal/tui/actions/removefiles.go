@@ -20,6 +20,8 @@ type RemoveFilesModel struct {
 	selected map[int]bool
 }
 
+// NewRemoveFilesModel returns the panel that deletes files from a server's
+// folder.
 func NewRemoveFilesModel() RemoveFilesModel {
 	return RemoveFilesModel{
 		base:     newBase(),
@@ -162,7 +164,6 @@ func (m RemoveFilesModel) Hints() []styles.Hint {
 	}
 }
 
-// additional methods
 func (m RemoveFilesModel) Title() string {
 	return "Remove Files"
 }

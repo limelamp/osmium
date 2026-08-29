@@ -1,3 +1,5 @@
+// Package scope tells an operation which server directory it works in and
+// where its output goes.
 package scope
 
 import (

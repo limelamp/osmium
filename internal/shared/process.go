@@ -11,6 +11,7 @@ import (
 	"syscall"
 )
 
+// LockFileName is the file a server directory keeps its supervisor PID in.
 const LockFileName = ".osmium_process.lock"
 
 // LockPath is where a server directory keeps its process lock file.
@@ -61,7 +62,7 @@ func WriteLockPIDIn(dir string, pid int) error {
 		}
 	}
 
-	if err := os.WriteFile(LockPath(dir), []byte(strconv.Itoa(pid)), 0644); err != nil {
+	if err := os.WriteFile(LockPath(dir), []byte(strconv.Itoa(pid)), 0o600); err != nil {
 		return fmt.Errorf("failed to write lock file: %w", err)
 	}
 
@@ -76,6 +77,7 @@ func RemoveLockFileIn(dir string) error {
 	return nil
 }
 
+// IsPIDRunning reports whether a process is alive, without disturbing it.
 func IsPIDRunning(pid int) bool {
 	if pid <= 0 {
 		return false

@@ -1,6 +1,11 @@
+// Package tui is the application itself: the model that owns the pages,
+// routes between them, and draws the help overlay over whichever one is
+// showing.
 package tui
 
 import (
+	"fmt"
+
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/limelamp/osmium/internal/tui/components"
@@ -10,6 +15,8 @@ import (
 	"github.com/limelamp/osmium/internal/tui/styles"
 )
 
+// Page is one screen of the app: a model that can be told the rectangle it
+// has and can name itself for the title bar.
 type Page interface {
 	tea.Model
 
@@ -32,6 +39,7 @@ type appModel struct {
 	help components.HelpModel
 }
 
+// NewAppModel returns the application, opened on its home page.
 func NewAppModel(store *storage.ServerStore) appModel {
 	home := pages.NewHomeModel(store)
 
@@ -81,9 +89,22 @@ func (m appModel) getPageLayout(p Page) core.Layout {
 }
 
 func (m appModel) switchPage(p Page) (tea.Model, tea.Cmd) {
-	m.activePage = p.SetLayout(m.getPageLayout(p)).(Page) // settings window dimensions here, in case a page didn't receive the latest window layout
+	// The page is given the window before it is shown, in case it never
+	// received the latest size while it was in the background.
+	m.activePage = asPage(p.SetLayout(m.getPageLayout(p)))
 
 	return m, m.activePage.Init()
+}
+
+// asPage converts a model back into the page it is. Every page returns itself
+// from SetLayout, so a failure here is a programming mistake rather than
+// something to recover from — but it should say which type broke the contract.
+func asPage(model tea.Model) Page {
+	page, ok := model.(Page)
+	if !ok {
+		panic(fmt.Sprintf("osmium: %T is not a page", model))
+	}
+	return page
 }
 
 // quit leaves the app. Running servers are deliberately left alone: each one
@@ -128,7 +149,7 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.layout = core.NewLayout(msg.Width, msg.Height)
-		m.activePage = m.activePage.SetLayout(m.getPageLayout(m.activePage)).(Page)
+		m.activePage = asPage(m.activePage.SetLayout(m.getPageLayout(m.activePage)))
 		return m, helpCmd // handled locally, no need to forward to other pages
 
 	case tea.KeyPressMsg:
@@ -151,7 +172,9 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case core.LogMsg, core.OperationDoneMsg:
 		if m.activePage.Title() != m.manageServers.Title() {
 			updated, cmd := m.manageServers.Update(msg)
-			m.manageServers = updated.(pages.ManageServersModel)
+			if page, ok := updated.(pages.ManageServersModel); ok {
+				m.manageServers = page
+			}
 			return m, cmd
 		}
 
@@ -179,7 +202,7 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// forwards the same incoming message to the currently active page model
 	updated, cmd := m.activePage.Update(msg)
-	m.activePage = updated.(Page)
+	m.activePage = asPage(updated)
 
 	// Keep the stored copy of the page in step with the active one so state
 	// survives navigating away and back.
@@ -248,7 +271,6 @@ func (m appModel) View() tea.View {
 	return view
 }
 
-// additional methods
 func (m appModel) Title() string {
 	return "App"
 }

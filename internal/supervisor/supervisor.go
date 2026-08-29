@@ -11,7 +11,7 @@
 package supervisor
 
 import (
-	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -129,7 +129,7 @@ const (
 //
 // name is what the server is called in its own log; the folder name is used
 // when it is empty.
-func Start(serverDir string, name string) error {
+func Start(serverDir, name string) error {
 	dir, err := filepath.Abs(serverDir)
 	if err != nil {
 		return err
@@ -151,7 +151,7 @@ func Start(serverDir string, name string) error {
 	if err != nil {
 		return err
 	}
-	defer devNull.Close()
+	defer func() { _ = devNull.Close() }()
 
 	cmd := exec.Command(exe, "serve", "--dir", dir, "--name", name)
 	cmd.Dir = dir
@@ -173,7 +173,7 @@ func send(serverDir string, req request) error {
 	if err != nil {
 		return ErrNotRunning
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	line, err := json.Marshal(req)
 	if err != nil {
@@ -253,9 +253,10 @@ func absoluteDir(serverDir string) string {
 	return serverDir
 }
 
-// fingerprint identifies a server folder in a fixed number of characters.
+// fingerprint identifies a server folder in a fixed number of characters. It
+// names a socket file, so it needs to be stable and short rather than secure.
 func fingerprint(dir string) string {
-	sum := sha1.Sum([]byte(dir))
+	sum := sha256.Sum256([]byte(dir))
 	return hex.EncodeToString(sum[:8])
 }
 
@@ -268,6 +269,10 @@ func runtimeDir() string {
 	return filepath.Join(base, "osmium")
 }
 
-func portPath(serverDir string) string {
+// portPathFor is where the loopback transport records its port. It lives here
+// beside the socket path, and is only ever called on Windows.
+//
+//nolint:unused // the transport that calls it only builds on Windows.
+func portPathFor(serverDir string) string {
 	return filepath.Join(StateDir(serverDir), portFileName)
 }

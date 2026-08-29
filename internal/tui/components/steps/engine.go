@@ -16,9 +16,10 @@ type EngineStep struct {
 	grid Grid
 }
 
-func NewEngineStep(config *Config) *EngineStep {
+// NewEngineStep returns the step that picks the server software.
+func NewEngineStep(cfg *Config) *EngineStep {
 	return &EngineStep{
-		config: config,
+		config: cfg,
 		grid: NewGrid([]GridColumn{
 			{Title: "Vanilla", Items: []string{"Vanilla"}},
 			{Title: "Plugin", Items: constants.PluginOptions},

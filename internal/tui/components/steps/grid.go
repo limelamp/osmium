@@ -45,7 +45,7 @@ func NewGrid(columns []GridColumn) Grid {
 func (g Grid) Columns() []GridColumn { return g.columns }
 
 // Selected returns the column title and item under the cursor.
-func (g Grid) Selected() (column string, item string) {
+func (g Grid) Selected() (column, item string) {
 	if len(g.columns) == 0 {
 		return "", ""
 	}
@@ -244,7 +244,7 @@ func (g Grid) View() string {
 }
 
 // renderColumn draws one column: its title, then its items.
-func (g Grid) renderColumn(index int, width int) string {
+func (g Grid) renderColumn(index, width int) string {
 	column := g.columns[index]
 
 	title := lipgloss.NewStyle().Foreground(theme.Inactive).Render(column.Title)
@@ -263,7 +263,7 @@ func (g Grid) renderColumn(index int, width int) string {
 
 // rangeLabel tells the user what is off screen, horizontally or vertically. It
 // is empty when everything already fits.
-func (g Grid) rangeLabel(end int, visible int) string {
+func (g Grid) rangeLabel(end, visible int) string {
 	var parts []string
 
 	if len(g.columns) > visible {

@@ -23,8 +23,9 @@ type ServerStep struct {
 	err     error
 }
 
-func NewServerStep(config *Config, store *storage.ServerStore) *ServerStep {
-	return &ServerStep{config: config, store: store}
+// NewServerStep returns the step that picks which server to act on.
+func NewServerStep(cfg *Config, store *storage.ServerStore) *ServerStep {
+	return &ServerStep{config: cfg, store: store}
 }
 
 func (s *ServerStep) Init() tea.Cmd {
@@ -49,7 +50,8 @@ func (s *ServerStep) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		list, activated := s.list.HandleMouse(msg, s.layout, 0)
 		s.list = list
 		if activated {
-			return s, s.choose()
+			cmd := s.choose()
+			return s, cmd
 		}
 		return s, nil
 
@@ -61,7 +63,8 @@ func (s *ServerStep) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch msg.String() {
 		case "enter", "space", "right", "l":
-			return s, s.choose()
+			cmd := s.choose()
+			return s, cmd
 		}
 	}
 

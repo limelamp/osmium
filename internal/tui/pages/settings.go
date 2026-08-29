@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/limelamp/osmium/internal/build"
 	"github.com/limelamp/osmium/internal/config"
 	"github.com/limelamp/osmium/internal/tui/components/steps"
 	"github.com/limelamp/osmium/internal/tui/core"
@@ -67,6 +68,7 @@ type SettingsModel struct {
 	detail core.Scroll
 }
 
+// NewSettingsModel returns the settings page, read from the stored config.
 func NewSettingsModel() SettingsModel {
 	cfg, _ := config.LoadConfig()
 
@@ -538,6 +540,7 @@ func (m SettingsModel) aboutView() string {
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
 		label.Render("Osmium — terminal Minecraft server manager"),
+		fmt.Sprintf("%s %s", label.Render("Version:         "), value.Render(build.Info())),
 		"",
 		fmt.Sprintf("%s %s", label.Render("Config directory:"), value.Render(appDir)),
 		fmt.Sprintf("%s %s", label.Render("Server directory:"), value.Render(m.cfg.ServersDir())),

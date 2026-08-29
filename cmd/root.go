@@ -1,8 +1,11 @@
+// Package cmd is Osmium's command line: the commands themselves, the flags
+// they share, and the entry point that opens the interface.
 package cmd
 
 import (
 	"os"
 
+	"github.com/limelamp/osmium/internal/build"
 	"github.com/spf13/cobra"
 )
 
@@ -26,6 +29,8 @@ Minecraft versions. Install it with:
 	// A command that fails at runtime has already explained itself; printing
 	// the whole usage after it only buries the message.
 	SilenceUsage: true,
+
+	Version: build.Full(),
 	// Run: func(cmd *cobra.Command, args []string) { // Was used before the refactor
 	// 	mainProcess := tea.NewProgram(internal.NewRootModel(), tea.WithAltScreen())
 	// 	if _, err := mainProcess.Run(); err != nil {
@@ -36,6 +41,7 @@ Minecraft versions. Install it with:
 	RunE: runTui,
 }
 
+// Execute runs the command line, and is where main begins.
 func Execute() {
 	err := rootCmd.Execute()
 	if err != nil {
@@ -47,4 +53,8 @@ func init() {
 	// Errors are printed by Execute; nothing else belongs on the root command,
 	// which only opens the interface.
 	rootCmd.SilenceErrors = false
+
+	// "osmium --version" prints the line and nothing else; the default
+	// template wraps it in the command's name and a label.
+	rootCmd.SetVersionTemplate("{{.Version}}\n")
 }

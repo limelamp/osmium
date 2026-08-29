@@ -50,7 +50,9 @@ func resolveScope() (scope.Scope, *reporter, error) {
 	}
 
 	progress := newReporter()
-	return progress.Scope(dir), progress, nil
+	scoped := progress.Scope(dir)
+
+	return scoped, progress, nil
 }
 
 // findServer looks a registered server up by name, case-insensitively, and
@@ -63,7 +65,7 @@ func findServer(name string) (storage.Server, error) {
 
 	wanted := strings.ToLower(strings.TrimSpace(name))
 	for _, server := range servers {
-		if strings.ToLower(server.Name) == wanted || strings.ToLower(filepath.Base(server.Path)) == wanted {
+		if strings.EqualFold(server.Name, wanted) || strings.ToLower(filepath.Base(server.Path)) == wanted {
 			return server, nil
 		}
 	}

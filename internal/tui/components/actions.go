@@ -1,3 +1,5 @@
+// Package components are the panels the pages are assembled from: the servers
+// list, the actions menu, the console, the menu and the help overlay.
 package components
 
 import (
@@ -41,26 +43,40 @@ type actionGroup struct {
 // undone — kept apart so a destructive row is never next to a routine one.
 var actionGroups = []actionGroup{
 	{"SERVER", []actionEntry{
-		{label: "Server details", badge: func(m ActionsModel) string { return m.engine },
-			activate: func(*ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewDetailsModel()) }},
-		{label: "Players", badge: func(m ActionsModel) string { return m.online },
-			activate: func(*ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewPlayersModel()) }},
+		{
+			label: "Server details", badge: func(m ActionsModel) string { return m.engine },
+			activate: func(*ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewDetailsModel()) },
+		},
+		{
+			label: "Players", badge: func(m ActionsModel) string { return m.online },
+			activate: func(*ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewPlayersModel()) },
+		},
 	}},
 
 	{"PROCESS", []actionEntry{
-		{label: "Start server", badge: runningDot,
-			activate: func(m *ActionsModel) tea.Cmd { return core.ControlServer(core.ServerStart, m.server) }},
-		{label: "Stop server",
-			activate: func(m *ActionsModel) tea.Cmd { return core.ControlServer(core.ServerStop, m.server) }},
-		{label: "Restart server",
-			activate: func(m *ActionsModel) tea.Cmd { return core.ControlServer(core.ServerRestart, m.server) }},
+		{
+			label: "Start server", badge: runningDot,
+			activate: func(m *ActionsModel) tea.Cmd { return core.ControlServer(core.ServerStart, m.server) },
+		},
+		{
+			label:    "Stop server",
+			activate: func(m *ActionsModel) tea.Cmd { return core.ControlServer(core.ServerStop, m.server) },
+		},
+		{
+			label:    "Restart server",
+			activate: func(m *ActionsModel) tea.Cmd { return core.ControlServer(core.ServerRestart, m.server) },
+		},
 	}},
 
 	{"CONTENT", []actionEntry{
-		{label: "Mods", badge: func(m ActionsModel) string { return m.count(m.mods) },
-			activate: func(*ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewModManagementModel()) }},
-		{label: "Plugins", badge: func(m ActionsModel) string { return m.count(m.plugins) },
-			activate: func(*ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewPluginManagementModel()) }},
+		{
+			label: "Mods", badge: func(m ActionsModel) string { return m.count(m.mods) },
+			activate: func(*ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewModManagementModel()) },
+		},
+		{
+			label: "Plugins", badge: func(m ActionsModel) string { return m.count(m.plugins) },
+			activate: func(*ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewPluginManagementModel()) },
+		},
 		{label: "Install everything tracked", activate: func(m *ActionsModel) tea.Cmd {
 			return m.run("Installing tracked mods and plugins...", shared.InstallProjectsFromConfig)
 		}},
@@ -75,21 +91,33 @@ var actionGroups = []actionGroup{
 	}},
 
 	{"CONFIG", []actionEntry{
-		{label: "Edit server", badge: func(m ActionsModel) string { return m.memory },
-			activate: func(m *ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewEditServerModel(m.store)) }},
-		{label: "Manage configs",
-			activate: func(*ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewManageConfigsModel()) }},
-		{label: "Generate run script",
-			activate: func(*ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewGenRunScriptModel()) }},
-		{label: "Migrate version",
-			activate: func(m *ActionsModel) tea.Cmd { return core.RouteToServer("Migrate", m.server) }},
+		{
+			label: "Edit server", badge: func(m ActionsModel) string { return m.memory },
+			activate: func(m *ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewEditServerModel(m.store)) },
+		},
+		{
+			label:    "Manage configs",
+			activate: func(*ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewManageConfigsModel()) },
+		},
+		{
+			label:    "Generate run script",
+			activate: func(*ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewGenRunScriptModel()) },
+		},
+		{
+			label:    "Migrate version",
+			activate: func(m *ActionsModel) tea.Cmd { return core.RouteToServer("Migrate", m.server) },
+		},
 	}},
 
 	{"DANGER", []actionEntry{
-		{label: "Remove files",
-			activate: func(*ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewRemoveFilesModel()) }},
-		{label: "Destroy server",
-			activate: func(m *ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewDestroyModel(m.store)) }},
+		{
+			label:    "Remove files",
+			activate: func(*ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewRemoveFilesModel()) },
+		},
+		{
+			label:    "Destroy server",
+			activate: func(m *ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewDestroyModel(m.store)) },
+		},
 	}},
 }
 
@@ -158,6 +186,7 @@ type ActionsModel struct {
 	online  string
 }
 
+// NewActionsModel returns the root menu of the action pane.
 func NewActionsModel(store *storage.ServerStore) ActionsModel {
 	m := ActionsModel{
 		store:   store,
@@ -211,7 +240,11 @@ func (m ActionsModel) activate() (ActionsModel, tea.Cmd) {
 	if entry == nil {
 		return m, nil
 	}
-	return m, entry.activate(&m)
+
+	// The command is taken first: activate records which row is working, and
+	// returning m in the same statement would copy it before that happened.
+	cmd := entry.activate(&m)
+	return m, cmd
 }
 
 // moveFor applies one of the shared navigation keys and then settles the
@@ -402,7 +435,6 @@ func (m ActionsModel) title() string {
 	return m.Title() + " · " + m.server.Name
 }
 
-// additional methods
 func (m ActionsModel) Title() string {
 	return "Actions"
 }

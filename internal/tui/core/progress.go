@@ -37,7 +37,9 @@ func Progress(dir string) (Operation, bool) {
 	if !ok {
 		return Operation{}, false
 	}
-	return value.(Operation), true
+
+	operation, ok := value.(Operation)
+	return operation, ok
 }
 
 // Finish marks the operation in a directory as over, leaving its final state

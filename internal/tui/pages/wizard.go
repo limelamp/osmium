@@ -54,7 +54,9 @@ func (w wizard) goTo(index int) (wizard, tea.Cmd) {
 // update hands a message to the current step.
 func (w wizard) update(msg tea.Msg) (wizard, tea.Cmd) {
 	updated, cmd := w.current().Update(msg)
-	w.steps[w.active] = updated.(steps.Step)
+	if step, ok := updated.(steps.Step); ok {
+		w.steps[w.active] = step
+	}
 	return w, cmd
 }
 
@@ -98,7 +100,7 @@ func (w wizard) bodyLayout() core.Layout {
 
 // view draws the page: the stage strip, the step's heading and body, and the
 // hint bar pinned to the bottom.
-func (w wizard) view(title string, hints string) tea.View {
+func (w wizard) view(title, hints string) tea.View {
 	step := w.current()
 
 	content := lipgloss.JoinVertical(

@@ -10,6 +10,8 @@ import (
 // OsmiumFileName is the per-server manifest Osmium writes next to the jar.
 const OsmiumFileName = "osmium.json"
 
+// Project is one tracked mod or plugin: which build is installed, and where it
+// came from.
 type Project struct {
 	VersionNumber string `json:"version_number"`
 	FileName      string `json:"filename"` // files[0].filename
@@ -17,6 +19,9 @@ type Project struct {
 	SHA1          string `json:"sha1"`
 }
 
+// OsmiumConfig is a server's manifest: what it runs, how much memory it is
+// given, and everything installed on it. It lives beside the jar as
+// osmium.json and is the truth about the server.
 type OsmiumConfig struct {
 	Category     string             `json:"category"`
 	Loader       string             `json:"loader"`
@@ -34,7 +39,7 @@ func WriteConfigIn(dir string, config *OsmiumConfig) error {
 	}
 
 	path := filepath.Join(dir, OsmiumFileName)
-	if err := os.WriteFile(path, bytes, 0644); err != nil {
+	if err := os.WriteFile(path, bytes, 0o644); err != nil {
 		return fmt.Errorf("failed to write Osmium config to %s: %w", path, err)
 	}
 

@@ -12,6 +12,7 @@ type Layout struct {
 	Height int
 }
 
+// NewLayout is a rectangle of this size at the top-left corner.
 func NewLayout(w, h int) Layout {
 	return Layout{Width: w, Height: h}
 }

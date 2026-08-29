@@ -49,11 +49,11 @@ type LocationStep struct {
 }
 
 // NewLocationStep builds the step. defaultDir is the configured servers folder.
-func NewLocationStep(config *Config, defaultDir string) *LocationStep {
+func NewLocationStep(cfg *Config, defaultDir string) *LocationStep {
 	cwd, _ := os.Getwd()
 
 	s := &LocationStep{
-		config:     config,
+		config:     cfg,
 		dir:        cwd,
 		path:       core.NewField("").WithLimit(300),
 		defaultDir: defaultDir,
@@ -129,7 +129,8 @@ func (s *LocationStep) choose() (tea.Model, tea.Cmd) {
 
 	default:
 		s.browsing = true
-		return s, s.openDir(s.dir)
+		cmd := s.openDir(s.dir)
+		return s, cmd
 	}
 }
 
@@ -141,7 +142,8 @@ func (s *LocationStep) updateBrowser(msg tea.Msg) (tea.Model, tea.Cmd) {
 		list, activated := s.list.HandleMouse(msg, s.layout.Inset(0, 3, 0, -3), 0)
 		s.list = list
 		if activated {
-			return s, s.enter()
+			cmd := s.enter()
+			return s, cmd
 		}
 		return s, nil
 
@@ -157,7 +159,8 @@ func (s *LocationStep) updateBrowser(msg tea.Msg) (tea.Model, tea.Cmd) {
 			s.path = field
 
 			if result == core.FieldCommitted {
-				return s, s.openDir(strings.TrimSpace(s.path.Value()))
+				cmd := s.openDir(strings.TrimSpace(s.path.Value()))
+				return s, cmd
 			}
 			return s, cmd
 		}
@@ -174,10 +177,12 @@ func (s *LocationStep) updateBrowser(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return s, cmd
 
 		case "enter", "right", "l":
-			return s, s.enter()
+			cmd := s.enter()
+			return s, cmd
 
 		case "left", "h":
-			return s, s.openDir(filepath.Dir(s.dir))
+			cmd := s.openDir(filepath.Dir(s.dir))
+			return s, cmd
 
 		case "s":
 			s.config.Dir = s.dir

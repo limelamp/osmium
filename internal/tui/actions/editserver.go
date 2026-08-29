@@ -37,6 +37,7 @@ type EditServerModel struct {
 	warn   string
 }
 
+// NewEditServerModel returns the panel that edits a server's name and memory.
 func NewEditServerModel(store *storage.ServerStore) EditServerModel {
 	m := EditServerModel{
 		base:  newBase(),
@@ -229,7 +230,6 @@ func (m EditServerModel) Hints() []styles.Hint {
 	}
 }
 
-// additional methods
 func (m EditServerModel) Title() string {
 	return "Edit Server"
 }

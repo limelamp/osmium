@@ -41,9 +41,10 @@ type MigrateStep struct {
 	err     error
 }
 
-func NewMigrateStep(config *Config) *MigrateStep {
+// NewMigrateStep returns the step that carries out a migration.
+func NewMigrateStep(cfg *Config) *MigrateStep {
 	return &MigrateStep{
-		config:   config,
+		config:   cfg,
 		viewport: viewport.New(),
 		spinner:  core.NewTicker("migrate.spinner", spinnerInterval),
 	}
@@ -142,11 +143,14 @@ func (s *MigrateStep) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			s.label = ""
 			s.err = msg.err
 			if msg.err != nil {
-				return s, s.appendLog("error: " + msg.err.Error())
+				s.appendLog("error: " + msg.err.Error())
+				return s, nil
 			}
-			return s, s.appendLog("✓ Done.")
+			s.appendLog("✓ Done.")
+			return s, nil
 		}
-		return s, tea.Batch(s.appendLog(msg.line), waitForBuildEvent(s.events))
+		s.appendLog(msg.line)
+		return s, waitForBuildEvent(s.events)
 
 	case tea.MouseMsg:
 		mouse := msg.Mouse()
@@ -167,12 +171,9 @@ func (s *MigrateStep) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // appendLog adds a line to the migration log and keeps the view on the tail.
-func (s *MigrateStep) appendLog(line string) tea.Cmd {
-	for _, one := range strings.Split(line, "\n") {
-		s.logs = append(s.logs, one)
-	}
+func (s *MigrateStep) appendLog(line string) {
+	s.logs = append(s.logs, strings.Split(line, "\n")...)
 	s.refresh()
-	return nil
 }
 
 // refresh re-renders the log into the viewport.

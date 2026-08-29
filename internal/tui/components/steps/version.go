@@ -39,8 +39,9 @@ type VersionStep struct {
 	err     error
 }
 
-func NewVersionStep(config *Config) *VersionStep {
-	return &VersionStep{config: config, loading: true}
+// NewVersionStep returns the step that picks the Minecraft version.
+func NewVersionStep(cfg *Config) *VersionStep {
+	return &VersionStep{config: cfg, loading: true}
 }
 
 func (s *VersionStep) Init() tea.Cmd {

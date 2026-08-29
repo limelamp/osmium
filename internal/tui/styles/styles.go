@@ -1,3 +1,6 @@
+// Package styles is how Osmium looks: the bordered container every panel is
+// drawn in, the list row, the hint bar, the log line and the progress bar. One
+// place, so the whole interface changes together.
 package styles
 
 import (
@@ -12,7 +15,9 @@ import (
 	"github.com/limelamp/osmium/internal/tui/theme"
 )
 
-func Title(width int, text string, location string) string {
+// Title renders the bar across the top of a page: the app name on the left and
+// the page on the right.
+func Title(width int, text, location string) string {
 	// 1 padding left + 1 padding right = 2 characters total
 	padding := 1
 	innerWidth := max(width-(padding*2), 0)
@@ -36,13 +41,15 @@ func Title(width int, text string, location string) string {
 		Render(content)
 }
 
-func Logo(logo string) (string, int) {
+// Logo renders the wordmark in the theme colour, and reports how wide it is.
+func Logo(logo string) (rendered string, width int) {
 	return lipgloss.NewStyle().
 		Foreground(theme.Primary).
 		Render(logo), lipgloss.Width(logo)
 }
 
-func Selection(width int, isSelected bool, page string, key string) string {
+// Selection renders one home-menu entry with its key.
+func Selection(width int, isSelected bool, page, key string) string {
 	selectionStyle := lipgloss.NewStyle().Width(width).MarginTop(1)
 
 	var pageContent string
@@ -174,7 +181,7 @@ func scrollThumb(track, total, visible, offset int) []bool {
 
 // ListRow renders one row of a selectable list: an arrow marker on the cursor
 // row plus an optional muted suffix pushed to the right edge.
-func ListRow(width int, selected bool, label string, suffix string) string {
+func ListRow(width int, selected bool, label, suffix string) string {
 	marker := "  "
 	style := lipgloss.NewStyle()
 	if selected {
@@ -217,7 +224,7 @@ const logTagWidth = 6
 // LogRow renders one line of the Activity console: its source in a fixed-width
 // coloured column, then the line itself. Wrapped text is indented to the column
 // so a long line still reads as belonging to one source.
-func LogRow(width int, tag string, text string) string {
+func LogRow(width int, tag, text string) string {
 	var tagColor, textColor color.Color = theme.Inactive, nil
 
 	switch tag {
@@ -305,7 +312,7 @@ func TooSmall(width, height int) string {
 // StepHeading renders a wizard step heading. The step number carries the
 // theme's accent, the title its primary colour, and the subtitle explains the
 // step in the muted tone.
-func StepHeading(step int, title string, subtitle string) string {
+func StepHeading(step int, title, subtitle string) string {
 	number := lipgloss.NewStyle().
 		Foreground(theme.Accent).
 		Bold(true).
@@ -332,7 +339,7 @@ func StepHeading(step int, title string, subtitle string) string {
 // wrapped by the container when it is drawn, and a line that becomes two after
 // the height was counted pushes the bottom row out of the frame. Wrapping here
 // means the rows counted are the rows drawn.
-func Body(content string, width int, height int) string {
+func Body(content string, width, height int) string {
 	width, height = max(width, 1), max(height, 0)
 
 	return lipgloss.NewStyle().

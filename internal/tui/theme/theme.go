@@ -1,3 +1,5 @@
+// Package theme is the palette the interface draws with, and the set of themes
+// a user can choose between.
 package theme
 
 import (

@@ -62,7 +62,7 @@ The shell is taken from $SHELL unless one is named:
 			return err
 		}
 
-		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(target), 0o750); err != nil {
 			return err
 		}
 
@@ -70,7 +70,7 @@ The shell is taken from $SHELL unless one is named:
 		if err != nil {
 			return err
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 
 		if err := writeCompletion(shell, file); err != nil {
 			return err

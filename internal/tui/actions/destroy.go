@@ -36,6 +36,7 @@ type DestroyModel struct {
 	warn         string
 }
 
+// NewDestroyModel returns the panel that deletes a server.
 func NewDestroyModel(store *storage.ServerStore) DestroyModel {
 	m := DestroyModel{
 		base:         newBase(),
@@ -228,7 +229,6 @@ type warning string
 
 func (w warning) Error() string { return string(w) }
 
-// additional methods
 func (m DestroyModel) Title() string {
 	return "Destroy Server"
 }

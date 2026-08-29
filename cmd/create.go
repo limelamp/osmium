@@ -1,6 +1,3 @@
-/*
-Copyright © 2026 NAME HERE <EMAIL ADDRESS>
-*/
 package cmd
 
 import (
@@ -296,7 +293,11 @@ func runWizard(pending []steps.Step, cfg *steps.Config) (bool, error) {
 		return false, err
 	}
 
-	return final.(wizard).finished, nil
+	answered, ok := final.(wizard)
+	if !ok {
+		return false, fmt.Errorf("the wizard ended as %T", final)
+	}
+	return answered.finished, nil
 }
 
 func (w wizard) Init() tea.Cmd {
@@ -335,7 +336,9 @@ func (w wizard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	updated, cmd := w.steps[w.active].Update(msg)
-	w.steps[w.active] = updated.(steps.Step)
+	if step, ok := updated.(steps.Step); ok {
+		w.steps[w.active] = step
+	}
 	return w, cmd
 }
 

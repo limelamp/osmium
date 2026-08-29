@@ -1,6 +1,8 @@
 package pages
 
 import (
+	"fmt"
+
 	tea "charm.land/bubbletea/v2"
 	"github.com/limelamp/osmium/internal/config"
 	"github.com/limelamp/osmium/internal/tui/components/steps"
@@ -19,6 +21,7 @@ type CreateServerModel struct {
 	config *steps.Config
 }
 
+// NewCreateServerModel returns the create wizard at its first step.
 func NewCreateServerModel(store *storage.ServerStore) CreateServerModel {
 	cfg, _ := config.LoadConfig()
 
@@ -54,8 +57,13 @@ func (m CreateServerModel) Init() tea.Cmd {
 }
 
 // buildStep is the wizard's final step, which owns the created server record.
+// The wizard builds its own steps, so the last one is always the build.
 func (m CreateServerModel) buildStep() *steps.BuildStep {
-	return m.steps[len(m.steps)-1].(*steps.BuildStep)
+	step, ok := m.steps[len(m.steps)-1].(*steps.BuildStep)
+	if !ok {
+		panic(fmt.Sprintf("osmium: the create wizard ends in %T", m.steps[len(m.steps)-1]))
+	}
+	return step
 }
 
 // step moves the wizard and returns the page, keeping the embedded wizard's
@@ -112,7 +120,7 @@ func (m CreateServerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	updated, cmd := m.wizard.update(msg)
+	updated, cmd := m.update(msg)
 	m.wizard = updated
 	return m, cmd
 }
@@ -171,6 +179,6 @@ func (m CreateServerModel) Title() string {
 }
 
 func (m CreateServerModel) SetLayout(l core.Layout) tea.Model {
-	m.wizard = m.wizard.setLayout(l)
+	m.wizard = m.setLayout(l)
 	return m
 }

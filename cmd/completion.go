@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/limelamp/osmium/internal/config"
 	"github.com/limelamp/osmium/internal/supervisor"
 	"github.com/limelamp/osmium/internal/tui/constants"
 	"github.com/limelamp/osmium/internal/util"
@@ -36,39 +35,6 @@ func completeServerNames(*cobra.Command, []string, string) ([]string, cobra.Shel
 		names = append(names, fmt.Sprintf("%s\t%s %s · %s", server.Name, server.Type, server.Version, state))
 	}
 	return names, cobra.ShellCompDirectiveNoFileComp
-}
-
-// completeInstalled offers the mods or plugins the target server has tracked,
-// which is what remove and update operate on.
-func completeInstalled(cmd *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
-	dir, err := resolveDir()
-	if err != nil {
-		return nil, cobra.ShellCompDirectiveError
-	}
-
-	conf, err := config.ReadConfigIn(dir)
-	if err != nil {
-		return nil, cobra.ShellCompDirectiveNoFileComp
-	}
-
-	tracked := conf.Mods
-	if plugin, _ := cmd.Flags().GetBool("plugin"); plugin {
-		tracked = conf.Plugins
-	}
-
-	// Something already named on the command line is not offered twice.
-	chosen := make(map[string]bool, len(args))
-	for _, arg := range args {
-		chosen[arg] = true
-	}
-
-	slugs := make([]string, 0, len(tracked))
-	for slug, project := range tracked {
-		if !chosen[slug] {
-			slugs = append(slugs, slug+"\t"+project.VersionNumber)
-		}
-	}
-	return slugs, cobra.ShellCompDirectiveNoFileComp
 }
 
 // completeLoaders offers the server software Osmium knows how to install.
@@ -137,7 +103,7 @@ func searchModrinth(typed string) []string {
 	if err != nil {
 		return nil
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	var body struct {
 		Hits []modrinthHit `json:"hits"`

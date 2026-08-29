@@ -40,6 +40,8 @@ const (
 	minPaneHeight = 5
 )
 
+// ManageServersModel is the page servers are run from: the list on the left,
+// the actions and the console on the right.
 type ManageServersModel struct {
 	layout core.Layout
 	store  *storage.ServerStore
@@ -124,7 +126,8 @@ func (m ManageServersModel) setFocus(pane int) ManageServersModel {
 	// The panes are sized from whichever one has focus, so they are re-flowed
 	// for the new one — otherwise the children would keep rendering at their
 	// old size inside the newly sized boxes.
-	return m.SetLayout(m.layout).(ManageServersModel)
+	page, _ := m.SetLayout(m.layout).(ManageServersModel)
+	return page
 }
 
 // OpenServer opens the page on one server rather than on the list.
@@ -140,7 +143,9 @@ func (m ManageServersModel) OpenServer(server *storage.Server) ManageServersMode
 	m.servers = m.servers.Select(server.Path)
 
 	updated, _ := m.selectServer(server)
-	return updated.(ManageServersModel).setFocus(paneAction)
+
+	page, _ := updated.(ManageServersModel)
+	return page.setFocus(paneAction)
 }
 
 // paneAt reports which pane covers an absolute terminal coordinate.
@@ -156,7 +161,9 @@ func (m ManageServersModel) paneAt(x, y int) int {
 	return -1
 }
 
-// "conditional message routing" pattern
+// Update routes each message to the pane it belongs to: the focused one for
+// keys, the one under the pointer for the mouse, and the pane that owns the
+// subject for everything else.
 func (m ManageServersModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	// Sent when the Action needs to be switched.
@@ -172,24 +179,32 @@ func (m ManageServersModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.activity = activity
 
 		servers, serversCmd := m.servers.Update(msg)
-		m.servers = servers.(components.ServersModel)
+		if list, ok := servers.(components.ServersModel); ok {
+			m.servers = list
+		}
 
 		// The action panel is woken too: a panel that was parked while another
 		// server was selected has had its timer stranded, and it is the wake
 		// that starts it again.
 		action, actionCmd := m.activeAction.Update(msg)
-		m.activeAction = action.(core.Action)
+		if panel, ok := action.(core.Action); ok {
+			m.activeAction = panel
+		}
 
 		return m, tea.Batch(activityCmd, serversCmd, actionCmd)
 
 	// A finished operation is two things: output for the console, and a reason
 	// for the panel that started it to re-read what it shows.
 	case core.OperationDoneMsg:
-		activity, cmd := m.activity.Update(core.LogMsg{Lines: msg.Lines})
-		m.activity = activity.(components.ActivityModel)
+		activity, cmd := m.activity.Update(core.LogMsg(msg))
+		if console, ok := activity.(components.ActivityModel); ok {
+			m.activity = console
+		}
 
 		action, actionCmd := m.activeAction.Update(msg)
-		m.activeAction = action.(core.Action)
+		if panel, ok := action.(core.Action); ok {
+			m.activeAction = panel
+		}
 
 		return m, tea.Batch(cmd, actionCmd)
 
@@ -207,7 +222,9 @@ func (m ManageServersModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// what talks to the servers' supervisors.
 	case core.ServerControlMsg, core.LogMsg, core.RestartReadyMsg:
 		updated, cmd := m.activity.Update(msg)
-		m.activity = updated.(components.ActivityModel)
+		if console, ok := updated.(components.ActivityModel); ok {
+			m.activity = console
+		}
 		return m, cmd
 
 	case tea.MouseMsg:
@@ -262,9 +279,17 @@ func (m ManageServersModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	updatedActions, cmd2 := m.activeAction.Update(msg)
 	updatedActivity, cmd3 := m.activity.Update(msg)
 
-	m.servers = updatedServers.(components.ServersModel)
-	m.activeAction = updatedActions.(core.Action)
-	m.activity = updatedActivity.(components.ActivityModel)
+	// Each child returns itself, so these hold by construction; a mismatch
+	// would mean a child swapped its own type, which none of them do.
+	if list, ok := updatedServers.(components.ServersModel); ok {
+		m.servers = list
+	}
+	if panel, ok := updatedActions.(core.Action); ok {
+		m.activeAction = panel
+	}
+	if console, ok := updatedActivity.(components.ActivityModel); ok {
+		m.activity = console
+	}
 
 	return m, tea.Batch(cmd1, cmd2, cmd3)
 }
@@ -362,13 +387,19 @@ func (m ManageServersModel) forwardToPane(msg tea.Msg, pane int) (tea.Model, tea
 	switch pane {
 	case paneServers:
 		updated, cmd = m.servers.Update(msg)
-		m.servers = updated.(components.ServersModel)
+		if list, ok := updated.(components.ServersModel); ok {
+			m.servers = list
+		}
 	case paneAction:
 		updated, cmd = m.activeAction.Update(msg)
-		m.activeAction = updated.(core.Action)
+		if panel, ok := updated.(core.Action); ok {
+			m.activeAction = panel
+		}
 	case paneActivity:
 		updated, cmd = m.activity.Update(msg)
-		m.activity = updated.(components.ActivityModel)
+		if console, ok := updated.(components.ActivityModel); ok {
+			m.activity = console
+		}
 	}
 
 	return m, cmd
@@ -480,7 +511,6 @@ func (m ManageServersModel) Help() []core.HelpSection {
 	return []core.HelpSection{section}
 }
 
-// additional methods
 func (m ManageServersModel) Title() string {
 	return "Manage Servers"
 }

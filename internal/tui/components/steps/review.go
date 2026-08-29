@@ -32,8 +32,9 @@ type ReviewStep struct {
 	manual bool
 }
 
-func NewReviewStep(config *Config) *ReviewStep {
-	s := &ReviewStep{config: config}
+// NewReviewStep returns the summary shown before the build.
+func NewReviewStep(cfg *Config) *ReviewStep {
+	s := &ReviewStep{config: cfg}
 	s.list = s.list.Resize(reviewCount, reviewCount)
 	return s
 }
@@ -110,7 +111,7 @@ func (s *ReviewStep) activate() (tea.Model, tea.Cmd) {
 }
 
 // rows renders the body and reports the display row the first button sits on.
-func (s *ReviewStep) rows() ([]string, int) {
+func (s *ReviewStep) rows() (rows []string, buttonRow int) {
 	summary := []string{
 		s.summaryRow("Name", s.config.Name),
 		s.summaryRow("Folder", TargetDir(s.config)),
@@ -120,7 +121,9 @@ func (s *ReviewStep) rows() ([]string, int) {
 		s.summaryRow("Boot after build", yesNo(s.config.AutoRun)),
 	}
 
-	rows := append(summary,
+	rows = make([]string, 0, len(summary)+3)
+	rows = append(rows, summary...)
+	rows = append(rows,
 		lipgloss.NewStyle().Foreground(theme.Inactive).Render("Create this server?"),
 		styles.ListRow(s.layout.Width, s.list.Cursor == reviewBuild, "[ Build server ]", ""),
 		styles.ListRow(s.layout.Width, s.list.Cursor == reviewBack, "[ Back to options ]", ""),
@@ -155,11 +158,11 @@ func (s *ReviewStep) SetLayout(l core.Layout) Step {
 
 // TargetDir is the folder the server's files end up in: the chosen location
 // with the server's own folder inside it.
-func TargetDir(config *Config) string {
-	if config.Dir == "" {
+func TargetDir(cfg *Config) string {
+	if cfg.Dir == "" {
 		return ""
 	}
-	return filepath.Join(config.Dir, slug(config.Name))
+	return filepath.Join(cfg.Dir, slug(cfg.Name))
 }
 
 func yesNo(value bool) string {

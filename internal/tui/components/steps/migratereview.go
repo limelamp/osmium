@@ -28,8 +28,9 @@ type MigrateReviewStep struct {
 	list core.List
 }
 
-func NewMigrateReviewStep(config *Config) *MigrateReviewStep {
-	s := &MigrateReviewStep{config: config}
+// NewMigrateReviewStep returns the last look before a migration starts.
+func NewMigrateReviewStep(cfg *Config) *MigrateReviewStep {
+	s := &MigrateReviewStep{config: cfg}
 	s.list = s.list.Resize(migrateCount, migrateCount)
 	return s
 }
@@ -85,7 +86,7 @@ func (s *MigrateReviewStep) activate() (tea.Model, tea.Cmd) {
 }
 
 // rows renders the body and reports the display row the first button sits on.
-func (s *MigrateReviewStep) rows() ([]string, int) {
+func (s *MigrateReviewStep) rows() (rows []string, buttonRow int) {
 	from := "unknown"
 	if conf, err := config.ReadConfigIn(s.config.Dir); err == nil {
 		from = conf.Loader + " " + conf.Version
@@ -103,7 +104,9 @@ func (s *MigrateReviewStep) rows() ([]string, int) {
 		summary = summary[:max(room, 0)]
 	}
 
-	rows := append(summary,
+	rows = make([]string, 0, len(summary)+3)
+	rows = append(rows, summary...)
+	rows = append(rows,
 		lipgloss.NewStyle().Foreground(theme.Inactive).Render("Migrate this server?"),
 		styles.ListRow(s.layout.Width, s.list.Cursor == migrateStart, "[ Migrate now ]", ""),
 		styles.ListRow(s.layout.Width, s.list.Cursor == migrateBack, "[ Back to options ]", ""),

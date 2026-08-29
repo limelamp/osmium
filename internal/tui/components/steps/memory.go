@@ -27,9 +27,10 @@ type MemoryStep struct {
 	warn  string
 }
 
-func NewMemoryStep(config *Config) *MemoryStep {
+// NewMemoryStep returns the step that allocates memory.
+func NewMemoryStep(cfg *Config) *MemoryStep {
 	s := &MemoryStep{
-		config: config,
+		config: cfg,
 		field:  core.NewField("e.g. 6G, 10G or 3072M").WithLimit(12),
 	}
 	s.list = s.list.Resize(len(constants.RamOptions), len(constants.RamOptions))
@@ -37,7 +38,7 @@ func NewMemoryStep(config *Config) *MemoryStep {
 	// Start on whatever the configuration already carries, so the wizard's
 	// default from Settings is the highlighted row.
 	for i, option := range constants.RamOptions {
-		if option == config.RAM {
+		if option == cfg.RAM {
 			s.list.Cursor = i
 			break
 		}
@@ -66,7 +67,8 @@ func (s *MemoryStep) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		list, activated := s.list.HandleMouse(msg, s.layout, 0)
 		s.list = list
 		if activated {
-			return s, s.confirm(constants.RamOptions[s.list.Cursor])
+			cmd := s.confirm(constants.RamOptions[s.list.Cursor])
+			return s, cmd
 		}
 		return s, nil
 
@@ -83,7 +85,8 @@ func (s *MemoryStep) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return s, cmd
 
 		case "enter", "space":
-			return s, s.confirm(constants.RamOptions[s.list.Cursor])
+			cmd := s.confirm(constants.RamOptions[s.list.Cursor])
+			return s, cmd
 		}
 	}
 
@@ -119,7 +122,8 @@ func (s *MemoryStep) updateInput(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		s.warn = ""
-		return s, s.confirm(amount)
+		cmd := s.confirm(amount)
+		return s, cmd
 
 	case core.FieldCancelled:
 		s.warn = ""

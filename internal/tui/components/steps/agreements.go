@@ -26,8 +26,9 @@ type AgreementsStep struct {
 	warn   string
 }
 
-func NewAgreementsStep(config *Config) *AgreementsStep {
-	s := &AgreementsStep{config: config}
+// NewAgreementsStep returns the EULA and boot-on-build step.
+func NewAgreementsStep(cfg *Config) *AgreementsStep {
+	s := &AgreementsStep{config: cfg}
 	s.list = s.list.Resize(agreementCount, agreementCount)
 	return s
 }
@@ -109,8 +110,7 @@ func (s *AgreementsStep) toggle() (tea.Model, tea.Cmd) {
 
 // rows renders the body and reports which display row each option landed on, so
 // the view and the click handling can never disagree about the layout.
-func (s *AgreementsStep) rows() ([]string, map[int]int) {
-	var rows []string
+func (s *AgreementsStep) rows() (rows []string, byRow map[int]int) {
 	index := make(map[int]int, agreementCount)
 
 	add := func(option int, row string) {

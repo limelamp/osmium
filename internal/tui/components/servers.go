@@ -272,7 +272,6 @@ func isServerRunning(dir string) bool {
 	return supervisor.Running(dir)
 }
 
-// additional methods
 func (m ServersModel) Title() string {
 	return "Servers"
 }

@@ -10,15 +10,20 @@ import (
 // The menu is drawn like every other list in the app: one row per entry, no
 // spacers. That is also what makes a click land on the row it was aimed at.
 
+// Choice is one entry of the home menu: what it opens, and the key that opens
+// it.
 type Choice struct {
 	Page string
 	Key  string
 }
 
+// MenuSelectionMsg announces the entry the user chose.
 type MenuSelectionMsg struct {
 	Selection Choice
 }
 
+// NavigationModel is the home menu: a list of pages and the keys to reach
+// them.
 type NavigationModel struct {
 	layout core.Layout
 
@@ -26,6 +31,7 @@ type NavigationModel struct {
 	cursor  int
 }
 
+// NewNavigationModel returns the menu for a set of choices.
 func NewNavigationModel(choices []Choice) NavigationModel {
 	return NavigationModel{
 		choices: choices,

@@ -1,6 +1,7 @@
 package components
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -105,6 +106,7 @@ type ActivityModel struct {
 	wrapped int // rendered line count, for the scrollbar
 }
 
+// NewActivityModel returns the console pane.
 func NewActivityModel() ActivityModel {
 	// textInput init
 	ti := textinput.New()
@@ -418,7 +420,7 @@ func (m ActivityModel) control(msg core.ServerControlMsg) (tea.Model, tea.Cmd) {
 // start asks a supervisor to take the server over, then follows its log.
 func (m ActivityModel) start(target *console) (tea.Model, tea.Cmd) {
 	switch err := supervisor.Start(target.dir, target.name); {
-	case err == supervisor.ErrAlreadyRunning:
+	case errors.Is(err, supervisor.ErrAlreadyRunning):
 		target.say(supervisor.TagOsmium, fmt.Sprintf("%s is already running", target.name))
 
 	case err != nil:
@@ -540,7 +542,6 @@ func (m ActivityModel) refresh() ActivityModel {
 	return m
 }
 
-// RunServer View
 func (m ActivityModel) View() tea.View {
 	separator := lipgloss.NewStyle().
 		Foreground(theme.Inactive).
@@ -618,7 +619,6 @@ func (m ActivityModel) title() string {
 	return title
 }
 
-// additional methods
 func (m ActivityModel) Title() string {
 	return "Activity"
 }

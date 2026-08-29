@@ -1,3 +1,7 @@
+// Package core is the vocabulary the interface is built from: the layout
+// rectangles, the list and scroll behaviour every panel shares, the messages
+// pages send one another, and the small widgets — a text field, a ticker —
+// that would otherwise be written once per screen.
 package core
 
 import (

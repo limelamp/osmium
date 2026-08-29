@@ -82,6 +82,7 @@ type SelectServerMsg struct {
 // requests travel to it as messages rather than through shared state.
 type ServerControl int
 
+// The process operations a panel can ask for.
 const (
 	ServerStart ServerControl = iota
 	ServerStop
@@ -94,7 +95,7 @@ type ServerControlMsg struct {
 	Server  *storage.Server
 }
 
-// Helper functions to generate the commands
+// RouteTo asks the app to switch to another page.
 func RouteTo(target string) tea.Cmd {
 	//? returns a message to be catched by a parent tea.Model
 	return func() tea.Msg {

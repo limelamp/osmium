@@ -24,7 +24,7 @@ func listen(serverDir string) (net.Listener, error) {
 		return nil, fmt.Errorf("unexpected listener address %s", ln.Addr())
 	}
 
-	if err := os.WriteFile(portPath(serverDir), []byte(fmt.Sprint(addr.Port)), 0644); err != nil {
+	if err := os.WriteFile(portPathFor(serverDir), []byte(fmt.Sprint(addr.Port)), 0o600); err != nil {
 		ln.Close()
 		return nil, err
 	}
@@ -33,7 +33,7 @@ func listen(serverDir string) (net.Listener, error) {
 
 // dial connects to the port the supervisor recorded.
 func dial(serverDir string) (net.Conn, error) {
-	data, err := os.ReadFile(portPath(serverDir))
+	data, err := os.ReadFile(portPathFor(serverDir))
 	if err != nil {
 		return nil, err
 	}
@@ -42,5 +42,5 @@ func dial(serverDir string) (net.Conn, error) {
 
 // cleanupSocket removes the port file once the supervisor is done with it.
 func cleanupSocket(serverDir string) {
-	_ = os.Remove(portPath(serverDir))
+	_ = os.Remove(portPathFor(serverDir))
 }

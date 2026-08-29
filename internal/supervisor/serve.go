@@ -3,6 +3,7 @@ package supervisor
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -21,7 +22,7 @@ import (
 // records everything it says into the log, and answers control requests until
 // the server exits. It is the body of the hidden "osmium serve" command and is
 // never run in the foreground of a session the user can see.
-func Serve(serverDir string, name string) error {
+func Serve(serverDir, name string) error {
 	dir, err := filepath.Abs(serverDir)
 	if err != nil {
 		return err
@@ -37,7 +38,7 @@ func Serve(serverDir string, name string) error {
 	if err != nil {
 		return err
 	}
-	defer log.Close()
+	defer func() { _ = log.Close() }()
 
 	conf, err := config.ReadConfigIn(dir)
 	if err != nil {
@@ -51,7 +52,7 @@ func Serve(serverDir string, name string) error {
 		log.Write(TagError, err.Error())
 		return err
 	}
-	defer shared.RemoveLockFileIn(dir)
+	defer func() { _ = shared.RemoveLockFileIn(dir) }()
 
 	javaPath, args := util.GetServerRunCommand(dir, conf.Loader, conf.AllocatedRAM)
 
@@ -89,7 +90,7 @@ func Serve(serverDir string, name string) error {
 
 	// Closing the listener ends the accept loop, so nothing is left listening
 	// on a socket whose server is gone.
-	listener.Close()
+	_ = listener.Close()
 	return nil
 }
 
@@ -98,7 +99,8 @@ func exitDetail(err error) string {
 	if err == nil {
 		return ""
 	}
-	if exit, ok := err.(*exec.ExitError); ok {
+	exit := &exec.ExitError{}
+	if errors.As(err, &exit) {
 		return fmt.Sprintf(" with status %d", exit.ExitCode())
 	}
 	return ": " + err.Error()
@@ -125,7 +127,7 @@ func (c *controller) accept(listener net.Listener) {
 
 // handle reads one request per line and answers it.
 func (c *controller) handle(conn net.Conn) {
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {

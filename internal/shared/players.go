@@ -1,3 +1,6 @@
+// Package shared holds the operations a server needs that are not about the
+// interface: fetching mods and plugins from Modrinth, migrating a server, and
+// reading the records a Minecraft server keeps about its players.
 package shared
 
 import (
@@ -163,7 +166,7 @@ func readPlayerFile(dir, name string, into any) error {
 		return err
 	}
 
-	if len(strings.TrimSpace(string(data))) == 0 {
+	if strings.TrimSpace(string(data)) == "" {
 		return nil
 	}
 	return json.Unmarshal(data, into)
@@ -185,7 +188,7 @@ var listReply = regexp.MustCompile(`There are (\d+) of a max of (\d+) players on
 
 // OnlineFromLog finds the newest answer to "list" in a server's log and reads
 // the players out of it.
-func OnlineFromLog(log string) (names []string, online, max int, ok bool) {
+func OnlineFromLog(log string) (names []string, online, limit int, ok bool) {
 	scanner := bufio.NewScanner(strings.NewReader(log))
 
 	for scanner.Scan() {
@@ -195,7 +198,7 @@ func OnlineFromLog(log string) (names []string, online, max int, ok bool) {
 		}
 
 		online, _ = strconv.Atoi(match[1])
-		max, _ = strconv.Atoi(match[2])
+		limit, _ = strconv.Atoi(match[2])
 
 		names = nil
 		for _, name := range strings.Split(match[3], ",") {
@@ -206,7 +209,7 @@ func OnlineFromLog(log string) (names []string, online, max int, ok bool) {
 		ok = true
 	}
 
-	return names, online, max, ok
+	return names, online, limit, ok
 }
 
 // MaxPlayers reads the player limit out of server.properties, or zero when it
@@ -216,7 +219,7 @@ func MaxPlayers(dir string) int {
 	if err != nil {
 		return 0
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
@@ -233,7 +236,9 @@ func MaxPlayers(dir string) int {
 func FolderSize(dir string) int64 {
 	var total int64
 
-	filepath.Walk(dir, func(_ string, info os.FileInfo, err error) error {
+	// A folder that cannot be walked in full still has a size worth reporting,
+	// so unreadable corners are skipped rather than failing the whole sum.
+	_ = filepath.Walk(dir, func(_ string, info os.FileInfo, err error) error {
 		if err == nil && !info.IsDir() {
 			total += info.Size()
 		}

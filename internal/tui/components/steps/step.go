@@ -16,6 +16,8 @@ type PrevMsg struct{}
 
 // Next and Prev are the commands steps use to move the wizard along.
 func Next() tea.Cmd { return func() tea.Msg { return NextMsg{} } }
+
+// Prev takes the wizard back one step.
 func Prev() tea.Cmd { return func() tea.Msg { return PrevMsg{} } }
 
 // Config is the server the wizard is assembling. Steps hold a pointer to it so

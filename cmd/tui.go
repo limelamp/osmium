@@ -34,6 +34,22 @@ func init() {
 	registerServerFlag(rootCmd)
 }
 
+// workingDir is where the command was run, or an empty string when that cannot
+// be determined — which is not a failure, only one fewer place to look.
+func workingDir() string {
+	dir, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	return dir
+}
+
+// isServerFolder reports whether a folder holds a server manifest.
+func isServerFolder(dir string) bool {
+	_, err := os.Stat(filepath.Join(dir, config.OsmiumFileName))
+	return err == nil
+}
+
 // openingServer is the server the interface should open on: the one --server
 // names, or the one the current folder is.
 //
@@ -49,12 +65,9 @@ func openingServer(store *storage.ServerStore) (*storage.Server, error) {
 		return &server, nil
 	}
 
-	dir, err := os.Getwd()
-	if err != nil {
-		return nil, nil
-	}
-
-	if _, err := os.Stat(filepath.Join(dir, config.OsmiumFileName)); err != nil {
+	dir := workingDir()
+	if dir == "" || !isServerFolder(dir) {
+		// Not standing in a server is the ordinary case, not a failure.
 		return nil, nil
 	}
 

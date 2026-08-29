@@ -84,7 +84,7 @@ func TestHomeMenuClickAfterServersLoad(t *testing.T) {
 		t.Fatalf("could not stage a running server: %v", err)
 	}
 
-	var home tea.Model = pages.NewHomeModel(storage.NewServerStore()).SetLayout(layout)
+	home := pages.NewHomeModel(storage.NewServerStore()).SetLayout(layout)
 	home, _ = home.Update(core.LoadedServersMsg{Servers: []storage.Server{
 		{Name: "Alpha", Path: dir},
 	}})

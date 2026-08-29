@@ -44,6 +44,7 @@ type DetailsModel struct {
 	scroll core.Scroll
 }
 
+// NewDetailsModel returns the panel that describes the selected server.
 func NewDetailsModel() DetailsModel {
 	m := DetailsModel{
 		base:   newBase(),
@@ -138,10 +139,10 @@ func (m DetailsModel) reload() DetailsModel {
 	if err == nil {
 		// A stopped server has nobody on it, whatever its log last said.
 		if supervisor.Running(m.dir()) {
-			if names, _, max, ok := onlineNow(m.dir()); ok {
+			if names, limit, ok := onlineNow(m.dir()); ok {
 				players = shared.MarkOnline(players, names)
-				if max > 0 {
-					m.max = max
+				if limit > 0 {
+					m.max = limit
 				}
 			}
 		}
@@ -188,10 +189,10 @@ func (m DetailsModel) measure() tea.Cmd {
 }
 
 // onlineNow reads the newest answer to "list" out of the server's log.
-func onlineNow(dir string) (names []string, online, max int, ok bool) {
+func onlineNow(dir string) (names []string, limit int, ok bool) {
 	lines, err := supervisor.ReadLast(supervisor.LogPath(dir), 200)
 	if err != nil {
-		return nil, 0, 0, false
+		return nil, 0, false
 	}
 
 	var text strings.Builder
@@ -200,7 +201,8 @@ func onlineNow(dir string) (names []string, online, max int, ok bool) {
 		text.WriteByte('\n')
 	}
 
-	return shared.OnlineFromLog(text.String())
+	names, _, limit, ok = shared.OnlineFromLog(text.String())
+	return names, limit, ok
 }
 
 func (m DetailsModel) View() tea.View {
@@ -361,7 +363,6 @@ func (m DetailsModel) Hints() []styles.Hint {
 	}
 }
 
-// additional methods
 func (m DetailsModel) Title() string {
 	return "Server Details"
 }

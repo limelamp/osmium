@@ -1,3 +1,5 @@
+// Package pages are Osmium's screens: home, create, manage, migrate and
+// settings, each owning the panels it is made of.
 package pages
 
 import (
@@ -37,6 +39,7 @@ type HomeModel struct {
 	status  core.Ticker
 }
 
+// NewHomeModel returns the home page.
 func NewHomeModel(store *storage.ServerStore) HomeModel {
 	return HomeModel{
 		store:  store,
@@ -234,9 +237,11 @@ func (m HomeModel) serverRows() int {
 	return max(m.layout.Height-used, 0)
 }
 
-// relayout re-measures the page after something changed its height.
+// relayout re-measures the page after something changed its height. SetLayout
+// returns this same page, so the assertion holds by construction.
 func (m HomeModel) relayout() HomeModel {
-	return m.SetLayout(m.layout).(HomeModel)
+	page, _ := m.SetLayout(m.layout).(HomeModel)
+	return page
 }
 
 // plural renders a count with its noun.
@@ -264,7 +269,6 @@ func (m HomeModel) Help() []core.HelpSection {
 	}}
 }
 
-// additional methods
 func (m HomeModel) Title() string {
 	return "Home"
 }

@@ -6,6 +6,11 @@
 osmium
 osmium.exe
 
+# Build output: `make build`, `make completions`, goreleaser
+bin/
+dist/
+completions/
+
 # Exe for compression (source https://github.com/upx/upx)
 upx.exe
 

@@ -38,6 +38,7 @@ const (
 	headerRows    = 1
 )
 
+// NewPlayersModel returns the panel that lists and manages players.
 func NewPlayersModel() PlayersModel {
 	return PlayersModel{
 		base:   newBase(),
@@ -119,10 +120,10 @@ func (m PlayersModel) reload() PlayersModel {
 	// Who was online is read from the server's own answer in the log, which is
 	// only true of a server that is still running.
 	if supervisor.Running(m.dir()) {
-		if names, _, max, ok := onlineNow(m.dir()); ok {
+		if names, limit, ok := onlineNow(m.dir()); ok {
 			players = shared.MarkOnline(players, names)
-			if max > 0 {
-				m.max = max
+			if limit > 0 {
+				m.max = limit
 			}
 		}
 	}
@@ -212,7 +213,7 @@ func (m PlayersModel) command(verb, report string) (tea.Model, tea.Cmd) {
 
 // say puts a line in the panel's footer for a moment.
 func (m PlayersModel) say(text string, failed bool) (tea.Model, tea.Cmd) {
-	updated, cmd := m.base.report(text, failed)
+	updated, cmd := m.report(text, failed)
 	m.base = updated
 	return m, cmd
 }
@@ -296,7 +297,6 @@ func (m PlayersModel) Hints() []styles.Hint {
 	}
 }
 
-// additional methods
 func (m PlayersModel) Title() string {
 	return "Players"
 }

@@ -1,3 +1,5 @@
+// Package config reads and writes what Osmium remembers: its own settings, and
+// the manifest each server keeps beside its jar.
 package config
 
 import (
@@ -6,6 +8,7 @@ import (
 	"path/filepath"
 )
 
+// ConfigFileName is where Osmium's own settings live inside the app directory.
 const ConfigFileName = "config.json"
 
 // ServersFolderName is the sub-directory of the app directory that holds
@@ -83,5 +86,5 @@ func SaveConfig(cfg AppConfig) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filePath, data, 0644)
+	return os.WriteFile(filePath, data, 0o644)
 }

@@ -1,6 +1,3 @@
-/*
-Copyright © 2026 LIMELAMP <EMAIL ADDRESS>
-*/
 package cmd
 
 import (

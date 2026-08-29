@@ -1,9 +1,10 @@
 package shared
 
 import (
-	"crypto/sha1"
+	"crypto/sha1" //nolint:gosec // Modrinth indexes files by SHA-1; the API decides this, not us
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -65,8 +66,8 @@ var modrinthHTTPClient = &http.Client{Timeout: 30 * time.Second}
 //# --- project functions ---
 
 // doModrinthRequest performs an HTTP request with required Modrinth headers
-func doModrinthRequest(url string) (*http.Response, error) {
-	req, err := http.NewRequest("GET", url, nil)
+func doModrinthRequest(endpoint string) (*http.Response, error) {
+	req, err := http.NewRequest(http.MethodGet, endpoint, http.NoBody)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +83,7 @@ func getProjectInfo(projectID string) (projectInfo, error) {
 	if err != nil {
 		return projectInfo{}, fmt.Errorf("failed to fetch slug: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return projectInfo{}, fmt.Errorf("failed to fetch project info: %s", resp.Status)
@@ -128,7 +129,7 @@ func buildVersionQueryURL(slug string, conf *config.OsmiumConfig) (string, error
 	}
 
 	q := projectUrl.Query()
-	q.Set("game_versions", fmt.Sprintf(`["%s"]`, conf.Version))
+	q.Set("game_versions", fmt.Sprintf("[%q]", conf.Version))
 
 	// Get compatible loaders
 	loaders, ok := constants.PLUGIN_RESOLVER[strings.ToLower(conf.Loader)]
@@ -152,7 +153,7 @@ func getProjectVersions(slug string, conf *config.OsmiumConfig) ([]modrinthVersi
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch versions: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("failed to fetch versions: %s", resp.Status)
@@ -171,19 +172,19 @@ func getProjectVersions(slug string, conf *config.OsmiumConfig) ([]modrinthVersi
 }
 
 // downloadFile downloads a file from URL to the specified folder
-func downloadFile(sc scope.Scope, url, folder, filename string) error {
-	resp, err := modrinthHTTPClient.Get(url)
+func downloadFile(sc scope.Scope, from, folder, filename string) error {
+	resp, err := modrinthHTTPClient.Get(from)
 	if err != nil {
 		return fmt.Errorf("failed to download file: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("failed to download file: %s", resp.Status)
 	}
 
 	// Ensure folder exists
-	if err := os.MkdirAll(sc.Path(folder), 0755); err != nil {
+	if err := os.MkdirAll(sc.Path(folder), 0o750); err != nil {
 		return fmt.Errorf("failed to create %s folder: %w", folder, err)
 	}
 
@@ -192,7 +193,7 @@ func downloadFile(sc scope.Scope, url, folder, filename string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create file: %w", err)
 	}
-	defer out.Close()
+	defer func() { _ = out.Close() }()
 
 	// A mod is small next to a server jar, but on a slow connection it is still
 	// worth showing, and it costs one counter.
@@ -247,7 +248,7 @@ func updateConfigWithProject(sc scope.Scope, slug, folder string, version modrin
 }
 
 // getDependencyFolder determines the correct folder for a dependency
-func getDependencyFolder(parentFolder string, depType string) (string, error) {
+func getDependencyFolder(parentFolder, depType string) (string, error) {
 	if strings.HasPrefix(parentFolder, "optional_") {
 		// If parent is optional, all dependencies go to same optional folder
 		return parentFolder, nil
@@ -285,7 +286,7 @@ func installDependencies(sc scope.Scope, deps []dependency, parentFolder string)
 //# --- Main Public Functions ---
 
 // AddProjectByID downloads and installs a mod/plugin from Modrinth by project ID
-func AddProjectByID(sc scope.Scope, projectID string, folder string) error {
+func AddProjectByID(sc scope.Scope, projectID, folder string) error {
 	// 1. Get project info
 	info, err := getProjectInfo(projectID)
 	if err != nil {
@@ -335,7 +336,8 @@ func AddProjectByID(sc scope.Scope, projectID string, folder string) error {
 	return nil
 }
 
-func RemoveProjectByID(sc scope.Scope, projectID string, folder string) error {
+// RemoveProjectByID deletes a tracked project and forgets it in osmium.json.
+func RemoveProjectByID(sc scope.Scope, projectID, folder string) error {
 	osmiumConf, err := config.ReadConfigIn(sc.Dir)
 	if err != nil {
 		return fmt.Errorf("failed to read osmium.json: %w", err)
@@ -376,9 +378,9 @@ func calculateSHA1(filePath string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to open file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
-	hash := sha1.New()
+	hash := sha1.New() //nolint:gosec // the hash Modrinth looks files up by
 	if _, err := io.Copy(hash, file); err != nil {
 		return "", fmt.Errorf("failed to calculate hash: %w", err)
 	}
@@ -393,7 +395,7 @@ func getProjectByHash(hash string) (modrinthVersion, error) {
 	if err != nil {
 		return modrinthVersion{}, fmt.Errorf("failed to fetch versions: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return modrinthVersion{}, fmt.Errorf("failed to fetch version by hash: %s", resp.Status)
@@ -470,18 +472,13 @@ func processDirectory(sc scope.Scope, folder string) error {
 			return fmt.Errorf("failed to update osmium.json: %w", err)
 		}
 
-		// // 6. Install dependencies
-		// if err := installDependencies(project.Dependencies, folder); err != nil {
-		// 	return err
-		// }
-
 		sc.Logf("Tracked %s", info.Slug)
 	}
 
 	return nil
 }
 
-// trackProjects reads the plugins and mods directories and calculates SHA
+// TrackProjects reads the plugins and mods directories and calculates SHA
 func TrackProjects(sc scope.Scope) error {
 	// Process plugins directory
 	if err := processDirectory(sc, "plugins"); err != nil {
@@ -496,7 +493,8 @@ func TrackProjects(sc scope.Scope) error {
 	return nil
 }
 
-func UpdateProject(sc scope.Scope, projectID string, folder string) error {
+// UpdateProject replaces one tracked project with its newest compatible build.
+func UpdateProject(sc scope.Scope, projectID, folder string) error {
 	// 1. Check if already installed
 	osmiumConf, err := config.ReadConfigIn(sc.Dir)
 	if err != nil {
@@ -537,7 +535,8 @@ func UpdateProject(sc scope.Scope, projectID string, folder string) error {
 
 	sc.Logf("Updating %s...", fileInfo.Filename)
 
-	os.Remove(sc.Path(folder, currentProject.FileName))
+	// The old jar is on its way out; if it is already gone, so much the better.
+	_ = os.Remove(sc.Path(folder, currentProject.FileName))
 
 	if err := downloadFile(sc, fileInfo.URL, folder, fileInfo.Filename); err != nil {
 		return err
@@ -556,6 +555,8 @@ func UpdateProject(sc scope.Scope, projectID string, folder string) error {
 	return nil
 }
 
+// UpdateAllProjects updates every tracked project of a kind, or of both kinds
+// when the folder is "all".
 func UpdateAllProjects(sc scope.Scope, folder string) error {
 	osmiumConf, err := config.ReadConfigIn(sc.Dir)
 	if err != nil {
@@ -587,13 +588,14 @@ func UpdateAllProjects(sc scope.Scope, folder string) error {
 			}
 		}
 	default:
-		return fmt.Errorf("Invalid case")
+		return errors.New("unknown project type")
 	}
 
 	return nil
 }
 
-func InstallProjectByID(sc scope.Scope, projectID string, folder string) error {
+// InstallProjectByID downloads a project already tracked in osmium.json.
+func InstallProjectByID(sc scope.Scope, projectID, folder string) error {
 	// 1. Check if already installed
 	osmiumConf, err := config.ReadConfigIn(sc.Dir)
 	if err != nil {
@@ -632,6 +634,8 @@ func InstallProjectByID(sc scope.Scope, projectID string, folder string) error {
 	return nil
 }
 
+// InstallProjectsFromConfig downloads everything osmium.json lists but the
+// folder does not have.
 func InstallProjectsFromConfig(sc scope.Scope) error {
 	osmiumConf, err := config.ReadConfigIn(sc.Dir)
 	if err != nil {
@@ -654,7 +658,7 @@ func InstallProjectsFromConfig(sc scope.Scope) error {
 
 // migrateProject attempts to migrate a single project to new loader/version
 // Returns true if migrated successfully, false if incompatible (needs backup)
-func migrateProject(sc scope.Scope, slug string, folder string, newConf *config.OsmiumConfig) (bool, error) {
+func migrateProject(sc scope.Scope, slug, folder string, newConf *config.OsmiumConfig) (bool, error) {
 	// Get compatible versions for the new loader/version
 	versions, err := getProjectVersions(slug, newConf)
 	if err != nil {
@@ -730,7 +734,7 @@ func processProjectsForMigration(sc scope.Scope, folder string, projects map[str
 			sc.Logf("Moving to backup folder: %s", backupFolder)
 
 			// Create backup folder
-			if err := os.MkdirAll(backupFolder, 0755); err != nil {
+			if err := os.MkdirAll(backupFolder, 0o750); err != nil {
 				return fmt.Errorf("failed to create backup folder: %w", err)
 			}
 
@@ -770,7 +774,10 @@ func processProjectsForMigration(sc scope.Scope, folder string, projects map[str
 	return nil
 }
 
-func MigrateServer(sc scope.Scope, loader string, version string) error {
+// MigrateServer moves a server to another loader or Minecraft version: the jar
+// is replaced, every project is refetched for the target, and anything with no
+// build for it is set aside in migration_backup.
+func MigrateServer(sc scope.Scope, loader, version string) error {
 	sc.Logf("\n=== Starting server migration to %s %s ===", loader, version)
 
 	// Read current config

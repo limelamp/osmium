@@ -1,6 +1,8 @@
 package pages
 
 import (
+	"fmt"
+
 	tea "charm.land/bubbletea/v2"
 	"github.com/limelamp/osmium/internal/tui/components/steps"
 	"github.com/limelamp/osmium/internal/tui/core"
@@ -26,6 +28,7 @@ type MigrateModel struct {
 	origin string
 }
 
+// NewMigrateModel returns the migrate page, with no server chosen yet.
 func NewMigrateModel(store *storage.ServerStore) MigrateModel {
 	m := MigrateModel{store: store}
 	return m.forServer(nil)
@@ -59,7 +62,7 @@ func (m MigrateModel) forServer(server *storage.Server) MigrateModel {
 		),
 	}
 
-	return MigrateModel{wizard: m.wizard.setLayout(m.layout), store: m.store, config: m.config, origin: m.origin}
+	return MigrateModel{wizard: m.setLayout(m.layout), store: m.store, config: m.config, origin: m.origin}
 }
 
 // SetServer points the page at a server, which is what the routing request
@@ -72,9 +75,14 @@ func (m MigrateModel) Init() tea.Cmd {
 	return m.current().Init()
 }
 
-// migrateStep is the page's final step, which runs the migration.
+// migrateStep is the page's final step, which runs the migration. The page
+// builds its own steps, so the last one is always that.
 func (m MigrateModel) migrateStep() *steps.MigrateStep {
-	return m.steps[len(m.steps)-1].(*steps.MigrateStep)
+	step, ok := m.steps[len(m.steps)-1].(*steps.MigrateStep)
+	if !ok {
+		panic(fmt.Sprintf("osmium: the migrate page ends in %T", m.steps[len(m.steps)-1]))
+	}
+	return step
 }
 
 // step moves the wizard and returns the page.
@@ -126,7 +134,7 @@ func (m MigrateModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	updated, cmd := m.wizard.update(msg)
+	updated, cmd := m.update(msg)
 	m.wizard = updated
 	return m, cmd
 }
@@ -174,6 +182,6 @@ func (m MigrateModel) Title() string {
 }
 
 func (m MigrateModel) SetLayout(l core.Layout) tea.Model {
-	m.wizard = m.wizard.setLayout(l)
+	m.wizard = m.setLayout(l)
 	return m
 }

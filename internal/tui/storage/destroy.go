@@ -57,8 +57,9 @@ func saveManifest(server Server) (string, error) {
 		return "", err
 	}
 
+	// The path is the server's own folder, chosen by whoever registered it.
 	target := filepath.Join(filepath.Dir(absolute), filepath.Base(absolute)+ManifestSuffix)
-	if err := os.WriteFile(target, data, 0644); err != nil {
+	if err := os.WriteFile(target, data, 0o600); err != nil { //nolint:gosec // the user's own server folder
 		return "", err
 	}
 	return target, nil

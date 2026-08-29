@@ -8,21 +8,20 @@ import (
 	"github.com/limelamp/osmium/internal/tui/styles"
 )
 
+// FiltersModel is a placeholder for filtering the servers list.
 type FiltersModel struct {
 	layout core.Layout
 
 	value   int
-	count   int
 	isFocus bool
 }
 
+// NewFiltersModel returns the filters placeholder.
 func NewFiltersModel() FiltersModel {
 	return FiltersModel{}
 }
 
 func (m FiltersModel) Init() tea.Cmd {
-	m.count++
-
 	return nil
 }
 
@@ -42,7 +41,6 @@ func (m FiltersModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m FiltersModel) View() tea.View {
-
 	return tea.NewView(styles.Container(styles.ContainerOpts{
 		Width:    m.layout.Width,
 		Height:   m.layout.Height,
@@ -53,7 +51,6 @@ func (m FiltersModel) View() tea.View {
 	}))
 }
 
-// additional methods
 func (m FiltersModel) Title() string {
 	return "Filters"
 }

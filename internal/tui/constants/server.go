@@ -1,9 +1,16 @@
 package constants
 
-var Categories = []string{"Vanilla", "Plugin", "Mod Loader"}
-var PluginOptions = []string{"Paper", "Purpur", "Spigot", "Bukkit"}
-var ModLoaderOptions = []string{"Forge", "NeoForge", "Fabric", "Quilt"}
+var (
+	// Categories are the three kinds of server software Osmium offers.
+	Categories = []string{"Vanilla", "Plugin", "Mod Loader"}
+	// PluginOptions are the plugin-based servers Osmium can install.
+	PluginOptions = []string{"Paper", "Purpur", "Spigot", "Bukkit"}
 
+	// ModLoaderOptions are the mod loaders Osmium can install.
+	ModLoaderOptions = []string{"Forge", "NeoForge", "Fabric", "Quilt"}
+)
+
+// SoftwareDesc is the one-line description shown beside each engine.
 var SoftwareDesc = map[string]string{
 	"Vanilla":  "The official, unmodified Minecraft server software.",
 	"Fabric":   "A lightweight, modular modding toolchain for modern versions.",
@@ -16,6 +23,8 @@ var SoftwareDesc = map[string]string{
 	"Bukkit":   "The original and foundational plugin standard wrapper.",
 }
 
+// GetVersions is the fallback version list for an engine, used when the live
+// manifest cannot be reached.
 func GetVersions(software string) []string {
 	switch software {
 	case "Vanilla":
@@ -41,4 +50,5 @@ func GetVersions(software string) []string {
 	}
 }
 
+// RamOptions are the memory sizes the wizard offers.
 var RamOptions = []string{"2G", "3G", "4G", "5G", "6G", "8G", "12G", "16G"}

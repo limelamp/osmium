@@ -8,21 +8,21 @@ import (
 	"github.com/limelamp/osmium/internal/tui/styles"
 )
 
+// ServerDetailsModel is an early sketch of the details panel, kept for the
+// layout it establishes.
 type ServerDetailsModel struct {
 	layout core.Layout
 
 	value   int
-	count   int
 	isFocus bool
 }
 
+// NewServerDetailsModel returns the details sketch.
 func NewServerDetailsModel() ServerDetailsModel {
 	return ServerDetailsModel{}
 }
 
 func (m ServerDetailsModel) Init() tea.Cmd {
-	m.count++
-
 	return nil
 }
 
@@ -42,7 +42,6 @@ func (m ServerDetailsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m ServerDetailsModel) View() tea.View {
-
 	return tea.NewView(styles.Container(styles.ContainerOpts{
 		Width:    m.layout.Width,
 		Height:   m.layout.Height,
@@ -53,7 +52,6 @@ func (m ServerDetailsModel) View() tea.View {
 	}))
 }
 
-// additional methods
 func (m ServerDetailsModel) Title() string {
 	return "Server Details"
 }

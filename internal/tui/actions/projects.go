@@ -195,7 +195,7 @@ func (m ProjectsModel) chosenProject() string {
 var projectActions = []string{"Update %s", "Remove %s"}
 
 func (m ProjectsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if updated, cmd, handled := m.base.common(msg); handled {
+	if updated, cmd, handled := m.common(msg); handled {
 		m.base = updated
 		return m, cmd
 	}
@@ -203,7 +203,7 @@ func (m ProjectsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case core.OperationDoneMsg:
 		// The operation has finished: say so, and re-read what is tracked.
-		updated, cmd := m.base.finished(msg)
+		updated, cmd := m.finished(msg)
 		m.base = updated
 		return m.refresh(), cmd
 
@@ -320,15 +320,12 @@ func (m ProjectsModel) activate() (tea.Model, tea.Cmd) {
 		case 1:
 			return m.gotoState(stateRemove), nil
 		case 2:
-			return m.start(2, "Installing tracked "+m.kind.noun+"s…", func(sc scope.Scope) error {
-				return shared.InstallProjectsFromConfig(sc)
-			})
+			return m.start(2, "Installing tracked "+m.kind.noun+"s…",
+				shared.InstallProjectsFromConfig)
 		case 3:
 			return m.gotoState(stateUpdate), nil
 		case 4:
-			return m.start(4, "Identifying jars…", func(sc scope.Scope) error {
-				return shared.TrackProjects(sc)
-			})
+			return m.start(4, "Identifying jars…", shared.TrackProjects)
 		}
 
 	case stateAdd:
@@ -388,7 +385,7 @@ func (m ProjectsModel) toggleAll() ProjectsModel {
 
 // start runs an operation from a row, so the row can show that it is working.
 func (m ProjectsModel) start(row int, label string, op func(scope.Scope) error) (tea.Model, tea.Cmd) {
-	updated, cmd := m.base.begin(row, label, op)
+	updated, cmd := m.begin(row, label, op)
 	m.base = updated
 	return m, cmd
 }
@@ -446,21 +443,21 @@ func (m ProjectsModel) View() tea.View {
 			if m.selected[i] {
 				label = lipgloss.NewStyle().Foreground(theme.Accent).Render("✓ " + m.installed[i])
 			}
-			return m.row(i, m.base.rowMarker(i)+label, m.versions[m.installed[i]])
+			return m.row(i, m.rowMarker(i)+label, m.versions[m.installed[i]])
 		}, m.Hints()...)
 
 	case stateUpdate:
 		return m.listView(m.Title()+" · Update", func(i int) string {
 			if i == 0 {
-				return m.row(i, m.base.rowMarker(0)+"All "+m.kind.noun+"s", "")
+				return m.row(i, m.rowMarker(0)+"All "+m.kind.noun+"s", "")
 			}
 			slug := m.installed[i-1]
-			return m.row(i, m.base.rowMarker(i)+slug, m.versions[slug])
+			return m.row(i, m.rowMarker(i)+slug, m.versions[slug])
 		}, m.Hints()...)
 
 	case stateProject:
 		return m.listView(m.Title()+" · "+m.chosen, func(i int) string {
-			return m.row(i, m.base.rowMarker(i)+fmt.Sprintf(projectActions[i], m.chosen),
+			return m.row(i, m.rowMarker(i)+fmt.Sprintf(projectActions[i], m.chosen),
 				m.versions[m.chosen])
 		}, m.Hints()...)
 
@@ -477,7 +474,7 @@ func (m ProjectsModel) rootRow(index int) string {
 
 	switch {
 	case index < len(projectOperations):
-		return m.row(index, m.base.rowMarker(index)+m.operations()[index], "")
+		return m.row(index, m.rowMarker(index)+m.operations()[index], "")
 
 	case index == installedBlank:
 		return ""
@@ -487,7 +484,7 @@ func (m ProjectsModel) rootRow(index int) string {
 	}
 
 	slug := m.installed[index-installedFirst]
-	return m.row(index, m.base.rowMarker(index)+slug, m.versions[slug])
+	return m.row(index, m.rowMarker(index)+slug, m.versions[slug])
 }
 
 // Hints are the keys this panel responds to, which depend on which of its
@@ -536,7 +533,6 @@ func (m ProjectsModel) Hints() []styles.Hint {
 	}
 }
 
-// additional methods
 func (m ProjectsModel) Title() string {
 	return m.kind.title
 }
