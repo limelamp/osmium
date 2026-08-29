@@ -6,7 +6,6 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/limelamp/osmium/internal/scope"
 	"github.com/limelamp/osmium/internal/shared"
 	"github.com/limelamp/osmium/internal/supervisor"
 	"github.com/limelamp/osmium/internal/tui/components/steps"
@@ -69,7 +68,10 @@ Examples:
 			}
 		}
 
-		return shared.MigrateServer(scope.For(dir), wizardConfig.Software, wizardConfig.Version)
+		progress := newReporter()
+		defer progress.Close()
+
+		return shared.MigrateServer(progress.Scope(dir), wizardConfig.Software, wizardConfig.Version)
 	},
 }
 

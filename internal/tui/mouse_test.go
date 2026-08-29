@@ -54,7 +54,7 @@ func click(x, y int) tea.MouseClickMsg {
 func TestHomeMenuClickSelectsTheRowUnderThePointer(t *testing.T) {
 	layout := core.Layout{Width: 120, Height: 30}
 
-	home := pages.NewHomeModel().SetLayout(layout).(pages.HomeModel)
+	home := pages.NewHomeModel(storage.NewServerStore()).SetLayout(layout).(pages.HomeModel)
 	rows := screen(home.View().Content)
 
 	for _, entry := range []string{"Manage servers", "Migrate server", "Settings", "Quit"} {
@@ -63,9 +63,34 @@ func TestHomeMenuClickSelectsTheRowUnderThePointer(t *testing.T) {
 		updated, _ := home.Update(click(40, y))
 		selected := screen(updated.(pages.HomeModel).View().Content)
 
-		if want := "> " + entry; !containsRow(selected, want) {
+		if want := "➔ " + entry; !containsRow(selected, want) {
 			t.Errorf("clicking row %d (%s) did not select it:\n%s", y, entry, strings.Join(selected, "\n"))
 		}
+	}
+}
+
+// The home page is centred vertically, so anything that changes its height —
+// the servers box appearing when the list loads — moves the menu. The rows it
+// answers clicks on have to move with it.
+func TestHomeMenuClickAfterServersLoad(t *testing.T) {
+	layout := core.Layout{Width: 120, Height: 40}
+
+	var home tea.Model = pages.NewHomeModel(storage.NewServerStore()).SetLayout(layout)
+	home, _ = home.Update(core.LoadedServersMsg{Servers: []storage.Server{
+		{Name: "Alpha", Path: "/tmp/alpha"},
+		{Name: "Beta", Path: "/tmp/beta"},
+	}})
+
+	rows := screen(home.View().Content)
+	if !containsRow(rows, "Alpha") {
+		t.Fatalf("the servers box was not drawn:\n%s", strings.Join(rows, "\n"))
+	}
+
+	y := rowOf(t, rows, layout, "Settings")
+	home, _ = home.Update(click(60, y))
+
+	if after := screen(home.View().Content); !containsRow(after, "➔ Settings") {
+		t.Errorf("clicking Settings on row %d did not select it:\n%s", y, strings.Join(after, "\n"))
 	}
 }
 
@@ -179,7 +204,7 @@ func TestAppClickReachesTheRowUnderThePointer(t *testing.T) {
 	y := rowOf(t, rows, core.Layout{}, "Migrate server")
 
 	model, _ = model.Update(click(40, y))
-	if after := screen(model.View().Content); !containsRow(after, "> Migrate server") {
+	if after := screen(model.View().Content); !containsRow(after, "➔ Migrate server") {
 		t.Errorf("clicking Migrate server on screen row %d did not select it:\n%s",
 			y, strings.Join(after, "\n"))
 	}

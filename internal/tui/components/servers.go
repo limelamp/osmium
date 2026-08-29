@@ -28,6 +28,7 @@ type ServersModel struct {
 	running []bool
 
 	list    core.List
+	status  core.Ticker
 	isFocus bool
 	err     error
 
@@ -40,24 +41,19 @@ type ServersModel struct {
 // statusInterval is how often the running indicators are re-checked.
 const statusInterval = 2 * time.Second
 
-// statusTickMsg asks the panel to re-probe the servers' lock files.
-type statusTickMsg time.Time
-
-func statusTick() tea.Cmd {
-	return tea.Tick(statusInterval, func(t time.Time) tea.Msg {
-		return statusTickMsg(t)
-	})
-}
-
 // NewServersModel now properly initializes the store field
 func NewServersModel(store *storage.ServerStore) ServersModel {
 	return ServersModel{
-		store: store,
+		store:  store,
+		status: core.NewTicker("servers.status", statusInterval),
 	}
 }
 
+// Init reloads the list and asks to be woken, which is what restarts the status
+// probe. The restart happens on the wake message rather than here, because Init
+// cannot keep the ticker it would have armed.
 func (m ServersModel) Init() tea.Cmd {
-	return tea.Batch(core.LoadServersCmd(m.store), statusTick())
+	return tea.Batch(core.LoadServersCmd(m.store), core.Wake())
 }
 
 // refreshStatus re-probes which servers currently hold a live process lock.
@@ -106,11 +102,23 @@ func (m ServersModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, core.LoadServersCmd(m.store)
 		}
 
+	case core.WakeMsg:
+		status, cmd := m.status.Restart()
+		m.status = status
+		return m, cmd
+
 	case core.ReloadServersMsg:
 		return m, core.LoadServersCmd(m.store)
 
-	case statusTickMsg:
-		return m.refreshStatus(), statusTick()
+	case core.TickMsg:
+		status, ours := m.status.Accepts(msg)
+		if !ours {
+			return m, nil
+		}
+
+		armed, cmd := status.Arm()
+		m.status = armed
+		return m.refreshStatus(), cmd
 
 	case core.LoadedServersMsg:
 		if msg.Err != nil {
@@ -203,12 +211,7 @@ func (m ServersModel) View() tea.View {
 			Render("No servers yet.\n\nCreate one from the home page to see it here.")
 
 	default:
-		start, end := m.list.Window()
-		rows := make([]string, 0, end-start)
-		for i := start; i < end; i++ {
-			rows = append(rows, m.serverRow(i))
-		}
-		body = lipgloss.JoinVertical(lipgloss.Left, rows...)
+		body = m.list.Render(m.serverRow)
 	}
 
 	body = styles.Body(body, m.layout.ContentWidth(), m.layout.ContentHeight()-1)
@@ -238,23 +241,37 @@ func (m ServersModel) Hints() []styles.Hint {
 	}
 }
 
-// serverRow renders one server: its name, a running indicator, and the engine
-// details underneath.
+// serverRow renders one server: its name with a running indicator, and what it
+// runs on the right.
 func (m ServersModel) serverRow(i int) string {
-	server := m.servers[i]
+	running := i < len(m.running) && m.running[i]
 
-	status := lipgloss.NewStyle().Foreground(theme.Inactive).Render("○")
-	if i < len(m.running) && m.running[i] {
-		status = lipgloss.NewStyle().Foreground(theme.Accent).Render("●")
+	return styles.ListRow(m.layout.ContentWidth(), i == m.list.Cursor,
+		ServerName(m.servers[i], running),
+		ServerDetails(m.servers[i]),
+	)
+}
+
+// ServerName is a server's name behind a lit or unlit dot. The home page shows
+// servers too, and both should say the same thing the same way.
+func ServerName(server storage.Server, running bool) string {
+	dot := lipgloss.NewStyle().Foreground(theme.Inactive).Render("○")
+	if running {
+		dot = lipgloss.NewStyle().Foreground(theme.Accent).Render("●")
 	}
+	return dot + " " + server.Name
+}
 
+// ServerDetails is what a server runs on: its engine, version and memory, plus
+// how long it has been up when it is running.
+func ServerDetails(server storage.Server) string {
 	details := fmt.Sprintf("%s %s · %s",
 		strings.ToUpper(server.Type), server.Version, server.Memory)
 
-	return styles.ListRow(m.layout.ContentWidth(), i == m.list.Cursor,
-		status+" "+server.Name,
-		details,
-	)
+	if uptime := supervisor.Uptime(server.Path); uptime != "" {
+		details += " · " + uptime
+	}
+	return details
 }
 
 // isServerRunning reports whether a server directory has a live supervisor.

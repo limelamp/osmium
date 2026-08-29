@@ -41,10 +41,11 @@ Examples:
 			return fmt.Errorf("you must specify either --mod or --plugin")
 		}
 
-		sc, err := resolveScope()
+		sc, progress, err := resolveScope()
 		if err != nil {
 			return err
 		}
+		defer progress.Close()
 
 		if len(args) == 0 {
 			return shared.UpdateAllProjects(sc, projectType)

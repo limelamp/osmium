@@ -19,6 +19,11 @@ type Scope struct {
 
 	// Log receives progress lines. A nil Log discards them.
 	Log func(string)
+
+	// Progress receives how far a download has got, in bytes. A total of zero
+	// means the size is not known. A nil Progress discards the reports, which
+	// is what every caller that does not draw a bar leaves it as.
+	Progress func(label string, done, total int64)
 }
 
 // For returns a scope for dir that prints progress to stdout, which is
@@ -30,6 +35,14 @@ func For(dir string) Scope {
 // Path resolves elements relative to the scope's server directory.
 func (s Scope) Path(elem ...string) string {
 	return filepath.Join(append([]string{s.dir()}, elem...)...)
+}
+
+// Report tells the caller how far a download has got.
+func (s Scope) Report(label string, done, total int64) {
+	if s.Progress == nil {
+		return
+	}
+	s.Progress(label, done, total)
 }
 
 // Logf reports one line of progress.

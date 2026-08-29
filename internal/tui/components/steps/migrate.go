@@ -12,6 +12,7 @@ import (
 	"github.com/limelamp/osmium/internal/supervisor"
 	"github.com/limelamp/osmium/internal/tui/core"
 	"github.com/limelamp/osmium/internal/tui/styles"
+	"github.com/limelamp/osmium/internal/tui/theme"
 )
 
 // MigrateStep moves a server to another loader and version, streaming what it
@@ -28,13 +29,24 @@ type MigrateStep struct {
 	logs     []string
 	viewport viewport.Model
 
+	// The footer while it runs, exactly as the build step shows it.
+	spinner  core.Ticker
+	frame    int
+	label    string
+	received int64
+	size     int64
+
 	started bool
 	done    bool
 	err     error
 }
 
 func NewMigrateStep(config *Config) *MigrateStep {
-	return &MigrateStep{config: config, viewport: viewport.New()}
+	return &MigrateStep{
+		config:   config,
+		viewport: viewport.New(),
+		spinner:  core.NewTicker("migrate.spinner", spinnerInterval),
+	}
 }
 
 // Done reports whether the migration has finished, successfully or not.
@@ -62,14 +74,22 @@ func (s *MigrateStep) Init() tea.Cmd {
 	s.events = make(chan buildEvent, 64)
 
 	go s.migrate()
-	return waitForBuildEvent(s.events)
+
+	ticker, tick := s.spinner.Restart()
+	s.spinner = ticker
+
+	return tea.Batch(waitForBuildEvent(s.events), tick)
 }
 
 // migrate runs the migration and reports it through the channel.
 func (s *MigrateStep) migrate() {
-	sc := scope.Scope{Dir: s.config.Dir, Log: func(line string) {
-		s.events <- buildEvent{line: line}
-	}}
+	sc := scope.Scope{
+		Dir: s.config.Dir,
+		Log: func(line string) { s.events <- buildEvent{line: line} },
+		Progress: func(label string, done, total int64) {
+			s.events <- buildEvent{progress: true, label: label, received: done, size: total}
+		},
+	}
 
 	err := shared.MigrateServer(sc, s.config.Software, s.config.Version)
 	s.events <- buildEvent{done: true, err: err}
@@ -99,9 +119,27 @@ func (s *MigrateStep) Subtitle() string {
 
 func (s *MigrateStep) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case core.TickMsg:
+		ticker, ours := s.spinner.Accepts(msg)
+		if !ours || s.done {
+			return s, nil
+		}
+
+		s.frame++
+		ticker, tick := ticker.Arm()
+		s.spinner = ticker
+		return s, tick
+
 	case buildEventMsg:
+		if msg.progress {
+			s.label, s.received, s.size = msg.label, msg.received, msg.size
+			return s, waitForBuildEvent(s.events)
+		}
+
 		if msg.done {
 			s.done = true
+			s.spinner = s.spinner.Stop()
+			s.label = ""
 			s.err = msg.err
 			if msg.err != nil {
 				return s, s.appendLog("error: " + msg.err.Error())
@@ -150,13 +188,29 @@ func (s *MigrateStep) View() tea.View {
 		return tea.NewView(lipgloss.JoinVertical(lipgloss.Left,
 			s.viewport.View(), "", styles.Error(s.err)))
 	}
-	return tea.NewView(s.viewport.View())
+
+	if s.done {
+		return tea.NewView(s.viewport.View())
+	}
+
+	label := s.label
+	if label == "" {
+		label = "Working…"
+	}
+
+	busy := styles.Spinner(s.frame) + " " +
+		lipgloss.NewStyle().Foreground(theme.Inactive).Render(label)
+	if s.size > 0 || s.received > 0 {
+		busy += "\n" + styles.ProgressBar(s.layout.Width, s.received, s.size)
+	}
+
+	return tea.NewView(lipgloss.JoinVertical(lipgloss.Left, s.viewport.View(), "", busy))
 }
 
 func (s *MigrateStep) SetLayout(l core.Layout) Step {
 	s.layout = l
 	s.viewport.SetWidth(max(l.Width, 1))
-	s.viewport.SetHeight(max(l.Height-1, 1))
+	s.viewport.SetHeight(max(l.Height-4, 1))
 	s.refresh()
 	return s
 }

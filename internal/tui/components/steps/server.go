@@ -90,15 +90,10 @@ func (s *ServerStep) View() tea.View {
 			Render("No servers yet. Create one first."))
 	}
 
-	start, end := s.list.Window()
-
-	rows := make([]string, 0, end-start)
-	for i := start; i < end; i++ {
-		rows = append(rows, styles.ListRow(s.layout.Width, i == s.list.Cursor,
-			s.servers[i].Name, s.engineOf(s.servers[i])))
-	}
-
-	return tea.NewView(lipgloss.JoinVertical(lipgloss.Left, rows...))
+	return tea.NewView(s.list.Render(func(i int) string {
+		return styles.ListRow(s.layout.Width, i == s.list.Cursor,
+			s.servers[i].Name, s.engineOf(s.servers[i]))
+	}))
 }
 
 // engineOf describes what a server currently runs, which is what a migration

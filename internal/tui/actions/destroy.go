@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/limelamp/osmium/internal/supervisor"
@@ -33,18 +32,16 @@ type DestroyModel struct {
 	store *storage.ServerStore
 
 	keepManifest bool
-	typing       bool
-	nameIn       textinput.Model
+	confirm      core.Field
 	warn         string
 }
 
 func NewDestroyModel(store *storage.ServerStore) DestroyModel {
-	ti := textinput.New()
-	ti.Placeholder = "type the server's name"
-	ti.Prompt = "› "
-	ti.CharLimit = 60
-
-	m := DestroyModel{store: store, keepManifest: true, nameIn: ti}
+	m := DestroyModel{
+		store:        store,
+		keepManifest: true,
+		confirm:      core.NewField("type the server's name").WithLimit(60),
+	}
 	m.base = m.setCount(destroyCount)
 	return m
 }
@@ -52,10 +49,10 @@ func NewDestroyModel(store *storage.ServerStore) DestroyModel {
 func (m DestroyModel) Init() tea.Cmd { return nil }
 
 // Editing reports whether the confirmation field has the keyboard.
-func (m DestroyModel) Editing() bool { return m.typing }
+func (m DestroyModel) Editing() bool { return m.confirm.IsOpen() }
 
 func (m DestroyModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if m.typing {
+	if m.confirm.IsOpen() {
 		return m.updateInput(msg)
 	}
 
@@ -88,27 +85,23 @@ func (m DestroyModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // updateInput handles keys while the name is being typed.
 func (m DestroyModel) updateInput(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if key, ok := msg.(tea.KeyPressMsg); ok {
-		switch key.String() {
-		case "enter", "tab":
-			m.typing = false
-			m.nameIn.Blur()
-			// Confirming the name moves straight onto the button, which is the
-			// only thing left to do.
-			m.list = m.list.MoveTo(destroyButton)
-			return m, nil
-
-		case "esc":
-			m.typing = false
-			m.warn = ""
-			m.nameIn.Reset()
-			m.nameIn.Blur()
-			return m, nil
-		}
+	key, ok := msg.(tea.KeyPressMsg)
+	if !ok {
+		return m, nil
 	}
 
-	var cmd tea.Cmd
-	m.nameIn, cmd = m.nameIn.Update(msg)
+	field, result, cmd := m.confirm.HandleKey(key)
+	m.confirm = field
+
+	switch result {
+	case core.FieldCommitted:
+		// Confirming the name moves straight onto the button, which is the
+		// only thing left to do.
+		m.list = m.list.MoveTo(destroyButton)
+	case core.FieldCancelled:
+		m.warn = ""
+	}
+
 	return m, cmd
 }
 
@@ -120,8 +113,9 @@ func (m DestroyModel) activate() (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case destroyConfirm:
-		m.typing = true
-		return m, m.nameIn.Focus()
+		field, cmd := m.confirm.Open(m.confirm.Value())
+		m.confirm = field
+		return m, cmd
 
 	case destroyButton:
 		return m.destroy()
@@ -136,7 +130,7 @@ func (m DestroyModel) destroy() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	if strings.TrimSpace(m.nameIn.Value()) != m.server.Name {
+	if strings.TrimSpace(m.confirm.Value()) != m.server.Name {
 		m.warn = "Type the server's name exactly to confirm."
 		return m, nil
 	}
@@ -171,12 +165,12 @@ func (m DestroyModel) View() tea.View {
 	muted := lipgloss.NewStyle().Foreground(theme.Inactive)
 
 	confirm := muted.Render("Type the name to confirm")
-	if m.typing || m.nameIn.Value() != "" {
-		confirm = m.nameIn.View()
+	if m.confirm.IsOpen() || m.confirm.Value() != "" {
+		confirm = m.confirm.View()
 	}
 
 	button := "[ Destroy this server ]"
-	if strings.TrimSpace(m.nameIn.Value()) != m.server.Name {
+	if strings.TrimSpace(m.confirm.Value()) != m.server.Name {
 		button = "[ Destroy this server ]  " + muted.Render("(name not confirmed)")
 	}
 
@@ -184,7 +178,7 @@ func (m DestroyModel) View() tea.View {
 		styles.ListRow(m.layout.ContentWidth(), m.list.Cursor == destroyKeep,
 			checkbox(m.keepManifest)+" Keep osmium.json so it can be rebuilt", ""),
 		"",
-		styles.ListRow(m.layout.ContentWidth(), !m.typing && m.list.Cursor == destroyConfirm,
+		styles.ListRow(m.layout.ContentWidth(), !m.confirm.IsOpen() && m.list.Cursor == destroyConfirm,
 			confirm, ""),
 		"",
 		styles.ListRow(m.layout.ContentWidth(), m.list.Cursor == destroyButton, button, ""),
@@ -206,7 +200,7 @@ func (m DestroyModel) View() tea.View {
 
 // Hints are the keys this panel responds to.
 func (m DestroyModel) Hints() []styles.Hint {
-	if m.typing {
+	if m.confirm.IsOpen() {
 		return []styles.Hint{
 			{Key: "enter", Desc: "confirm name"},
 			{Key: "esc", Desc: "clear"},
@@ -241,7 +235,7 @@ func (m DestroyModel) Title() string {
 func (m DestroyModel) SetLayout(l core.Layout) core.Action {
 	m.layout = l
 	m.base = m.setCount(destroyCount)
-	m.nameIn.SetWidth(max(l.ContentWidth()/2, 12))
+	m.confirm = m.confirm.SetWidth(l.ContentWidth() / 2)
 	return m
 }
 
@@ -252,7 +246,7 @@ func (m DestroyModel) SetFocus(focused bool) core.Action {
 
 func (m DestroyModel) SetServer(server *storage.Server) core.Action {
 	m.server = server
-	m.nameIn.Reset()
+	m.confirm = m.confirm.SetValue("")
 	m.warn = ""
 	return m
 }

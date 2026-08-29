@@ -25,10 +25,11 @@ Example:
   osmium install`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		sc, err := resolveScope()
+		sc, progress, err := resolveScope()
 		if err != nil {
 			return err
 		}
+		defer progress.Close()
 		return shared.InstallProjectsFromConfig(sc)
 	},
 }

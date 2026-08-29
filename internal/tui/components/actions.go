@@ -67,6 +67,8 @@ var actionGroups = []actionGroup{
 	}},
 
 	{"CONFIG", []actionEntry{
+		{label: "Edit server", badge: func(m ActionsModel) string { return m.memory },
+			activate: func(m ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewEditServerModel(m.store)) }},
 		{label: "Manage configs",
 			activate: func(ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewManageConfigsModel()) }},
 		{label: "Generate run script",
@@ -138,6 +140,7 @@ type ActionsModel struct {
 	mods    int
 	plugins int
 	engine  string
+	memory  string
 }
 
 func NewActionsModel(store *storage.ServerStore) ActionsModel {
@@ -235,7 +238,7 @@ func (m ActionsModel) run(label string, op func(scope.Scope) error) tea.Cmd {
 
 // refreshDetails re-reads what the indicators show.
 func (m ActionsModel) refreshDetails() ActionsModel {
-	m.running, m.mods, m.plugins, m.engine = false, 0, 0, ""
+	m.running, m.mods, m.plugins, m.engine, m.memory = false, 0, 0, "", ""
 	if m.server == nil || m.server.Path == "" {
 		return m
 	}
@@ -245,6 +248,7 @@ func (m ActionsModel) refreshDetails() ActionsModel {
 	if conf, err := config.ReadConfigIn(m.server.Path); err == nil {
 		m.mods, m.plugins = len(conf.Mods), len(conf.Plugins)
 		m.engine = conf.Loader + " " + conf.Version
+		m.memory = conf.AllocatedRAM
 	}
 	return m
 }
@@ -292,14 +296,7 @@ func (m ActionsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m ActionsModel) View() tea.View {
-	start, end := m.list.Window()
-
-	rendered := make([]string, 0, end-start)
-	for i := start; i < end; i++ {
-		rendered = append(rendered, m.renderRow(i))
-	}
-
-	body := styles.Body(lipgloss.JoinVertical(lipgloss.Left, rendered...),
+	body := styles.Body(m.list.Render(m.renderRow),
 		m.layout.ContentWidth(), m.layout.ContentHeight()-1)
 
 	hints := styles.Hints(m.layout.ContentWidth(), m.Hints()...)

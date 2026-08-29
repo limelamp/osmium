@@ -6,7 +6,6 @@ import (
 	"sort"
 	"strings"
 
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/limelamp/osmium/internal/tui/core"
@@ -42,9 +41,8 @@ type LocationStep struct {
 	dir      string
 	entries  []string
 
-	// pathFocused is true while the editable path bar has the keyboard.
-	pathFocused bool
-	pathIn      textinput.Model
+	// path is the editable path bar, opened with tab.
+	path core.Field
 
 	defaultDir string
 	err        error
@@ -52,16 +50,12 @@ type LocationStep struct {
 
 // NewLocationStep builds the step. defaultDir is the configured servers folder.
 func NewLocationStep(config *Config, defaultDir string) *LocationStep {
-	ti := textinput.New()
-	ti.Prompt = "› "
-	ti.CharLimit = 300
-
 	cwd, _ := os.Getwd()
 
 	s := &LocationStep{
 		config:     config,
 		dir:        cwd,
-		pathIn:     ti,
+		path:       core.NewField("").WithLimit(300),
 		defaultDir: defaultDir,
 	}
 	s.list = s.list.Resize(locationCount, locationCount)
@@ -152,20 +146,19 @@ func (s *LocationStep) updateBrowser(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return s, nil
 
 	case tea.KeyPressMsg:
-		if s.pathFocused {
-			switch msg.String() {
-			case "enter":
-				s.pathFocused = false
-				s.pathIn.Blur()
-				return s, s.openDir(strings.TrimSpace(s.pathIn.Value()))
-			case "tab", "esc":
-				s.pathFocused = false
-				s.pathIn.Blur()
+		if s.path.IsOpen() {
+			// Tab closes the bar the way it opened it, leaving the folder alone.
+			if msg.String() == "tab" {
+				s.path = s.path.Cancel()
 				return s, nil
 			}
 
-			var cmd tea.Cmd
-			s.pathIn, cmd = s.pathIn.Update(msg)
+			field, result, cmd := s.path.HandleKey(msg)
+			s.path = field
+
+			if result == core.FieldCommitted {
+				return s, s.openDir(strings.TrimSpace(s.path.Value()))
+			}
 			return s, cmd
 		}
 
@@ -176,10 +169,9 @@ func (s *LocationStep) updateBrowser(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch msg.String() {
 		case "tab":
-			s.pathFocused = true
-			s.pathIn.SetValue(s.dir)
-			s.pathIn.CursorEnd()
-			return s, s.pathIn.Focus()
+			field, cmd := s.path.Open(s.dir)
+			s.path = field
+			return s, cmd
 
 		case "enter", "right", "l":
 			return s, s.enter()
@@ -191,8 +183,9 @@ func (s *LocationStep) updateBrowser(msg tea.Msg) (tea.Model, tea.Cmd) {
 			s.config.Dir = s.dir
 			return s, Next()
 
-		case "backspace", "esc":
-			// Nested navigation: leave the browser before leaving the step.
+		case "backspace":
+			// Nested navigation: backspace leaves the browser before it leaves
+			// the step. Esc is not handled here — it leaves the wizard.
 			s.browsing = false
 			s.list = s.list.Resize(locationCount, locationCount)
 			s.list.Cursor = locationChoose
@@ -289,19 +282,17 @@ func (s *LocationStep) View() tea.View {
 func (s *LocationStep) browserView() string {
 	pathLabel := lipgloss.NewStyle().Foreground(theme.Inactive).Render("Path")
 	pathValue := lipgloss.NewStyle().Foreground(theme.Accent).Render(s.dir)
-	if s.pathFocused {
-		pathValue = s.pathIn.View()
+	if s.path.IsOpen() {
+		pathValue = s.path.View()
 	}
 
-	start, end := s.list.Window()
-	rows := make([]string, 0, end-start)
-	for i := start; i < end; i++ {
+	entries := s.list.Render(func(i int) string {
 		label := s.entries[i]
 		if label != ".." {
 			label += "/"
 		}
-		rows = append(rows, styles.ListRow(s.layout.Width, i == s.list.Cursor, label, ""))
-	}
+		return styles.ListRow(s.layout.Width, i == s.list.Cursor, label, "")
+	})
 
 	body := lipgloss.JoinVertical(
 		lipgloss.Left,
@@ -309,7 +300,7 @@ func (s *LocationStep) browserView() string {
 		lipgloss.NewStyle().Foreground(theme.Inactive).
 			Render("      [tab] type a path  •  [enter] open  •  [s] select this folder"),
 		"",
-		lipgloss.JoinVertical(lipgloss.Left, rows...),
+		entries,
 	)
 
 	if s.err != nil {
@@ -320,7 +311,7 @@ func (s *LocationStep) browserView() string {
 
 func (s *LocationStep) SetLayout(l core.Layout) Step {
 	s.layout = l
-	s.pathIn.SetWidth(max(l.Width-10, 10))
+	s.path = s.path.SetWidth(l.Width - 10)
 
 	if s.browsing {
 		s.list = s.list.Resize(len(s.entries), s.browserRows())
@@ -331,7 +322,7 @@ func (s *LocationStep) SetLayout(l core.Layout) Step {
 }
 
 // Editing reports whether the path bar has the keyboard.
-func (s *LocationStep) Editing() bool { return s.browsing && s.pathFocused }
+func (s *LocationStep) Editing() bool { return s.browsing && s.path.IsOpen() }
 
 // Scroll reports the folder listing's position; the option list always fits.
 func (s *LocationStep) Scroll() core.Scroll {

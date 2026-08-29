@@ -92,14 +92,7 @@ func (b base) panelView(title string, body string, hints ...styles.Hint) tea.Vie
 
 // listView draws the panel's list, rendering only the rows currently in view.
 func (b base) listView(title string, renderRow func(index int) string, hints ...styles.Hint) tea.View {
-	start, end := b.list.Window()
-
-	rows := make([]string, 0, end-start)
-	for i := start; i < end; i++ {
-		rows = append(rows, renderRow(i))
-	}
-
-	return b.panelView(title, lipgloss.JoinVertical(lipgloss.Left, rows...), hints...)
+	return b.panelView(title, b.list.Render(renderRow), hints...)
 }
 
 // row renders one list row in the app's shared list style.

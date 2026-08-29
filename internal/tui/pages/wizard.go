@@ -177,5 +177,6 @@ func (w wizard) navHints() []styles.Hint {
 		{Key: "↑/↓/←/→", Desc: "navigate"},
 		{Key: "enter", Desc: "select"},
 		back,
+		{Key: "esc", Desc: "home"},
 	}
 }

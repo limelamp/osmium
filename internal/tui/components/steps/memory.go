@@ -5,7 +5,6 @@ import (
 	"strconv"
 	"strings"
 
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/limelamp/osmium/internal/tui/constants"
@@ -22,20 +21,17 @@ type MemoryStep struct {
 
 	list core.List
 
-	// typing is true while the custom amount field has the keyboard, the same
-	// arrangement the location step uses for its path bar.
-	typing bool
-	input  textinput.Model
-	warn   string
+	// The custom amount is typed into the app's shared field, the same one the
+	// settings page and the other steps use.
+	field core.Field
+	warn  string
 }
 
 func NewMemoryStep(config *Config) *MemoryStep {
-	ti := textinput.New()
-	ti.Placeholder = "e.g. 6G, 10G or 3072M"
-	ti.Prompt = "› "
-	ti.CharLimit = 12
-
-	s := &MemoryStep{config: config, input: ti}
+	s := &MemoryStep{
+		config: config,
+		field:  core.NewField("e.g. 6G, 10G or 3072M").WithLimit(12),
+	}
 	s.list = s.list.Resize(len(constants.RamOptions), len(constants.RamOptions))
 
 	// Start on whatever the configuration already carries, so the wizard's
@@ -58,10 +54,10 @@ func (s *MemoryStep) Subtitle() string {
 }
 
 // Editing reports whether the custom amount field has the keyboard.
-func (s *MemoryStep) Editing() bool { return s.typing }
+func (s *MemoryStep) Editing() bool { return s.field.IsOpen() }
 
 func (s *MemoryStep) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if s.typing {
+	if s.field.IsOpen() {
 		return s.updateInput(msg)
 	}
 
@@ -82,10 +78,9 @@ func (s *MemoryStep) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch msg.String() {
 		case "tab":
-			s.typing = true
-			s.input.SetValue(s.config.RAM)
-			s.input.CursorEnd()
-			return s, s.input.Focus()
+			field, cmd := s.field.Open(s.config.RAM)
+			s.field = field
+			return s, cmd
 
 		case "enter", "space":
 			return s, s.confirm(constants.RamOptions[s.list.Cursor])
@@ -97,30 +92,39 @@ func (s *MemoryStep) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // updateInput handles keys while the custom amount is being typed.
 func (s *MemoryStep) updateInput(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if key, ok := msg.(tea.KeyPressMsg); ok {
-		switch key.String() {
-		case "enter":
-			amount, err := NormaliseRAM(s.input.Value())
-			if err != nil {
-				s.warn = err.Error()
-				return s, nil
-			}
-
-			s.warn = ""
-			s.typing = false
-			s.input.Blur()
-			return s, s.confirm(amount)
-
-		case "tab", "esc":
-			s.warn = ""
-			s.typing = false
-			s.input.Blur()
-			return s, nil
-		}
+	key, ok := msg.(tea.KeyPressMsg)
+	if !ok {
+		return s, nil
 	}
 
-	var cmd tea.Cmd
-	s.input, cmd = s.input.Update(msg)
+	// Tab closes the field the way it opened it, leaving the value alone.
+	if key.String() == "tab" {
+		s.warn = ""
+		s.field = s.field.Cancel()
+		return s, nil
+	}
+
+	field, result, cmd := s.field.HandleKey(key)
+	s.field = field
+
+	switch result {
+	case core.FieldCommitted:
+		amount, err := NormaliseRAM(s.field.Value())
+		if err != nil {
+			s.warn = err.Error()
+
+			reopened, cmd := s.field.Open(s.field.Value())
+			s.field = reopened
+			return s, cmd
+		}
+
+		s.warn = ""
+		return s, s.confirm(amount)
+
+	case core.FieldCancelled:
+		s.warn = ""
+	}
+
 	return s, cmd
 }
 
@@ -131,23 +135,20 @@ func (s *MemoryStep) confirm(amount string) tea.Cmd {
 }
 
 func (s *MemoryStep) View() tea.View {
-	start, end := s.list.Window()
-
-	rows := make([]string, 0, end-start)
-	for i := start; i < end; i++ {
-		rows = append(rows, styles.ListRow(s.layout.Width, !s.typing && i == s.list.Cursor,
-			constants.RamOptions[i], ""))
-	}
+	options := s.list.Render(func(i int) string {
+		return styles.ListRow(s.layout.Width, !s.field.IsOpen() && i == s.list.Cursor,
+			constants.RamOptions[i], "")
+	})
 
 	muted := lipgloss.NewStyle().Foreground(theme.Inactive)
 
 	custom := muted.Render("Custom amount") + "   " + muted.Render("[tab] type an amount")
-	if s.typing {
-		custom = muted.Render("Custom amount") + "   " + s.input.View()
+	if s.field.IsOpen() {
+		custom = muted.Render("Custom amount") + "   " + s.field.View()
 	}
 
 	body := []string{
-		lipgloss.JoinVertical(lipgloss.Left, rows...),
+		options,
 		"",
 		custom,
 	}
@@ -163,7 +164,7 @@ func (s *MemoryStep) View() tea.View {
 
 func (s *MemoryStep) SetLayout(l core.Layout) Step {
 	s.layout = l
-	s.input.SetWidth(max(l.Width/3, 12))
+	s.field = s.field.SetWidth(l.Width / 3)
 	// The custom field and the note sit under the list, so the list gets what
 	// is left of the body.
 	s.list = s.list.Resize(len(constants.RamOptions), max(l.Height-4, 1))

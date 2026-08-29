@@ -35,10 +35,11 @@ Examples:
 			projectType = "plugins"
 		}
 
-		sc, err := resolveScope()
+		sc, progress, err := resolveScope()
 		if err != nil {
 			return err
 		}
+		defer progress.Close()
 
 		for _, projectID := range args {
 			if err := shared.RemoveProjectByID(sc, projectID, projectType); err != nil {

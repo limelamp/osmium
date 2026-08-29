@@ -33,7 +33,7 @@ type appModel struct {
 }
 
 func NewAppModel(store *storage.ServerStore) appModel {
-	home := pages.NewHomeModel()
+	home := pages.NewHomeModel(store)
 
 	return appModel{
 		activePage:    home,
@@ -200,6 +200,14 @@ func (m *appModel) retain(page Page) {
 }
 
 func (m appModel) View() tea.View {
+	// Below the minimum there is no layout worth drawing: every pane would be
+	// smaller than its own borders.
+	if m.layout.Width < styles.MinWidth || m.layout.Height < styles.MinHeight {
+		view := tea.NewView(styles.TooSmall(m.layout.Width, m.layout.Height))
+		view.AltScreen = true
+		return view
+	}
+
 	baseContent := m.activePage.View().Content
 
 	// A page without a title bar is drawn on its own. Joining it to an empty

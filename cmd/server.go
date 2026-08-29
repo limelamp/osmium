@@ -40,13 +40,17 @@ func resolveDir() (string, error) {
 	return server.Path, nil
 }
 
-// resolveScope is resolveDir as a scope, which is what the project helpers take.
-func resolveScope() (scope.Scope, error) {
+// resolveScope is resolveDir as a scope, which is what the project helpers
+// take. The scope reports through the command's reporter, so every operation
+// gets the same spinner and progress bar; the caller closes it when done.
+func resolveScope() (scope.Scope, *reporter, error) {
 	dir, err := resolveDir()
 	if err != nil {
-		return scope.Scope{}, err
+		return scope.Scope{}, nil, err
 	}
-	return scope.For(dir), nil
+
+	progress := newReporter()
+	return progress.Scope(dir), progress, nil
 }
 
 // findServer looks a registered server up by name, case-insensitively, and

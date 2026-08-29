@@ -544,7 +544,22 @@ func getQuiltInstallerURL() (string, string, error) {
 // 	return nil
 // }
 
-func downloadFile(url string, filepath string) error {
+// progressWriter counts bytes on their way to the file and reports them, which
+// is what turns a download into a progress bar rather than a wait.
+type progressWriter struct {
+	scope scope.Scope
+	label string
+	total int64
+	done  int64
+}
+
+func (w *progressWriter) Write(p []byte) (int, error) {
+	w.done += int64(len(p))
+	w.scope.Report(w.label, w.done, w.total)
+	return len(p), nil
+}
+
+func downloadFile(sc scope.Scope, url string, filepath string, label string) error {
 	// Create the output file
 	out, err := os.Create(filepath)
 	if err != nil {
@@ -579,12 +594,15 @@ func downloadFile(url string, filepath string) error {
 		return fmt.Errorf("failed to download file: bad status %s (url: %s)", resp.Status, url)
 	}
 
-	// Stream the download into the file
-	_, err = io.Copy(out, resp.Body)
-	if err != nil {
+	// Stream the download into the file, counting it on the way past.
+	counter := &progressWriter{scope: sc, label: label, total: resp.ContentLength}
+	sc.Report(label, 0, resp.ContentLength)
+
+	if _, err = io.Copy(io.MultiWriter(out, counter), resp.Body); err != nil {
 		return err
 	}
 
+	sc.Report(label, counter.total, counter.total)
 	return nil
 }
 
@@ -662,7 +680,7 @@ func DownloadJarInto(sc scope.Scope, jarType string, jarVersion string) error {
 
 	sc.Logf("Downloading the required files...")
 
-	if err := downloadFile(url, sc.Path(output)); err != nil {
+	if err := downloadFile(sc, url, sc.Path(output), output); err != nil {
 		return err
 	}
 

@@ -4,7 +4,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/limelamp/osmium/internal/tui/core"
@@ -23,18 +22,15 @@ type NameStep struct {
 	config *Config
 	layout core.Layout
 
-	typing bool
-	input  textinput.Model
-	warn   string
+	field core.Field
+	warn  string
 }
 
 func NewNameStep(config *Config) *NameStep {
-	ti := textinput.New()
-	ti.Placeholder = "My survival server"
-	ti.Prompt = "› "
-	ti.CharLimit = 60
-
-	return &NameStep{config: config, input: ti}
+	return &NameStep{
+		config: config,
+		field:  core.NewField("My survival server").WithLimit(60),
+	}
 }
 
 func (s *NameStep) Init() tea.Cmd { return nil }
@@ -46,7 +42,7 @@ func (s *NameStep) Subtitle() string {
 }
 
 // Editing reports whether the field is open for typing.
-func (s *NameStep) Editing() bool { return s.typing }
+func (s *NameStep) Editing() bool { return s.field.IsOpen() }
 
 func (s *NameStep) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	key, ok := msg.(tea.KeyPressMsg)
@@ -54,69 +50,51 @@ func (s *NameStep) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return s, nil
 	}
 
-	if s.typing {
-		return s.updateInput(key)
+	if s.field.IsOpen() {
+		field, result, cmd := s.field.HandleKey(key)
+		s.field = field
+
+		if result == core.FieldCommitted {
+			return s, s.commit()
+		}
+		s.warn = ""
+		return s, cmd
 	}
 
-	switch key.String() {
-	case "enter", "space":
-		return s, s.open()
-
-	case "esc":
-		// Nothing is being typed, so esc is navigation: back one step.
-		return s, Prev()
+	if key.String() == "enter" || key.String() == "space" {
+		field, cmd := s.field.Open(s.config.Name)
+		s.field = field
+		return s, cmd
 	}
 
 	return s, nil
 }
 
-// open puts the keyboard in the field, on the end of whatever is already there.
-func (s *NameStep) open() tea.Cmd {
-	s.typing = true
-	s.input.SetValue(s.config.Name)
-	s.input.CursorEnd()
-	return s.input.Focus()
-}
+// commit records the typed name, refusing an empty one.
+func (s *NameStep) commit() tea.Cmd {
+	name := strings.TrimSpace(s.field.Value())
+	if name == "" {
+		s.warn = "Give the server a name to continue."
 
-// updateInput handles keys while the name is being typed.
-func (s *NameStep) updateInput(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	switch key.String() {
-	case "enter":
-		name := strings.TrimSpace(s.input.Value())
-		if name == "" {
-			s.warn = "Give the server a name to continue."
-			return s, nil
-		}
-
-		s.warn = ""
-		s.typing = false
-		s.input.Blur()
-		s.config.Name = name
-		return s, Next()
-
-	case "esc":
-		// The edit is abandoned: the field goes back to the saved name.
-		s.warn = ""
-		s.typing = false
-		s.input.SetValue(s.config.Name)
-		s.input.Blur()
-		return s, nil
+		field, cmd := s.field.Open("")
+		s.field = field
+		return cmd
 	}
 
-	var cmd tea.Cmd
-	s.input, cmd = s.input.Update(key)
-	return s, cmd
+	s.warn = ""
+	s.config.Name = name
+	return Next()
 }
 
 func (s *NameStep) View() tea.View {
 	field := styles.ListRow(s.layout.Width, true, s.name(), "")
-	if s.typing {
-		field = s.input.View()
+	if s.field.IsOpen() {
+		field = s.field.View()
 	}
 
 	rows := []string{field}
 
-	if !s.typing {
+	if !s.field.IsOpen() {
 		rows = append(rows, "",
 			lipgloss.NewStyle().Foreground(theme.Inactive).Render("[enter] type a name"))
 	}
@@ -145,8 +123,8 @@ func (s *NameStep) name() string {
 
 // targetDir previews where the files will land.
 func (s *NameStep) targetDir() string {
-	name := strings.TrimSpace(s.input.Value())
-	if !s.typing {
+	name := strings.TrimSpace(s.field.Value())
+	if !s.field.IsOpen() {
 		name = s.config.Name
 	}
 	if name == "" {
@@ -157,7 +135,7 @@ func (s *NameStep) targetDir() string {
 
 func (s *NameStep) SetLayout(l core.Layout) Step {
 	s.layout = l
-	s.input.SetWidth(max(l.Width-4, 10))
+	s.field = s.field.SetWidth(l.Width - 4)
 	return s
 }
 

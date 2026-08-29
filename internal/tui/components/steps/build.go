@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
@@ -24,6 +25,13 @@ type buildEvent struct {
 	line string
 	done bool
 	err  error
+
+	// A progress event reports a download rather than saying anything: the
+	// label of the file, how much has arrived and how much there is.
+	progress bool
+	label    string
+	received int64
+	size     int64
 }
 
 // buildEventMsg carries a build event into the update loop.
@@ -41,6 +49,14 @@ type BuildStep struct {
 	logs     []string
 	viewport viewport.Model
 
+	// What the footer shows while the build runs: a spinner on its own frame
+	// counter, and the download it is waiting on.
+	spinner  core.Ticker
+	frame    int
+	label    string
+	received int64
+	size     int64
+
 	done   bool
 	err    error
 	server *storage.Server
@@ -51,8 +67,12 @@ func NewBuildStep(config *Config, store *storage.ServerStore) *BuildStep {
 		config:   config,
 		store:    store,
 		viewport: viewport.New(),
+		spinner:  core.NewTicker("build.spinner", spinnerInterval),
 	}
 }
+
+// spinnerInterval is how often a busy indicator advances a frame.
+const spinnerInterval = 100 * time.Millisecond
 
 // Server is the record written to servers.json, once the build succeeded.
 func (s *BuildStep) Server() *storage.Server { return s.server }
@@ -72,7 +92,10 @@ func (s *BuildStep) Init() tea.Cmd {
 
 	go s.build()
 
-	return waitForBuildEvent(s.events)
+	ticker, tick := s.spinner.Restart()
+	s.spinner = ticker
+
+	return tea.Batch(waitForBuildEvent(s.events), tick)
 }
 
 // waitForBuildEvent blocks on the next build event and re-arms itself for the
@@ -85,8 +108,11 @@ func waitForBuildEvent(events chan buildEvent) tea.Cmd {
 
 // build runs the creation sequence and reports it through the channel.
 func (s *BuildStep) build() {
-	server, err := Build(s.config, s.store, func(line string) {
-		s.events <- buildEvent{line: line}
+	server, err := Build(s.config, s.store, scope.Scope{
+		Log: func(line string) { s.events <- buildEvent{line: line} },
+		Progress: func(label string, done, total int64) {
+			s.events <- buildEvent{progress: true, label: label, received: done, size: total}
+		},
 	})
 	if err != nil {
 		s.events <- buildEvent{done: true, err: err}
@@ -104,12 +130,8 @@ func (s *BuildStep) build() {
 // The wizard runs this in a goroutine and streams the lines into a panel; the
 // CLI runs it in the foreground and prints them. Both get the same server built
 // the same way, which is the point of it living here rather than in either.
-func Build(cfg *Config, store *storage.ServerStore, log func(line string)) (*storage.Server, error) {
-	emit := func(line string) {
-		if log != nil {
-			log(line)
-		}
-	}
+func Build(cfg *Config, store *storage.ServerStore, sc scope.Scope) (*storage.Server, error) {
+	emit := sc.Logf
 
 	target := TargetDir(cfg)
 	server := &storage.Server{
@@ -121,12 +143,12 @@ func Build(cfg *Config, store *storage.ServerStore, log func(line string)) (*sto
 		Memory:  cfg.RAM,
 	}
 
-	emit("Creating " + target)
+	emit("Creating %s", target)
 	if err := os.MkdirAll(target, 0755); err != nil {
 		return nil, err
 	}
 
-	sc := scope.Scope{Dir: target, Log: emit}
+	sc.Dir = target
 
 	// 1. Download the server jar
 	if err := util.DownloadJarInto(sc, cfg.Software, cfg.Version); err != nil {
@@ -191,9 +213,28 @@ func (s *BuildStep) Subtitle() string {
 
 func (s *BuildStep) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case core.TickMsg:
+		ticker, ours := s.spinner.Accepts(msg)
+		if !ours || s.done {
+			return s, nil
+		}
+
+		s.frame++
+		ticker, tick := ticker.Arm()
+		s.spinner = ticker
+		return s, tick
+
 	case buildEventMsg:
+		if msg.progress {
+			s.label, s.received, s.size = msg.label, msg.received, msg.size
+			return s, waitForBuildEvent(s.events)
+		}
+
 		if msg.done {
 			s.done = true
+			s.spinner = s.spinner.Stop()
+			s.label = ""
+
 			s.err = msg.err
 			if msg.err != nil {
 				return s, s.appendLog("error: " + msg.err.Error())
@@ -244,15 +285,35 @@ func (s *BuildStep) View() tea.View {
 	case s.done:
 		body += "\n\n" + lipgloss.NewStyle().Foreground(theme.Accent).Bold(true).
 			Render("✓ "+s.config.Name+" is ready.")
+	default:
+		body += "\n\n" + s.busyLine()
 	}
 
 	return tea.NewView(body)
 }
 
+// busyLine is what the build shows while it is working: the spinner, what it is
+// doing, and how far a download has got.
+func (s *BuildStep) busyLine() string {
+	label := s.label
+	if label == "" {
+		label = "Working…"
+	}
+
+	line := styles.Spinner(s.frame) + " " +
+		lipgloss.NewStyle().Foreground(theme.Inactive).Render(label)
+
+	if s.size > 0 || s.received > 0 {
+		line += "\n" + styles.ProgressBar(s.layout.Width, s.received, s.size)
+	}
+	return line
+}
+
 func (s *BuildStep) SetLayout(l core.Layout) Step {
 	s.layout = l
 	s.viewport.SetWidth(max(l.Width, 1))
-	s.viewport.SetHeight(max(l.Height-3, 1))
+	// Three rows below the log: the blank, the busy line and its progress bar.
+	s.viewport.SetHeight(max(l.Height-4, 1))
 	s.refresh()
 	return s
 }

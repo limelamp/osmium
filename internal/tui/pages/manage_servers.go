@@ -168,9 +168,13 @@ func (m ManageServersModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.swapAction(m.menu())
 
 	case core.WakeMsg:
-		activity, cmd := m.activity.Wake()
+		activity, activityCmd := m.activity.Wake()
 		m.activity = activity
-		return m, cmd
+
+		servers, serversCmd := m.servers.Update(msg)
+		m.servers = servers.(components.ServersModel)
+
+		return m, tea.Batch(activityCmd, serversCmd)
 
 	// A finished operation is two things: output for the console, and a reason
 	// for the panel that started it to re-read what it shows.

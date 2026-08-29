@@ -100,7 +100,15 @@ func (m MigrateModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch msg.String() {
-		case "esc", "backspace", "shift+tab":
+		// Esc leaves for wherever this page was opened from, as it does in the
+		// create wizard.
+		case "esc":
+			if m.last() && !m.migrateStep().Done() {
+				return m, nil
+			}
+			return m, core.RouteTo(m.origin)
+
+		case "backspace", "shift+tab":
 			// A migration that has already started cannot be walked back out
 			// of: the files on disk have changed.
 			if m.last() && !m.migrateStep().Done() {

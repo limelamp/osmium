@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"sort"
 
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/limelamp/osmium/internal/config"
@@ -61,7 +60,7 @@ type ProjectsModel struct {
 	installed []string
 	selected  map[int]bool
 
-	queryInput textinput.Model
+	query core.Field
 }
 
 // NewModManagementModel returns the mods variant of the projects panel.
@@ -75,23 +74,18 @@ func NewPluginManagementModel() ProjectsModel {
 }
 
 func newProjectsModel(kind projectKind) ProjectsModel {
-	ti := textinput.New()
-	ti.Placeholder = "Enter " + kind.noun + " id or slug..."
-	ti.Prompt = "» "
-	ti.CharLimit = 60
-	ti.SetWidth(40)
-
 	m := ProjectsModel{
-		kind:       kind,
-		selected:   make(map[int]bool),
-		queryInput: ti,
+		kind:     kind,
+		selected: make(map[int]bool),
+		query: core.NewField("Enter " + kind.noun + " id or slug...").
+			WithPrompt("» ").WithLimit(60).SetWidth(40),
 	}
 	m.base = m.setCount(len(projectOperations))
 	return m
 }
 
 // Editing reports whether the id/slug field is open.
-func (m ProjectsModel) Editing() bool { return m.state == stateAdd }
+func (m ProjectsModel) Editing() bool { return m.query.IsOpen() }
 
 func (m ProjectsModel) Init() tea.Cmd {
 	return nil
@@ -143,7 +137,7 @@ func (m ProjectsModel) gotoState(state projectState) ProjectsModel {
 	m.state = state
 	m.selected = make(map[int]bool)
 	m.list = core.List{}
-	m.queryInput.Blur()
+	m.query = m.query.Close()
 	m.base = m.setCount(m.itemCount())
 	return m
 }
@@ -178,25 +172,28 @@ func (m ProjectsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyPressMsg:
 		if m.state == stateAdd {
-			switch msg.String() {
-			case "enter":
-				return m.activate()
-			case "esc":
-				if m.queryInput.Value() != "" {
-					m.queryInput.Reset()
-					return m, nil
-				}
-				return m.gotoState(stateOperations), nil
-
-			case "backspace":
-				if m.queryInput.Value() != "" {
-					break // let the input handle its own deletion
-				}
+			// Backspace on an empty query leaves the screen; otherwise it is
+			// the field's own deletion.
+			if msg.String() == "backspace" && m.query.Value() == "" {
 				return m.gotoState(stateOperations), nil
 			}
 
-			var cmd tea.Cmd
-			m.queryInput, cmd = m.queryInput.Update(msg)
+			field, result, cmd := m.query.HandleKey(msg)
+			m.query = field
+
+			switch result {
+			case core.FieldCommitted:
+				return m.activate()
+
+			case core.FieldCancelled:
+				// The first esc clears what was typed; with nothing left to
+				// clear, the second leaves the screen.
+				if m.query.Value() == "" {
+					return m.gotoState(stateOperations), nil
+				}
+				return m.reopenQuery()
+			}
+
 			return m, cmd
 		}
 
@@ -244,7 +241,7 @@ func (m ProjectsModel) activate() (tea.Model, tea.Cmd) {
 		switch m.list.Cursor {
 		case 0:
 			m = m.gotoState(stateAdd)
-			return m, m.queryInput.Focus()
+			return m.reopenQuery()
 		case 1:
 			return m.gotoState(stateRemove), nil
 		case 2:
@@ -260,11 +257,11 @@ func (m ProjectsModel) activate() (tea.Model, tea.Cmd) {
 		}
 
 	case stateAdd:
-		query := m.queryInput.Value()
+		query := m.query.Value()
 		if query == "" {
-			return m, nil
+			return m.reopenQuery()
 		}
-		m.queryInput.Reset()
+		m.query = m.query.SetValue("")
 		return m.gotoState(stateOperations), m.run("Adding "+query+"...", func(sc scope.Scope) error {
 			return shared.AddProjectByID(sc, query, folder)
 		})
@@ -310,6 +307,14 @@ func (m ProjectsModel) toggleAll() ProjectsModel {
 	return m
 }
 
+// reopenQuery puts the keyboard back in the id field, which is where it belongs
+// for as long as the add screen is showing.
+func (m ProjectsModel) reopenQuery() (tea.Model, tea.Cmd) {
+	field, cmd := m.query.Open(m.query.Value())
+	m.query = field
+	return m, cmd
+}
+
 // markedSlugs collects the projects the user ticked on the remove screen.
 func (m ProjectsModel) markedSlugs() []string {
 	var slugs []string
@@ -333,7 +338,7 @@ func (m ProjectsModel) View() tea.View {
 			lipgloss.NewStyle().Foreground(theme.Inactive).
 				Render("Modrinth id or slug of the "+m.kind.noun+" to install:"),
 			"",
-			m.queryInput.View(),
+			m.query.View(),
 		)
 		return m.panelView(m.Title()+" · Add", body, m.Hints()...)
 
@@ -407,7 +412,7 @@ func (m ProjectsModel) Title() string {
 
 func (m ProjectsModel) SetLayout(l core.Layout) core.Action {
 	m.layout = l
-	m.queryInput.SetWidth(max(l.ContentWidth()-4, 10))
+	m.query = m.query.SetWidth(l.ContentWidth() - 4)
 	m.base = m.setCount(m.itemCount())
 	return m
 }

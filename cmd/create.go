@@ -12,7 +12,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/limelamp/osmium/internal/config"
-	"github.com/limelamp/osmium/internal/scope"
 	"github.com/limelamp/osmium/internal/shared"
 	"github.com/limelamp/osmium/internal/supervisor"
 	"github.com/limelamp/osmium/internal/tui/components/steps"
@@ -98,10 +97,14 @@ Examples:
 			}
 		}
 
-		server, err := steps.Build(wizardConfig, store, func(line string) { fmt.Println(line) })
+		progress := newReporter()
+		defer progress.Close()
+
+		server, err := steps.Build(wizardConfig, store, progress.Scope(""))
 		if err != nil {
 			return err
 		}
+		progress.Close()
 		fmt.Printf("\nCreated %s in %s\n", server.Name, server.Path)
 
 		if err := restoreProjects(manifest, server.Path); err != nil {
@@ -175,7 +178,10 @@ func restoreProjects(manifest *config.OsmiumConfig, target string) error {
 	fmt.Printf("\nInstalling %d mods and %d plugins from the manifest…\n",
 		len(manifest.Mods), len(manifest.Plugins))
 
-	return shared.InstallProjectsFromConfig(scope.For(target))
+	progress := newReporter()
+	defer progress.Close()
+
+	return shared.InstallProjectsFromConfig(progress.Scope(target))
 }
 
 // pendingSteps is the wizard reduced to the questions the flags left open.

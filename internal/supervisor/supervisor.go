@@ -20,6 +20,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/limelamp/osmium/internal/shared"
 )
@@ -59,6 +60,38 @@ func Running(serverDir string) bool {
 		return false
 	}
 	return shared.IsPIDRunning(pid)
+}
+
+// StartedAt is when a server's supervisor took it over, which is when the lock
+// file was written. It is on disk rather than in memory, so the uptime survives
+// closing and reopening Osmium.
+func StartedAt(serverDir string) (time.Time, bool) {
+	info, err := os.Stat(shared.LockPath(serverDir))
+	if err != nil {
+		return time.Time{}, false
+	}
+	return info.ModTime(), true
+}
+
+// Uptime is how long a server has been running, or an empty string when it is
+// not running at all.
+func Uptime(serverDir string) string {
+	started, ok := StartedAt(serverDir)
+	if !ok || !Running(serverDir) {
+		return ""
+	}
+
+	elapsed := time.Since(started)
+	switch {
+	case elapsed < time.Minute:
+		return fmt.Sprintf("up %ds", int(elapsed.Seconds()))
+	case elapsed < time.Hour:
+		return fmt.Sprintf("up %dm", int(elapsed.Minutes()))
+	case elapsed < 24*time.Hour:
+		return fmt.Sprintf("up %dh %dm", int(elapsed.Hours()), int(elapsed.Minutes())%60)
+	default:
+		return fmt.Sprintf("up %dd %dh", int(elapsed.Hours())/24, int(elapsed.Hours())%24)
+	}
 }
 
 // PID is the process id of a server's supervisor, or 0 when it is not running.

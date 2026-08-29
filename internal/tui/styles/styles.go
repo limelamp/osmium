@@ -5,6 +5,8 @@ import (
 	"image/color"
 	"strings"
 
+	"charm.land/bubbles/v2/progress"
+	"charm.land/bubbles/v2/spinner"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/limelamp/osmium/internal/tui/theme"
@@ -190,12 +192,15 @@ func ListRow(width int, selected bool, label string, suffix string) string {
 		return lipgloss.NewStyle().MaxWidth(max(width, 1)).Render(left)
 	}
 
-	// Keep both halves inside the row: the suffix may take at most half of it,
-	// and the label is trimmed to whatever is left. Without this the two run
-	// together and then wrap onto the next line in narrow panels.
+	// Keep both halves inside the row: the suffix may take up to two thirds of
+	// it, and the label is trimmed to whatever is left. Without this the two
+	// run together and then wrap onto the next line in narrow panels.
+	//
+	// Two thirds rather than a half because the suffix is usually the detail —
+	// engine, version, memory, uptime — while the label is a short name.
 	right := lipgloss.NewStyle().
 		Foreground(theme.Inactive).
-		MaxWidth(max(width/2, 1)).
+		MaxWidth(max(width*2/3, 1)).
 		Render(suffix)
 
 	available := max(width-lipgloss.Width(right)-1, 1)
@@ -250,6 +255,51 @@ func LogRow(width int, tag string, text string) string {
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+// The smallest terminal Osmium will draw itself in. Below this the panes have
+// no usable content left, so it says so instead of drawing something broken.
+const (
+	MinWidth  = 60
+	MinHeight = 18
+)
+
+// TooSmall renders the notice shown when the terminal is smaller than Osmium
+// needs, with the dimension that is short marked out. It redraws as the window
+// is resized, so it disappears the moment there is room.
+func TooSmall(width, height int) string {
+	label := lipgloss.NewStyle().Foreground(theme.Inactive)
+	fine := lipgloss.NewStyle().Foreground(theme.Primary)
+	short := lipgloss.NewStyle().Foreground(errorColor).Bold(true)
+
+	dimension := func(value, needed int) string {
+		if value < needed {
+			return short.Render(fmt.Sprint(value))
+		}
+		return fine.Render(fmt.Sprint(value))
+	}
+
+	body := lipgloss.JoinVertical(
+		lipgloss.Left,
+		lipgloss.NewStyle().Foreground(theme.Primary).Bold(true).Render("Terminal too small"),
+		"",
+		label.Render("Osmium needs  ")+fine.Render(fmt.Sprintf("%d × %d", MinWidth, MinHeight)),
+		label.Render("This window   ")+dimension(width, MinWidth)+label.Render(" × ")+dimension(height, MinHeight),
+		"",
+		label.Render("Resize to continue · ctrl+c"),
+	)
+
+	// A border costs four columns, which is exactly what a very narrow window
+	// does not have to spare.
+	if width >= MinWidth/2 {
+		body = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(theme.Primary).
+			Padding(0, 2).
+			Render(body)
+	}
+
+	return lipgloss.Place(max(width, 1), max(height, 1), lipgloss.Center, lipgloss.Center, body)
 }
 
 // StepHeading renders a wizard step heading. The step number carries the
@@ -336,4 +386,60 @@ func Error(err error) string {
 		Foreground(errorColor).
 		Bold(true).
 		Render("Error: " + err.Error())
+}
+
+// spinnerFrames are the frames of the app's one spinner, taken from the
+// bubbles set so it matches what every other Bubble Tea program looks like.
+var spinnerFrames = spinner.Dot.Frames
+
+// Spinner renders one frame of the busy indicator. The caller owns the frame
+// counter, so a single ticker can drive every spinner on a page rather than
+// each one running a timer of its own.
+func Spinner(frame int) string {
+	if len(spinnerFrames) == 0 {
+		return ""
+	}
+
+	index := ((frame % len(spinnerFrames)) + len(spinnerFrames)) % len(spinnerFrames)
+	return lipgloss.NewStyle().Foreground(theme.Primary).Render(spinnerFrames[index])
+}
+
+// ProgressBar renders a download's progress in the theme's colours: the bar
+// itself, the percentage, and how much of how much has arrived.
+func ProgressBar(width int, done, total int64) string {
+	if total <= 0 {
+		// A download whose size the server did not say still has something
+		// worth showing: how much has arrived.
+		return lipgloss.NewStyle().Foreground(theme.Inactive).Render(formatBytes(done))
+	}
+
+	ratio := min(max(float64(done)/float64(total), 0), 1)
+
+	// The bar leaves room for the figures that follow it.
+	bar := progress.New(
+		progress.WithColors(theme.Primary, theme.Accent),
+		progress.WithoutPercentage(),
+		progress.WithWidth(max(min(width-28, 40), 8)),
+	)
+
+	figures := lipgloss.NewStyle().Foreground(theme.Inactive).Render(
+		fmt.Sprintf("  %3.0f%%  ·  %s / %s", ratio*100, formatBytes(done), formatBytes(total)))
+
+	return bar.ViewAs(ratio) + figures
+}
+
+// formatBytes renders a byte count the way a download is usually quoted.
+func formatBytes(count int64) string {
+	const unit = 1024
+
+	if count < unit {
+		return fmt.Sprintf("%d B", count)
+	}
+
+	value, exponent := float64(count)/unit, 0
+	for value >= unit && exponent < 3 {
+		value, exponent = value/unit, exponent+1
+	}
+
+	return fmt.Sprintf("%.1f %cB", value, "KMGT"[exponent])
 }

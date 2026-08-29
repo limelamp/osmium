@@ -1,6 +1,8 @@
 package core
 
 import (
+	"strings"
+
 	tea "charm.land/bubbletea/v2"
 )
 
@@ -83,6 +85,20 @@ func (l List) HandleKey(key string) (List, bool) {
 		return l.MoveTo(l.Scroll.Total - 1), true
 	}
 	return l, false
+}
+
+// Render draws the rows currently in view, one line each, in the order they
+// appear. Every list in the app is drawn this way — the panel says what a row
+// looks like, the list says which rows are on screen.
+func (l List) Render(row func(index int) string) string {
+	start, end := l.Window()
+
+	rows := make([]string, 0, end-start)
+	for i := start; i < end; i++ {
+		rows = append(rows, row(i))
+	}
+
+	return strings.Join(rows, "\n")
 }
 
 // HitRow maps a mouse position to the item index under it, or -1 when the

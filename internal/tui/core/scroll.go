@@ -52,6 +52,18 @@ func (s Scroll) Window() (start, end int) {
 	return start, end
 }
 
+// FollowWindow is the range of rows to show so that cursor stays visible,
+// without any stored scroll state: the window is derived from where the cursor
+// is, which is all a surface whose cursor drives it ever needs.
+func FollowWindow(total, visible, cursor int) (start, end int) {
+	if visible <= 0 || total <= visible {
+		return 0, total
+	}
+
+	start = min(max(cursor-visible/2, 0), total-visible)
+	return start, start + visible
+}
+
 func (s Scroll) clamp() Scroll {
 	s.Offset = min(s.Offset, s.Max())
 	s.Offset = max(s.Offset, 0)

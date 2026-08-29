@@ -1,21 +1,14 @@
 package components
 
 import (
-	"strings"
-
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/limelamp/osmium/internal/assets"
 	"github.com/limelamp/osmium/internal/tui/core"
 	"github.com/limelamp/osmium/internal/tui/styles"
 )
 
-// Each menu entry is drawn with a blank row above it, so one choice occupies
-// two terminal rows and starts on the second of them.
-const (
-	choiceStride = 2
-	choiceOffset = 1
-)
+// The menu is drawn like every other list in the app: one row per entry, no
+// spacers. That is also what makes a click land on the row it was aimed at.
 
 type Choice struct {
 	Page string
@@ -50,16 +43,11 @@ func (m NavigationModel) choiceAt(x, y int) int {
 		return -1
 	}
 
-	row := y - m.layout.Y - choiceOffset
-	if row < 0 || row%choiceStride != 0 {
+	row := y - m.layout.Y
+	if row < 0 || row >= len(m.choices) {
 		return -1
 	}
-
-	index := row / choiceStride
-	if index >= len(m.choices) {
-		return -1
-	}
-	return index
+	return row
 }
 
 func (m NavigationModel) Update(msg tea.Msg) (NavigationModel, tea.Cmd) {
@@ -81,18 +69,10 @@ func (m NavigationModel) Update(msg tea.Msg) (NavigationModel, tea.Cmd) {
 	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "up", "k":
-			if m.cursor > 0 {
-				m.cursor--
-			} else {
-				m.cursor = len(m.choices) - 1
-			}
+			m.cursor = (m.cursor - 1 + len(m.choices)) % len(m.choices)
 
 		case "down", "j":
-			if m.cursor < len(m.choices)-1 {
-				m.cursor++
-			} else {
-				m.cursor = 0
-			}
+			m.cursor = (m.cursor + 1) % len(m.choices)
 
 		case "enter":
 			return m, m.selectCmd()
@@ -114,21 +94,16 @@ func (m NavigationModel) selectCmd() tea.Cmd {
 
 // Height is how many rows the menu occupies.
 func (m NavigationModel) Height() int {
-	return len(m.choices) * choiceStride
+	return len(m.choices)
 }
 
 func (m NavigationModel) View() tea.View {
-	var s strings.Builder
-
-	_, logoWidth := styles.Logo(assets.Logo2)
-
+	rows := make([]string, 0, len(m.choices))
 	for i, choice := range m.choices {
-		isSelected := i == m.cursor
-		s.WriteString(styles.Selection(logoWidth, isSelected, choice.Page, choice.Key))
-		s.WriteByte('\n')
+		rows = append(rows, styles.ListRow(m.layout.Width, i == m.cursor, choice.Page, choice.Key))
 	}
 
-	return tea.NewView(lipgloss.NewStyle().Width(logoWidth).Render(s.String()))
+	return tea.NewView(lipgloss.JoinVertical(lipgloss.Left, rows...))
 }
 
 func (m NavigationModel) SetLayout(l core.Layout) NavigationModel {

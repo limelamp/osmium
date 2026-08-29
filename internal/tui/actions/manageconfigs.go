@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"charm.land/bubbles/v2/textinput"
+	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/limelamp/osmium/internal/tui/core"
@@ -81,22 +81,26 @@ type ManageConfigsModel struct {
 	configOptionValues []string
 
 	// editing is the index of the row currently being typed into, or -1.
-	editing   int
-	textInput textinput.Model
+	editing int
+	field   core.Field
+
+	// A value too long for one line is edited in a wrapped box of its own
+	// rather than in a field that has to be scrolled sideways to be read.
+	area    textarea.Model
+	wrapped bool
 }
 
 func NewManageConfigsModel() ManageConfigsModel {
-	// textInput init
-	ti := textinput.New()
-	ti.Placeholder = "Enter a value..."
-	ti.Prompt = "" // Remove the ">" out of the way
-	ti.CharLimit = 500
-	ti.SetWidth(30)
+	area := textarea.New()
+	area.Placeholder = "Enter a value..."
+	area.ShowLineNumbers = false
+	area.SetHeight(4)
 
 	return ManageConfigsModel{
-		step:      stepPickFile,
-		editing:   -1,
-		textInput: ti,
+		step:    stepPickFile,
+		editing: -1,
+		field:   core.NewField("Enter a value...").WithPrompt("").SetWidth(30),
+		area:    area,
 	}
 }
 
@@ -132,18 +136,34 @@ func (m ManageConfigsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		// While a value is being typed the input owns every key except the two
 		// that end the edit, so navigation must not steal them.
-		if m.editing >= 0 {
+		if m.editing >= 0 && m.wrapped {
 			switch msg.String() {
 			case "enter":
+				// A config value is one line however it is drawn, so enter
+				// still means save rather than a new line.
 				return m.commitEdit()
 			case "esc":
-				m.editing = -1
-				m.textInput.Blur()
+				m.editing, m.wrapped = -1, false
+				m.area.Blur()
 				return m, nil
 			}
 
-			var cmd tea.Cmd
-			m.textInput, cmd = m.textInput.Update(msg)
+			area, cmd := m.area.Update(msg)
+			m.area = area
+			return m, cmd
+		}
+
+		if m.editing >= 0 {
+			field, result, cmd := m.field.HandleKey(msg)
+			m.field = field
+
+			switch result {
+			case core.FieldCommitted:
+				return m.commitEdit()
+			case core.FieldCancelled:
+				m.editing = -1
+			}
+
 			return m, cmd
 		}
 
@@ -182,9 +202,18 @@ func (m ManageConfigsModel) activate() (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.editing = m.list.Cursor
-		m.textInput.SetValue(m.configOptionValues[m.list.Cursor])
-		m.textInput.CursorEnd()
-		return m, m.textInput.Focus()
+		value := m.configOptionValues[m.list.Cursor]
+
+		// A value that cannot be read in the width its row leaves gets the
+		// wrapped editor instead.
+		if m.wrapped = len(value) > m.valueWidth(); m.wrapped {
+			m.area.SetValue(value)
+			return m, m.area.Focus()
+		}
+
+		field, cmd := m.field.Open(value)
+		m.field = field
+		return m, cmd
 	}
 
 	return m, nil
@@ -216,9 +245,15 @@ func (m ManageConfigsModel) openFile(file configFile) (tea.Model, tea.Cmd) {
 
 // commitEdit writes the edited value back to the file on disk.
 func (m ManageConfigsModel) commitEdit() (tea.Model, tea.Cmd) {
-	m.configOptionValues[m.editing] = m.textInput.Value()
-	m.editing = -1
-	m.textInput.Blur()
+	value := m.field.Value()
+	if m.wrapped {
+		// The box wraps for reading; the value itself stays one line.
+		value = strings.Join(strings.Fields(m.area.Value()), " ")
+		m.area.Blur()
+	}
+
+	m.configOptionValues[m.editing] = value
+	m.editing, m.wrapped = -1, false
 
 	var lines []string
 	for i := range m.configOptionKeys {
@@ -271,6 +306,15 @@ func (m ManageConfigsModel) View() tea.View {
 		return m.noServerView(m.Title())
 	}
 
+	if m.wrapped {
+		return m.panelView(m.Title()+" · "+m.key(m.editing),
+			lipgloss.JoinVertical(lipgloss.Left,
+				lipgloss.NewStyle().Foreground(theme.Inactive).Render("Editing a long value:"),
+				"",
+				m.area.View(),
+			), m.Hints()...)
+	}
+
 	switch m.step {
 	case stepEditFile:
 		return m.listView(m.Title()+" · "+filepath.Base(m.fileName), m.editRow, m.Hints()...)
@@ -287,6 +331,15 @@ func (m ManageConfigsModel) View() tea.View {
 	}
 }
 
+// valueWidth is how much room a value has on its row before it is worth
+// editing in a box of its own.
+func (m ManageConfigsModel) valueWidth() int {
+	if m.fileType == editorRaw {
+		return max(m.layout.ContentWidth()-4, 20)
+	}
+	return max(m.layout.ContentWidth()/2, 20)
+}
+
 // Hints are the keys this panel responds to, which depend on whether a file is
 // open and whether a value is being typed into.
 func (m ManageConfigsModel) Hints() []styles.Hint {
@@ -294,6 +347,7 @@ func (m ManageConfigsModel) Hints() []styles.Hint {
 	case m.editing >= 0:
 		return []styles.Hint{
 			{Key: "enter", Desc: "save"},
+			{Key: "ctrl+u", Desc: "clear"},
 			{Key: "esc", Desc: "cancel"},
 		}
 
@@ -327,7 +381,7 @@ func (m ManageConfigsModel) relativeDir(path string) string {
 func (m ManageConfigsModel) editRow(i int) string {
 	value := m.configOptionValues[i]
 	if m.editing == i {
-		value = m.textInput.View()
+		value = m.field.View()
 	} else {
 		value = lipgloss.NewStyle().Foreground(theme.Accent).Render(value)
 	}
@@ -495,7 +549,9 @@ func (m ManageConfigsModel) SetLayout(l core.Layout) core.Action {
 	if m.fileType == editorRaw {
 		inputWidth = l.ContentWidth() - 4
 	}
-	m.textInput.SetWidth(max(inputWidth, 10))
+	m.field = m.field.SetWidth(inputWidth)
+	m.area.SetWidth(max(l.ContentWidth()-2, 20))
+	m.area.SetHeight(max(min(l.ContentHeight()-4, 6), 2))
 
 	if m.step == stepEditFile {
 		m.base = m.setCount(len(m.configOptionKeys))

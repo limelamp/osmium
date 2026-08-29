@@ -32,15 +32,6 @@ const pollInterval = 300 * time.Millisecond
 // slower cadence than the log reading.
 const statusEvery = 7
 
-// tickMsg drives the log polling. It carries the generation of the loop it
-// belongs to, so a tick left over from a loop that was already restarted is
-// recognised and dropped instead of starting a second one.
-type tickMsg int
-
-func tickCmd(generation int) tea.Cmd {
-	return tea.Tick(pollInterval, func(time.Time) tea.Msg { return tickMsg(generation) })
-}
-
 // console is everything the Activity panel keeps for one server: its output
 // history, the tailer following that server's log, and where the user had
 // scrolled to.
@@ -103,10 +94,9 @@ type ActivityModel struct {
 	consoles map[string]*console
 	current  string
 
-	polling    bool
-	generation int
-	polls      int
-	wrapped    int // rendered line count, for the scrollbar
+	poller  core.Ticker
+	polls   int
+	wrapped int // rendered line count, for the scrollbar
 }
 
 func NewActivityModel() ActivityModel {
@@ -143,6 +133,7 @@ func NewActivityModel() ActivityModel {
 		textInput: ti,
 		viewport:  vp,
 		consoles:  consoles,
+		poller:    core.NewTicker("activity", pollInterval),
 	}
 }
 
@@ -194,12 +185,12 @@ func (m ActivityModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case tickMsg:
-		// A tick from a loop that has been superseded is not this loop's tick.
-		if int(msg) != m.generation {
+	case core.TickMsg:
+		poller, ours := m.poller.Accepts(msg)
+		if !ours {
 			return m, nil
 		}
-		m.polling = false
+		m.poller = poller
 		return m.drain()
 
 	case tea.MouseMsg:
@@ -232,6 +223,13 @@ func (m ActivityModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.textInput.Reset()
 			return m, nil
 
+		// Jumping to the newest line resumes following, which is the way out
+		// of a console that was scrolled away from the tail.
+		case "end":
+			m.viewport.GotoBottom()
+			m.rememberScroll()
+			return m, nil
+
 		case "pgup", "pgdown", "up", "down":
 			var cmd tea.Cmd
 			m.viewport, cmd = m.viewport.Update(msg)
@@ -247,20 +245,25 @@ func (m ActivityModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// poll schedules the next log read, unless one is already scheduled or nothing
-// is being followed.
+// poll schedules the next log read, if anything is being followed.
 func (m ActivityModel) poll() (ActivityModel, tea.Cmd) {
-	if m.polling {
+	if !m.following() {
 		return m, nil
 	}
 
+	poller, cmd := m.poller.Arm()
+	m.poller = poller
+	return m, cmd
+}
+
+// following reports whether any console has a log to read.
+func (m ActivityModel) following() bool {
 	for _, c := range m.consoles {
 		if c.tail != nil {
-			m.polling = true
-			return m, tickCmd(m.generation)
+			return true
 		}
 	}
-	return m, nil
+	return false
 }
 
 // Wake restarts the poll loop after the pane has been off screen.
@@ -271,9 +274,14 @@ func (m ActivityModel) poll() (ActivityModel, tea.Cmd) {
 // the app was restarted. Waking starts a fresh generation, and the stranded
 // tick is dropped when it turns up.
 func (m ActivityModel) Wake() (ActivityModel, tea.Cmd) {
-	m.polling = false
-	m.generation++
-	return m.poll()
+	if !m.following() {
+		m.poller = m.poller.Stop()
+		return m, nil
+	}
+
+	poller, cmd := m.poller.Restart()
+	m.poller = poller
+	return m, cmd
 }
 
 // drain moves whatever the followed servers have written since the last poll
@@ -395,7 +403,7 @@ func (m ActivityModel) restart(target *console) (tea.Model, tea.Cmd) {
 	m = m.refresh()
 
 	dir := target.dir
-	_, cmd := m.poll()
+	m, cmd := m.poll()
 
 	// Waiting happens off the update loop so the pane keeps drawing the
 	// server's shutdown log while it saves its world.
@@ -501,13 +509,18 @@ func (m ActivityModel) View() tea.View {
 
 // Hints are the keys this pane responds to.
 func (m ActivityModel) Hints() []styles.Hint {
-	return []styles.Hint{
+	hints := []styles.Hint{
 		{Key: "type", Desc: "server command"},
 		{Key: "enter", Desc: "send"},
 		{Key: "esc", Desc: "clear line"},
 		{Key: "↑/↓", Desc: "scroll"},
-		{Key: "tab", Desc: "switch pane"},
 	}
+
+	if current := m.visible(); current != nil && !current.follow {
+		hints = append(hints, styles.Hint{Key: "end", Desc: "resume following"})
+	}
+
+	return append(hints, styles.Hint{Key: "tab", Desc: "switch pane"})
 }
 
 // emptyMessage explains an empty console.
@@ -528,6 +541,13 @@ func (m ActivityModel) title() string {
 	title := m.Title() + " · " + current.name
 	if current.status != "" {
 		title += " · " + current.status
+	}
+
+	// Scrolling away from the tail stops the view following new output. That
+	// is useful — you are reading something — but it looks exactly like a
+	// stalled console unless it says so.
+	if !current.follow {
+		title += " · paused"
 	}
 	return title
 }

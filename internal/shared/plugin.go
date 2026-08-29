@@ -194,12 +194,31 @@ func downloadFile(sc scope.Scope, url, folder, filename string) error {
 	}
 	defer out.Close()
 
-	_, err = io.Copy(out, resp.Body)
-	if err != nil {
+	// A mod is small next to a server jar, but on a slow connection it is still
+	// worth showing, and it costs one counter.
+	counter := &progressCounter{scope: sc, label: filename, total: resp.ContentLength}
+	sc.Report(filename, 0, resp.ContentLength)
+
+	if _, err = io.Copy(io.MultiWriter(out, counter), resp.Body); err != nil {
 		return fmt.Errorf("failed to write file: %w", err)
 	}
 
+	sc.Report(filename, counter.done, counter.total)
 	return nil
+}
+
+// progressCounter reports how much of a download has arrived.
+type progressCounter struct {
+	scope scope.Scope
+	label string
+	total int64
+	done  int64
+}
+
+func (c *progressCounter) Write(p []byte) (int, error) {
+	c.done += int64(len(p))
+	c.scope.Report(c.label, c.done, c.total)
+	return len(p), nil
 }
 
 // updateConfigWithProject adds the project to the appropriate section in config

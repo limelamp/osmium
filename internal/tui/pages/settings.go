@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/limelamp/osmium/internal/config"
@@ -59,28 +58,22 @@ type SettingsModel struct {
 	inSection bool
 
 	editing settingsField
-	dirIn   textinput.Model
-	ramIn   textinput.Model
+	dir     core.Field
+	ram     core.Field
 	warn    string
+
+	// detail scrolls the right-hand pane. Sections with a cursor follow it;
+	// About has none, so its own keys move this instead.
+	detail core.Scroll
 }
 
 func NewSettingsModel() SettingsModel {
 	cfg, _ := config.LoadConfig()
 
-	dirIn := textinput.New()
-	dirIn.Placeholder = cfg.ServersDir()
-	dirIn.Prompt = "› "
-	dirIn.CharLimit = 300
-
-	ramIn := textinput.New()
-	ramIn.Placeholder = "e.g. 6G, 10G or 3072M"
-	ramIn.Prompt = "› "
-	ramIn.CharLimit = 12
-
 	m := SettingsModel{
-		cfg:   cfg,
-		dirIn: dirIn,
-		ramIn: ramIn,
+		cfg: cfg,
+		dir: core.NewField(cfg.ServersDir()).WithLimit(300),
+		ram: core.NewField("e.g. 6G, 10G or 3072M").WithLimit(12),
 	}
 	m.sections = m.sections.Resize(len(settingsSections), len(settingsSections))
 
@@ -172,44 +165,50 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // updateEditor routes keys to whichever field is open.
 func (m SettingsModel) updateEditor(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "enter":
-		return m.commit()
+	var (
+		field  core.Field
+		result core.FieldResult
+		cmd    tea.Cmd
+	)
 
-	case "esc":
+	if m.editing == fieldDir {
+		field, result, cmd = m.dir.HandleKey(msg)
+		m.dir = field
+	} else {
+		field, result, cmd = m.ram.HandleKey(msg)
+		m.ram = field
+	}
+
+	switch result {
+	case core.FieldCommitted:
+		return m.commit()
+	case core.FieldCancelled:
 		m.editing = fieldNone
 		m.warn = ""
-		m.dirIn.Blur()
-		m.ramIn.Blur()
-		return m, nil
 	}
 
-	var cmd tea.Cmd
-	if m.editing == fieldDir {
-		m.dirIn, cmd = m.dirIn.Update(msg)
-	} else {
-		m.ramIn, cmd = m.ramIn.Update(msg)
-	}
 	return m, cmd
 }
 
 // commit validates and stores whatever the open field holds.
 func (m SettingsModel) commit() (tea.Model, tea.Cmd) {
 	if m.editing == fieldRAM {
-		amount, err := steps.NormaliseRAM(m.ramIn.Value())
+		amount, err := steps.NormaliseRAM(m.ram.Value())
 		if err != nil {
+			// The value is wrong, so the field stays open on it to be fixed.
 			m.warn = err.Error()
-			return m, nil
+
+			field, cmd := m.ram.Open(m.ram.Value())
+			m.ram = field
+			return m, cmd
 		}
 		m.cfg.DefaultRAM = amount
 	} else {
-		m.cfg.DefaultServerDir = strings.TrimSpace(m.dirIn.Value())
+		m.cfg.DefaultServerDir = strings.TrimSpace(m.dir.Value())
 	}
 
 	m.warn = ""
 	m.editing = fieldNone
-	m.dirIn.Blur()
-	m.ramIn.Blur()
 	return m, m.save()
 }
 
@@ -227,15 +226,17 @@ func (m SettingsModel) activate() (tea.Model, tea.Cmd) {
 		switch m.settings.Cursor {
 		case defaultServerDir:
 			m.editing = fieldDir
-			m.dirIn.SetValue(m.cfg.ServersDir())
-			m.dirIn.CursorEnd()
-			return m, m.dirIn.Focus()
+
+			field, cmd := m.dir.Open(m.cfg.ServersDir())
+			m.dir = field
+			return m, cmd
 
 		case defaultRAM:
 			m.editing = fieldRAM
-			m.ramIn.SetValue(m.cfg.DefaultRAM)
-			m.ramIn.CursorEnd()
-			return m, m.ramIn.Focus()
+
+			field, cmd := m.ram.Open(m.cfg.DefaultRAM)
+			m.ram = field
+			return m, cmd
 		}
 	}
 
@@ -320,14 +321,19 @@ func (m SettingsModel) View() tea.View {
 			styles.Hints(sections.ContentWidth(), styles.Hint{Key: "tab", Desc: "switch pane"}),
 	})
 
+	body, scroll := m.detailBody(detail)
+
 	detailPane := styles.Container(styles.ContainerOpts{
 		Width:   detail.Width,
 		Height:  detail.Height,
 		Focused: m.inSection,
 		Title:   settingsSections[m.sections.Cursor],
-		Content: styles.Body(m.detailView(), detail.ContentWidth(), detail.ContentHeight()-1) + "\n" +
+		Content: styles.Body(body, detail.ContentWidth(), detail.ContentHeight()-1) + "\n" +
 			m.hintBar(detail),
-		ShowHelp: true,
+		ShowHelp:      true,
+		ScrollOffset:  scroll.Offset,
+		ScrollTotal:   scroll.Total,
+		ScrollVisible: scroll.Visible,
 	})
 
 	return tea.NewView(lipgloss.JoinHorizontal(lipgloss.Top, sectionsPane, detailPane))
@@ -348,6 +354,7 @@ func (m SettingsModel) hints() []styles.Hint {
 	case m.editing != fieldNone:
 		return []styles.Hint{
 			{Key: "enter", Desc: "save"},
+			{Key: "ctrl+u", Desc: "clear"},
 			{Key: "esc", Desc: "cancel"},
 		}
 
@@ -376,6 +383,33 @@ func (m SettingsModel) Help() []core.HelpSection {
 	}
 
 	return []core.HelpSection{{Title: "Settings — " + pane, Hints: m.hints()}}
+}
+
+// detailBody is the visible part of the section's content, and how much of it
+// is off screen. Content taller than the pane scrolls rather than being cut.
+func (m SettingsModel) detailBody(detail core.Layout) (string, core.Scroll) {
+	rows := strings.Split(m.detailView(), "\n")
+	visible := max(detail.ContentHeight()-1, 1)
+
+	scroll := m.detail.Resize(len(rows), visible)
+	if m.settingsCount() > 0 {
+		// A section with a cursor follows it; the row it is on is the one that
+		// has to stay in view.
+		scroll = scroll.Follow(m.cursorRow())
+	}
+
+	start, end := scroll.Window()
+	return strings.Join(rows[start:end], "\n"), scroll
+}
+
+// cursorRow is the display row the selected setting is drawn on.
+func (m SettingsModel) cursorRow() int {
+	for row, index := range m.settingRows() {
+		if index == m.settings.Cursor {
+			return row
+		}
+	}
+	return 0
 }
 
 // detailView renders the selected section's settings.
@@ -438,12 +472,12 @@ func (m SettingsModel) defaultsView() string {
 
 	dir := value.Render(m.cfg.ServersDir())
 	if m.editing == fieldDir {
-		dir = lipgloss.NewStyle().PaddingLeft(4).Render(m.dirIn.View())
+		dir = lipgloss.NewStyle().PaddingLeft(4).Render(m.dir.View())
 	}
 
 	ram := value.Render(defaultOr(m.cfg.DefaultRAM, "4G"))
 	if m.editing == fieldRAM {
-		ram = lipgloss.NewStyle().PaddingLeft(4).Render(m.ramIn.View())
+		ram = lipgloss.NewStyle().PaddingLeft(4).Render(m.ram.View())
 	}
 
 	return lipgloss.JoinVertical(
@@ -507,8 +541,8 @@ func (m SettingsModel) SetLayout(l core.Layout) tea.Model {
 	m.layout = l
 
 	width := max(m.detailLayout().ContentWidth()-8, 10)
-	m.dirIn.SetWidth(width)
-	m.ramIn.SetWidth(min(width, 24))
+	m.dir = m.dir.SetWidth(width)
+	m.ram = m.ram.SetWidth(min(width, 24))
 
 	return m.syncSettings()
 }

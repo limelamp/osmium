@@ -82,11 +82,15 @@ func (m CreateServerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch msg.String() {
-		// All three mean the same thing: back out of one thing. A step with
-		// somewhere of its own to go — the folder browser — takes the key
-		// first; otherwise the wizard steps back, and only the first step
-		// leaves the wizard behind.
-		case "esc", "backspace", "shift+tab":
+		// Esc leaves. It is the way out of the wizard from wherever you are —
+		// including out of the folder browser — and the guard above means it
+		// only ever gets here when nothing is being typed.
+		case "esc":
+			return m, core.RouteTo("Home")
+
+		// Backspace and shift+tab step back one screen. A step with somewhere
+		// of its own to go — the folder browser — takes the key first.
+		case "backspace", "shift+tab":
 			if handled, updated, cmd := m.stepHandlesBack(msg); handled {
 				m.wizard = updated
 				return m, cmd

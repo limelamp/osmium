@@ -21,8 +21,9 @@ type AgreementsStep struct {
 	config *Config
 	layout core.Layout
 
-	list core.List
-	warn string
+	list   core.List
+	scroll core.Scroll
+	warn   string
 }
 
 func NewAgreementsStep(config *Config) *AgreementsStep {
@@ -50,7 +51,7 @@ func (s *AgreementsStep) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		_, rowIndex := s.rows()
-		index, ok := rowIndex[mouse.Y-s.layout.Y]
+		index, ok := rowIndex[mouse.Y-s.layout.Y+s.scroll.Offset]
 		if !ok {
 			return s, nil
 		}
@@ -98,10 +99,6 @@ func (s *AgreementsStep) toggle() (tea.Model, tea.Cmd) {
 // rows renders the body and reports which display row each option landed on, so
 // the view and the click handling can never disagree about the layout.
 func (s *AgreementsStep) rows() ([]string, map[int]int) {
-	// The link and the blank spacers are the first things to go when the panel
-	// is too short to hold every option comfortably.
-	spacious := s.layout.Height >= 7
-
 	var rows []string
 	index := make(map[int]int, agreementCount)
 
@@ -113,19 +110,15 @@ func (s *AgreementsStep) rows() ([]string, map[int]int) {
 	add(agreementEula, styles.ListRow(s.layout.Width, s.list.Cursor == agreementEula,
 		checkbox(s.config.Eula)+" Accept the Minecraft EULA", ""))
 
-	if spacious {
-		rows = append(rows,
-			lipgloss.NewStyle().Foreground(theme.Inactive).PaddingLeft(6).
-				Render("https://aka.ms/MinecraftEULA"),
-			"")
-	}
+	rows = append(rows,
+		lipgloss.NewStyle().Foreground(theme.Inactive).PaddingLeft(6).
+			Render("https://aka.ms/MinecraftEULA"),
+		"")
 
 	add(agreementAutoRun, styles.ListRow(s.layout.Width, s.list.Cursor == agreementAutoRun,
 		checkbox(s.config.AutoRun)+" Boot the server once it is built", ""))
 
-	if spacious {
-		rows = append(rows, "")
-	}
+	rows = append(rows, "")
 
 	add(agreementContinue, styles.ListRow(s.layout.Width, s.list.Cursor == agreementContinue,
 		"[ Continue ]", ""))
@@ -138,8 +131,20 @@ func (s *AgreementsStep) rows() ([]string, map[int]int) {
 }
 
 func (s *AgreementsStep) View() tea.View {
-	rows, _ := s.rows()
-	return tea.NewView(lipgloss.JoinVertical(lipgloss.Left, rows...))
+	rows, rowIndex := s.rows()
+
+	// The row the cursor is on is the one that has to stay on screen.
+	cursorRow := 0
+	for row, option := range rowIndex {
+		if option == s.list.Cursor {
+			cursorRow = row
+		}
+	}
+
+	s.scroll = s.scroll.Resize(len(rows), s.layout.Height).Follow(cursorRow)
+
+	start, end := s.scroll.Window()
+	return tea.NewView(lipgloss.JoinVertical(lipgloss.Left, rows[start:end]...))
 }
 
 func (s *AgreementsStep) SetLayout(l core.Layout) Step {
@@ -155,8 +160,8 @@ func checkbox(checked bool) string {
 	return "[ ]"
 }
 
-// Scroll reports no scrolling: the options are trimmed to fit instead.
-func (s *AgreementsStep) Scroll() core.Scroll { return core.Scroll{} }
+// Scroll reports how much of the step is off screen.
+func (s *AgreementsStep) Scroll() core.Scroll { return s.scroll }
 
 // Editing reports that the agreements step takes no typed input.
 func (s *AgreementsStep) Editing() bool { return false }

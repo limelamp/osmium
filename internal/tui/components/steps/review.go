@@ -24,6 +24,12 @@ type ReviewStep struct {
 	layout core.Layout
 
 	list core.List
+
+	// scroll is over the rendered rows. It follows the buttons, so they are
+	// always reachable, and page-up/down moves it freely so the summary above
+	// them can be read on a short terminal.
+	scroll core.Scroll
+	manual bool
 }
 
 func NewReviewStep(config *Config) *ReviewStep {
@@ -61,8 +67,17 @@ func (s *ReviewStep) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return s, nil
 
 	case tea.KeyPressMsg:
+		switch msg.String() {
+		case "pgup":
+			s.scroll, s.manual = s.scroll.By(-s.scroll.Visible), true
+			return s, nil
+		case "pgdown":
+			s.scroll, s.manual = s.scroll.By(s.scroll.Visible), true
+			return s, nil
+		}
+
 		if list, handled := s.list.HandleKey(msg.String()); handled {
-			s.list = list
+			s.list, s.manual = list, false
 			return s, nil
 		}
 
@@ -83,8 +98,6 @@ func (s *ReviewStep) activate() (tea.Model, tea.Cmd) {
 }
 
 // rows renders the body and reports the display row the first button sits on.
-// The summary is trimmed from the bottom when the panel is too short, because
-// the buttons have to stay reachable even on a small terminal.
 func (s *ReviewStep) rows() ([]string, int) {
 	summary := []string{
 		s.summaryRow("Name", s.config.Name),
@@ -93,11 +106,6 @@ func (s *ReviewStep) rows() ([]string, int) {
 		s.summaryRow("Version", s.config.Version),
 		s.summaryRow("Memory", s.config.RAM),
 		s.summaryRow("Boot after build", yesNo(s.config.AutoRun)),
-	}
-
-	// Two buttons plus the prompt above them are what must always fit.
-	if room := s.layout.Height - reviewCount - 1; room < len(summary) {
-		summary = summary[:max(room, 0)]
 	}
 
 	rows := append(summary,
@@ -110,8 +118,16 @@ func (s *ReviewStep) rows() ([]string, int) {
 }
 
 func (s *ReviewStep) View() tea.View {
-	rows, _ := s.rows()
-	return tea.NewView(lipgloss.JoinVertical(lipgloss.Left, rows...))
+	rows, buttonRow := s.rows()
+
+	s.scroll = s.scroll.Resize(len(rows), s.layout.Height)
+	if !s.manual {
+		// The button under the cursor is what must stay on screen.
+		s.scroll = s.scroll.Follow(buttonRow + s.list.Cursor)
+	}
+
+	start, end := s.scroll.Window()
+	return tea.NewView(lipgloss.JoinVertical(lipgloss.Left, rows[start:end]...))
 }
 
 // summaryRow renders one label/value line of the summary block.
@@ -141,8 +157,8 @@ func yesNo(value bool) string {
 	return "No"
 }
 
-// Scroll reports no scrolling: the summary is trimmed to fit instead.
-func (s *ReviewStep) Scroll() core.Scroll { return core.Scroll{} }
+// Scroll reports how much of the review is off screen.
+func (s *ReviewStep) Scroll() core.Scroll { return s.scroll }
 
 // Editing reports that the review step takes no typed input.
 func (s *ReviewStep) Editing() bool { return false }
