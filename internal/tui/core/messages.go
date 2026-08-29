@@ -66,6 +66,19 @@ type LogMsg struct {
 	Lines []supervisor.Line
 }
 
+// ThemeChangedMsg says a new theme is in force.
+//
+// The colours themselves are global, so most of the interface picks them up on
+// its next frame without being told. This is for the parts that cannot: a
+// panel holding text it has already rendered, or a component that was handed
+// its styles when it was built.
+type ThemeChangedMsg struct{}
+
+// ThemeChanged announces a new theme to every page.
+func ThemeChanged() tea.Cmd {
+	return func() tea.Msg { return ThemeChangedMsg{} }
+}
+
 // RestartReadyMsg says a server asked to restart has finally exited and may be
 // started again.
 type RestartReadyMsg struct {

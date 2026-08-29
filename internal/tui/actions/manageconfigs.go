@@ -97,11 +97,7 @@ func NewManageConfigsModel() ManageConfigsModel {
 	area.ShowLineNumbers = false
 	area.SetHeight(4)
 
-	// The same steady block the single-line fields use.
-	areaStyles := textarea.DefaultDarkStyles()
-	areaStyles.Cursor.Color = theme.Accent
-	areaStyles.Cursor.Blink = false
-	area.SetStyles(areaStyles)
+	area.SetStyles(core.AreaStyles())
 
 	return ManageConfigsModel{
 		base:    newBase(),
@@ -315,6 +311,10 @@ func (m ManageConfigsModel) View() tea.View {
 	}
 
 	if m.wrapped {
+		// Restyled every frame, so a theme chosen while the app is running
+		// reaches the box being typed into.
+		m.area.SetStyles(core.AreaStyles())
+
 		return m.panelView(m.Title()+" · "+m.key(m.editing),
 			lipgloss.JoinVertical(lipgloss.Left,
 				lipgloss.NewStyle().Foreground(theme.Inactive).Render("Editing a long value:"),

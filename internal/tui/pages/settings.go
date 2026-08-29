@@ -224,7 +224,8 @@ func (m SettingsModel) activate() (tea.Model, tea.Cmd) {
 		selected := theme.ThemeNames[m.settings.Cursor]
 		theme.SetTheme(selected)
 		m.cfg.Theme = selected
-		return m, m.save()
+
+		return m, tea.Batch(m.save(), core.ThemeChanged())
 
 	case sectionDefaults:
 		switch m.settings.Cursor {

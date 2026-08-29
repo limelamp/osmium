@@ -10,6 +10,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/limelamp/osmium/internal/scope"
 	"github.com/limelamp/osmium/internal/tui/styles"
+	"github.com/limelamp/osmium/internal/tui/theme"
 	"golang.org/x/term"
 )
 
@@ -30,6 +31,10 @@ type reporter struct {
 	done  int64
 	total int64
 	shown bool
+
+	// finished is the download whose bar has already been committed, so the
+	// same one is not printed twice.
+	finished string
 
 	stop chan struct{}
 	once sync.Once
@@ -73,11 +78,25 @@ func (r *reporter) Progress(label string, done, total int64) {
 
 	r.label, r.done, r.total = label, done, total
 
-	// A finished download leaves nothing to animate.
+	// A finished download leaves nothing to animate, but its bar stays on
+	// screen: on the command line it is the only record of what was fetched
+	// and how big it was.
+	//
+	// A download usually says it is finished more than once — the last chunk
+	// counted, and then the total reported again by the code that fetched it —
+	// so the bar is committed once for each file rather than once for each
+	// report that it is over.
 	if total > 0 && done >= total {
+		if r.finished != label {
+			r.finished = label
+			r.commit()
+		}
+
 		r.label, r.done, r.total = "", 0, 0
-		r.clear()
+		return
 	}
+
+	r.finished = ""
 }
 
 // Close removes the live line and stops animating it.
@@ -128,6 +147,24 @@ func (r *reporter) draw() {
 
 	fmt.Print("\r\033[K" + lipgloss.NewStyle().MaxWidth(width-1).Render(line))
 	r.shown = true
+}
+
+// commit leaves the live line on screen as a finished one, with a mark in
+// place of the spinner, and moves off it so the next output starts on a clean
+// row. The caller holds the mutex.
+func (r *reporter) commit() {
+	if !r.tty || r.label == "" || r.total <= 0 {
+		return
+	}
+
+	width := terminalWidth()
+
+	line := lipgloss.NewStyle().Foreground(theme.Accent).Render("✓") + " " +
+		trimmed(r.label, width/3)
+	line += "  " + styles.ProgressBar(width-lipgloss.Width(line)-2, r.done, r.total)
+
+	fmt.Println("\r\033[K" + lipgloss.NewStyle().MaxWidth(width-1).Render(line))
+	r.shown = false
 }
 
 // terminalWidth is how wide the terminal is, falling back to a conservative
