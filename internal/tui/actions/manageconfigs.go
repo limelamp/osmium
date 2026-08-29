@@ -97,6 +97,7 @@ func NewManageConfigsModel() ManageConfigsModel {
 	area.SetHeight(4)
 
 	return ManageConfigsModel{
+		base:    newBase(),
 		step:    stepPickFile,
 		editing: -1,
 		field:   core.NewField("Enter a value...").WithPrompt("").SetWidth(30),

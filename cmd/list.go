@@ -52,7 +52,8 @@ Example:
 	},
 }
 
-// state describes what a server is doing, or that it is no longer there.
+// state describes what a server is doing, or that it is no longer there. It is
+// shared with the details command, which prints the same words.
 func state(dir string, exists bool) string {
 	switch {
 	case !exists:

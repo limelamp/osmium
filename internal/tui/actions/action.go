@@ -1,6 +1,8 @@
 package actions
 
 import (
+	"time"
+
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/limelamp/osmium/internal/scope"
@@ -27,6 +29,123 @@ type base struct {
 	err     error
 
 	count int
+
+	// What the panel is doing right now: the row that started an operation,
+	// and the spinner that says it has not finished.
+	busyRow   int
+	busyLabel string
+	spinner   core.Ticker
+	frame     int
+
+	// What it last did, shown for a moment before the hints come back.
+	result    string
+	failed    bool
+	resultAge int
+}
+
+// spinnerInterval is how often the busy indicator advances a frame, and
+// resultBeats is how many of those beats a result line stays up for — about
+// four seconds, long enough to read and short enough not to linger.
+const (
+	spinnerInterval = 100 * time.Millisecond
+	resultBeats     = 40
+)
+
+// newBase returns the shared state a panel starts with.
+func newBase() base {
+	return base{busyRow: -1, spinner: core.NewTicker("action.spinner", spinnerInterval)}
+}
+
+// busy reports whether an operation is running.
+func (b base) busy() bool { return b.busyRow >= 0 }
+
+// begin marks a row as working and runs the operation on it. The spinner beats
+// until the operation reports back.
+func (b base) begin(row int, label string, op func(scope.Scope) error) (base, tea.Cmd) {
+	b.busyRow, b.busyLabel = row, label
+	b.result, b.failed = "", false
+
+	ticker, tick := b.spinner.Restart()
+	b.spinner = ticker
+
+	return b, tea.Batch(Run(b.dir(), label, op), tick)
+}
+
+// finished clears the busy state and records what the operation said, which the
+// panel shows in place of its hints for a few seconds.
+func (b base) finished(msg core.OperationDoneMsg) (base, tea.Cmd) {
+	b.busyRow, b.busyLabel = -1, ""
+
+	result, failed := "", false
+	for _, line := range msg.Lines {
+		if line.Tag == supervisor.TagError {
+			result, failed = line.Text, true
+			break
+		}
+		result = line.Text
+	}
+
+	return b.report(result, failed)
+}
+
+// report puts a line in the panel's footer for a few seconds.
+//
+// The beat that timed the operation goes on timing the line: stopping it here
+// would leave the last thing that happened on screen for good.
+func (b base) report(result string, failed bool) (base, tea.Cmd) {
+	b.result, b.failed, b.resultAge = result, failed, 0
+
+	if result == "" {
+		b.spinner = b.spinner.Stop()
+		return b, nil
+	}
+
+	ticker, tick := b.spinner.Restart()
+	b.spinner = ticker
+	return b, tick
+}
+
+// common handles the messages every panel shares: the spinner beat, and the
+// ageing of the result line. It reports whether the message was one of them.
+func (b base) common(msg tea.Msg) (base, tea.Cmd, bool) {
+	tick, ok := msg.(core.TickMsg)
+	if !ok {
+		return b, nil, false
+	}
+
+	spinner, ours := b.spinner.Accepts(tick)
+	if !ours {
+		return b, nil, false
+	}
+	b.spinner = spinner
+
+	if b.busy() {
+		b.frame++
+
+		armed, cmd := b.spinner.Arm()
+		b.spinner = armed
+		return b, cmd, true
+	}
+
+	// Not busy any more: the beats that remain are what times the result line
+	// out, and they stop once it has gone.
+	b.resultAge++
+	if b.resultAge >= resultBeats {
+		b.result = ""
+		return b, nil, true
+	}
+
+	armed, cmd := b.spinner.Arm()
+	b.spinner = armed
+	return b, cmd, true
+}
+
+// rowMarker is the spinner drawn on the row an operation is running from.
+func (b base) rowMarker(index int) string {
+	if b.busyRow != index {
+		return ""
+	}
+	return styles.Spinner(b.frame) + " "
 }
 
 // dir is the directory the panel operates in: the selected server's folder, or
@@ -65,12 +184,28 @@ func (b base) handleMouse(msg tea.MouseMsg) (base, bool) {
 	return b, activated
 }
 
-// footer renders the bottom line of a panel: the error when there is one, and
-// the hint bar otherwise.
+// footer renders the bottom line of a panel: whatever it is doing, or what it
+// last did, and the hints when it is neither.
 func (b base) footer(hints ...styles.Hint) string {
-	if b.err != nil {
+	switch {
+	case b.err != nil:
 		return styles.Error(b.err)
+
+	case b.busy():
+		return styles.Spinner(b.frame) + " " +
+			lipgloss.NewStyle().Foreground(theme.Inactive).Render(b.busyLabel)
+
+	case b.result != "":
+		mark, colour := "✓ ", theme.Accent
+		if b.failed {
+			mark, colour = "✕ ", styles.ErrorColor
+		}
+
+		return lipgloss.NewStyle().Foreground(colour).
+			MaxWidth(max(b.layout.ContentWidth(), 1)).
+			Render(mark + b.result)
 	}
+
 	return styles.Hints(b.layout.ContentWidth(), hints...)
 }
 
@@ -87,6 +222,23 @@ func (b base) panelView(title string, body string, hints ...styles.Hint) tea.Vie
 		ScrollOffset:  b.list.Scroll.Offset,
 		ScrollTotal:   b.list.Scroll.Total,
 		ScrollVisible: b.list.Scroll.Visible,
+	}))
+}
+
+// panelViewScrolled draws a body that scrolls, so the container can show how
+// much of it is off screen.
+func (b base) panelViewScrolled(title, body string, scroll core.Scroll, hints ...styles.Hint) tea.View {
+	content := styles.Body(body, b.layout.ContentWidth(), b.layout.ContentHeight()-1)
+
+	return tea.NewView(styles.Container(styles.ContainerOpts{
+		Width:         b.layout.Width,
+		Height:        b.layout.Height,
+		Focused:       b.isFocus,
+		Title:         title,
+		Content:       content + "\n" + b.footer(hints...),
+		ScrollOffset:  scroll.Offset,
+		ScrollTotal:   scroll.Total,
+		ScrollVisible: scroll.Visible,
 	}))
 }
 

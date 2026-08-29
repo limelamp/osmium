@@ -7,8 +7,10 @@ import (
 	"sync"
 	"time"
 
+	"charm.land/lipgloss/v2"
 	"github.com/limelamp/osmium/internal/scope"
 	"github.com/limelamp/osmium/internal/tui/styles"
+	"golang.org/x/term"
 )
 
 // reporter draws what a long command is doing: its output as it arrives, and
@@ -108,18 +110,34 @@ func (r *reporter) animate() {
 }
 
 // draw renders the live line in place. The caller holds the mutex.
+//
+// It has to fit on one row: a line wider than the terminal wraps, and then the
+// carriage return that should have overwritten it only returns to the start of
+// its last piece, leaving a trail of half-drawn bars behind.
 func (r *reporter) draw() {
 	if !r.tty || r.label == "" {
 		return
 	}
 
-	line := styles.Spinner(r.frame) + " " + r.label
+	width := terminalWidth()
+	line := styles.Spinner(r.frame) + " " + trimmed(r.label, width/3)
+
 	if r.total > 0 {
-		line += "  " + styles.ProgressBar(78, r.done, r.total)
+		line += "  " + styles.ProgressBar(width-lipgloss.Width(line)-2, r.done, r.total)
 	}
 
-	fmt.Print("\r\033[K" + line)
+	fmt.Print("\r\033[K" + lipgloss.NewStyle().MaxWidth(width-1).Render(line))
 	r.shown = true
+}
+
+// terminalWidth is how wide the terminal is, falling back to a conservative
+// width when it cannot be asked.
+func terminalWidth() int {
+	width, _, err := term.GetSize(int(os.Stdout.Fd()))
+	if err != nil || width <= 0 {
+		return 80
+	}
+	return width
 }
 
 // clear wipes the live line so ordinary output lands on a clean row. The caller
@@ -160,10 +178,10 @@ func (r *reporter) busy(label string) func() {
 	}
 }
 
-// trimmed keeps a label short enough for one line.
-func trimmed(label string) string {
-	if len(label) <= 48 {
+// trimmed keeps a label short enough to leave room for the bar beside it.
+func trimmed(label string, width int) string {
+	if width < 8 || len(label) <= width {
 		return label
 	}
-	return "…" + strings.TrimSpace(label[len(label)-47:])
+	return "…" + strings.TrimSpace(label[len(label)-(width-1):])
 }

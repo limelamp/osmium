@@ -1,11 +1,13 @@
 package tui
 
 import (
+	"os"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/limelamp/osmium/internal/shared"
 	"github.com/limelamp/osmium/internal/tui/components"
 	"github.com/limelamp/osmium/internal/tui/components/steps"
 	"github.com/limelamp/osmium/internal/tui/core"
@@ -70,20 +72,26 @@ func TestHomeMenuClickSelectsTheRowUnderThePointer(t *testing.T) {
 }
 
 // The home page is centred vertically, so anything that changes its height —
-// the servers box appearing when the list loads — moves the menu. The rows it
-// answers clicks on have to move with it.
+// the running-servers box appearing — moves the menu. The rows it answers
+// clicks on have to move with it.
 func TestHomeMenuClickAfterServersLoad(t *testing.T) {
 	layout := core.Layout{Width: 120, Height: 40}
 
+	// A server counts as running when its folder holds a lock naming a live
+	// process, so the test lays claim to one with its own pid.
+	dir := t.TempDir()
+	if err := shared.WriteLockPIDIn(dir, os.Getpid()); err != nil {
+		t.Fatalf("could not stage a running server: %v", err)
+	}
+
 	var home tea.Model = pages.NewHomeModel(storage.NewServerStore()).SetLayout(layout)
 	home, _ = home.Update(core.LoadedServersMsg{Servers: []storage.Server{
-		{Name: "Alpha", Path: "/tmp/alpha"},
-		{Name: "Beta", Path: "/tmp/beta"},
+		{Name: "Alpha", Path: dir},
 	}})
 
 	rows := screen(home.View().Content)
 	if !containsRow(rows, "Alpha") {
-		t.Fatalf("the servers box was not drawn:\n%s", strings.Join(rows, "\n"))
+		t.Fatalf("the running server was not drawn:\n%s", strings.Join(rows, "\n"))
 	}
 
 	y := rowOf(t, rows, layout, "Settings")

@@ -102,7 +102,10 @@ func (m HomeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		armed, cmd := status.Arm()
 		m.status = armed
-		return m.refreshStatus(), cmd
+
+		// A server going up or down changes how tall the page is, and the page
+		// is centred, so the menu moves with it.
+		return m.refreshStatus().relayout(), cmd
 
 	case tea.KeyPressMsg:
 		switch msg.String() {
@@ -179,33 +182,47 @@ func (m HomeModel) content() string {
 	return lipgloss.JoinVertical(lipgloss.Left, blocks...)
 }
 
-// serversPane lists the servers under the menu, as many as there is room for.
-// It is left out entirely when there are none, so a first run is not greeted by
-// an empty box.
+// serversPane lists the servers that are running, as many as there is room for.
+//
+// Only the running ones: a stopped server is not news, and the box is left out
+// altogether when nothing is up, so opening Osmium on a quiet machine is not
+// greeted by an empty frame.
 func (m HomeModel) serversPane(width int) string {
-	if len(m.servers) == 0 {
+	running := m.runningServers()
+	if len(running) == 0 {
 		return ""
 	}
 
-	rows := make([]string, 0, len(m.servers))
-	for i, server := range m.servers[:min(len(m.servers), m.serverRows())] {
+	rows := make([]string, 0, len(running))
+	for _, server := range running[:min(len(running), m.serverRows())] {
 		rows = append(rows, styles.ListRow(width-4, false,
-			components.ServerName(server, i < len(m.running) && m.running[i]),
+			components.ServerName(server, true),
 			components.ServerDetails(server),
 		))
 	}
 
-	if hidden := len(m.servers) - len(rows); hidden > 0 {
+	if hidden := len(running) - len(rows); hidden > 0 {
 		rows = append(rows, lipgloss.NewStyle().Foreground(theme.Inactive).
-			Render("  and "+plural(hidden, "more server")))
+			Render("  and "+plural(hidden, "more")))
 	}
 
 	return styles.Container(styles.ContainerOpts{
 		Width:   width,
 		Height:  len(rows) + 2,
-		Title:   "Servers",
+		Title:   "Running",
 		Content: lipgloss.JoinVertical(lipgloss.Left, rows...),
 	})
+}
+
+// runningServers are the servers that currently have a supervisor.
+func (m HomeModel) runningServers() []storage.Server {
+	running := make([]storage.Server, 0, len(m.servers))
+	for i, server := range m.servers {
+		if i < len(m.running) && m.running[i] {
+			running = append(running, server)
+		}
+	}
+	return running
 }
 
 // serverRows is how many servers fit under the logo, the menu and the hints.

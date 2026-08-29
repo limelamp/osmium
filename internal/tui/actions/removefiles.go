@@ -22,6 +22,7 @@ type RemoveFilesModel struct {
 
 func NewRemoveFilesModel() RemoveFilesModel {
 	return RemoveFilesModel{
+		base:     newBase(),
 		selected: make(map[int]bool),
 	}
 }

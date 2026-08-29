@@ -38,6 +38,7 @@ type DestroyModel struct {
 
 func NewDestroyModel(store *storage.ServerStore) DestroyModel {
 	m := DestroyModel{
+		base:         newBase(),
 		store:        store,
 		keepManifest: true,
 		confirm:      core.NewField("type the server's name").WithLimit(60),

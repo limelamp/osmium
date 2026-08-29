@@ -20,6 +20,7 @@ type GenRunScriptModel struct {
 
 func NewGenRunScriptModel() GenRunScriptModel {
 	m := GenRunScriptModel{
+		base:    newBase(),
 		options: []string{"Recommended settings", "Detailed"},
 	}
 	m.base = m.setCount(len(m.options))

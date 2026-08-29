@@ -46,8 +46,8 @@ func TestActionsMenuWrapsPastHeadings(t *testing.T) {
 		SetLayout(layout).SetFocus(true).(components.ActionsModel)
 
 	// The cursor starts on the first entry, under the first heading.
-	if selected := selectedRow(actions); selected != "Start server" {
-		t.Fatalf("the menu opened on %q, want Start server", selected)
+	if selected := selectedRow(actions); selected != "Server details" {
+		t.Fatalf("the menu opened on %q, want Server details", selected)
 	}
 
 	updated, _ := actions.Update(press(tea.KeyUp))
@@ -56,7 +56,7 @@ func TestActionsMenuWrapsPastHeadings(t *testing.T) {
 	}
 
 	updated, _ = updated.(components.ActionsModel).Update(press(tea.KeyDown))
-	if selected := selectedRow(updated.(components.ActionsModel)); selected != "Start server" {
+	if selected := selectedRow(updated.(components.ActionsModel)); selected != "Server details" {
 		t.Errorf("down from the last entry selected %q, want the first entry", selected)
 	}
 }

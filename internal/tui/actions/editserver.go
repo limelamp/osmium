@@ -39,6 +39,7 @@ type EditServerModel struct {
 
 func NewEditServerModel(store *storage.ServerStore) EditServerModel {
 	m := EditServerModel{
+		base:  newBase(),
 		store: store,
 		row:   -1,
 		field: core.NewField("").WithLimit(60),

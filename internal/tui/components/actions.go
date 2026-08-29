@@ -1,6 +1,7 @@
 package components
 
 import (
+	"fmt"
 	"strconv"
 	"time"
 
@@ -24,7 +25,7 @@ import (
 // growing switch.
 type actionEntry struct {
 	label    string
-	activate func(m ActionsModel) tea.Cmd
+	activate func(m *ActionsModel) tea.Cmd
 	badge    func(m ActionsModel) string
 }
 
@@ -39,27 +40,34 @@ type actionGroup struct {
 // is doing, what is installed on it, how it is set up, and what cannot be
 // undone — kept apart so a destructive row is never next to a routine one.
 var actionGroups = []actionGroup{
+	{"SERVER", []actionEntry{
+		{label: "Server details", badge: func(m ActionsModel) string { return m.engine },
+			activate: func(*ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewDetailsModel()) }},
+		{label: "Players", badge: func(m ActionsModel) string { return m.online },
+			activate: func(*ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewPlayersModel()) }},
+	}},
+
 	{"PROCESS", []actionEntry{
 		{label: "Start server", badge: runningDot,
-			activate: func(m ActionsModel) tea.Cmd { return core.ControlServer(core.ServerStart, m.server) }},
+			activate: func(m *ActionsModel) tea.Cmd { return core.ControlServer(core.ServerStart, m.server) }},
 		{label: "Stop server",
-			activate: func(m ActionsModel) tea.Cmd { return core.ControlServer(core.ServerStop, m.server) }},
+			activate: func(m *ActionsModel) tea.Cmd { return core.ControlServer(core.ServerStop, m.server) }},
 		{label: "Restart server",
-			activate: func(m ActionsModel) tea.Cmd { return core.ControlServer(core.ServerRestart, m.server) }},
+			activate: func(m *ActionsModel) tea.Cmd { return core.ControlServer(core.ServerRestart, m.server) }},
 	}},
 
 	{"CONTENT", []actionEntry{
 		{label: "Mods", badge: func(m ActionsModel) string { return m.count(m.mods) },
-			activate: func(ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewModManagementModel()) }},
+			activate: func(*ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewModManagementModel()) }},
 		{label: "Plugins", badge: func(m ActionsModel) string { return m.count(m.plugins) },
-			activate: func(ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewPluginManagementModel()) }},
-		{label: "Install everything tracked", activate: func(m ActionsModel) tea.Cmd {
+			activate: func(*ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewPluginManagementModel()) }},
+		{label: "Install everything tracked", activate: func(m *ActionsModel) tea.Cmd {
 			return m.run("Installing tracked mods and plugins...", shared.InstallProjectsFromConfig)
 		}},
-		{label: "Track installed files", activate: func(m ActionsModel) tea.Cmd {
+		{label: "Track installed files", activate: func(m *ActionsModel) tea.Cmd {
 			return m.run("Tracking untracked mods and plugins...", shared.TrackProjects)
 		}},
-		{label: "Update everything", activate: func(m ActionsModel) tea.Cmd {
+		{label: "Update everything", activate: func(m *ActionsModel) tea.Cmd {
 			return m.run("Updating everything installed...", func(sc scope.Scope) error {
 				return shared.UpdateAllProjects(sc, "all")
 			})
@@ -68,20 +76,20 @@ var actionGroups = []actionGroup{
 
 	{"CONFIG", []actionEntry{
 		{label: "Edit server", badge: func(m ActionsModel) string { return m.memory },
-			activate: func(m ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewEditServerModel(m.store)) }},
+			activate: func(m *ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewEditServerModel(m.store)) }},
 		{label: "Manage configs",
-			activate: func(ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewManageConfigsModel()) }},
+			activate: func(*ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewManageConfigsModel()) }},
 		{label: "Generate run script",
-			activate: func(ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewGenRunScriptModel()) }},
-		{label: "Migrate version", badge: func(m ActionsModel) string { return m.engine },
-			activate: func(m ActionsModel) tea.Cmd { return core.RouteToServer("Migrate", m.server) }},
+			activate: func(*ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewGenRunScriptModel()) }},
+		{label: "Migrate version",
+			activate: func(m *ActionsModel) tea.Cmd { return core.RouteToServer("Migrate", m.server) }},
 	}},
 
 	{"DANGER", []actionEntry{
 		{label: "Remove files",
-			activate: func(ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewRemoveFilesModel()) }},
+			activate: func(*ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewRemoveFilesModel()) }},
 		{label: "Destroy server",
-			activate: func(m ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewDestroyModel(m.store)) }},
+			activate: func(m *ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewDestroyModel(m.store)) }},
 	}},
 }
 
@@ -133,6 +141,12 @@ type ActionsModel struct {
 	rows []row
 	list core.List
 
+	// The row a whole-server operation is running from, and the spinner that
+	// says it has not finished.
+	busyRow int
+	spinner core.Ticker
+	frame   int
+
 	// What the indicators show, refreshed on a timer rather than on every
 	// frame: probing a process and reading a manifest are far too expensive to
 	// do while drawing.
@@ -141,10 +155,16 @@ type ActionsModel struct {
 	plugins int
 	engine  string
 	memory  string
+	online  string
 }
 
 func NewActionsModel(store *storage.ServerStore) ActionsModel {
-	m := ActionsModel{store: store, rows: actionRows()}
+	m := ActionsModel{
+		store:   store,
+		rows:    actionRows(),
+		busyRow: -1,
+		spinner: core.NewTicker("menu.spinner", 100*time.Millisecond),
+	}
 	m.list = m.list.Resize(len(m.rows), m.visibleRows())
 	return m.settle(1)
 }
@@ -205,13 +225,14 @@ func (m ActionsModel) current() *actionEntry {
 	return m.rows[m.list.Cursor].entry
 }
 
-// activate runs the entry under the cursor.
-func (m ActionsModel) activate() tea.Cmd {
+// activate runs the entry under the cursor, returning the model it left behind
+// — an operation marks the row it started from as working.
+func (m ActionsModel) activate() (ActionsModel, tea.Cmd) {
 	entry := m.current()
 	if entry == nil {
-		return nil
+		return m, nil
 	}
-	return entry.activate(m)
+	return m, entry.activate(&m)
 }
 
 // moveFor applies one of the shared navigation keys and then settles the
@@ -228,17 +249,24 @@ func (m ActionsModel) moveFor(key string, direction int) ActionsModel {
 	return m.settle(direction)
 }
 
-// run executes a whole-server operation, reporting into the Activity pane.
-func (m ActionsModel) run(label string, op func(scope.Scope) error) tea.Cmd {
+// run executes a whole-server operation, reporting into the Activity pane and
+// marking the row it was started from as working.
+func (m *ActionsModel) run(label string, op func(scope.Scope) error) tea.Cmd {
 	if m.server == nil {
 		return nil
 	}
-	return actions.Run(m.server.Path, label, op)
+
+	m.busyRow = m.list.Cursor
+
+	ticker, tick := m.spinner.Restart()
+	m.spinner = ticker
+
+	return tea.Batch(actions.Run(m.server.Path, label, op), tick)
 }
 
 // refreshDetails re-reads what the indicators show.
 func (m ActionsModel) refreshDetails() ActionsModel {
-	m.running, m.mods, m.plugins, m.engine, m.memory = false, 0, 0, "", ""
+	m.running, m.mods, m.plugins, m.engine, m.memory, m.online = false, 0, 0, "", "", ""
 	if m.server == nil || m.server.Path == "" {
 		return m
 	}
@@ -250,13 +278,35 @@ func (m ActionsModel) refreshDetails() ActionsModel {
 		m.engine = conf.Loader + " " + conf.Version
 		m.memory = conf.AllocatedRAM
 	}
+
+	if m.running {
+		if players, err := shared.Players(m.server.Path); err == nil {
+			m.online = fmt.Sprintf("%d known", len(players))
+		}
+	}
 	return m
 }
 
 func (m ActionsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case core.OperationDoneMsg:
+		m.busyRow = -1
+		m.spinner = m.spinner.Stop()
+		return m.refreshDetails(), nil
+
 	case core.RefreshMsg:
 		return m.refreshDetails(), nil
+
+	case core.TickMsg:
+		spinner, ours := m.spinner.Accepts(msg)
+		if !ours || m.busyRow < 0 {
+			return m, nil
+		}
+
+		m.frame++
+		armed, cmd := spinner.Arm()
+		m.spinner = armed
+		return m, cmd
 
 	case detailTickMsg:
 		return m.refreshDetails(), detailTick()
@@ -272,7 +322,7 @@ func (m ActionsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.list = list
 
 		if activated {
-			return m, m.activate()
+			return m.activate()
 		}
 		return m, nil
 
@@ -288,7 +338,7 @@ func (m ActionsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if msg.String() == "enter" {
-			return m, m.activate()
+			return m.activate()
 		}
 	}
 
@@ -340,7 +390,12 @@ func (m ActionsModel) renderRow(index int) string {
 		badge = current.entry.badge(m)
 	}
 
-	return styles.ListRow(m.layout.ContentWidth(), index == m.list.Cursor, current.entry.label, badge)
+	label := current.entry.label
+	if index == m.busyRow {
+		label = styles.Spinner(m.frame) + " " + label
+	}
+
+	return styles.ListRow(m.layout.ContentWidth(), index == m.list.Cursor, label, badge)
 }
 
 // runningDot marks the process rows when the server is up.

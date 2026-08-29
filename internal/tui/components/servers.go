@@ -1,8 +1,6 @@
 package components
 
 import (
-	"fmt"
-	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -262,16 +260,11 @@ func ServerName(server storage.Server, running bool) string {
 	return dot + " " + server.Name
 }
 
-// ServerDetails is what a server runs on: its engine, version and memory, plus
-// how long it has been up when it is running.
+// ServerDetails is how long a server has been up, and nothing when it is not
+// running. What a server is made of belongs on its details panel; a list of
+// servers is for seeing which of them are up.
 func ServerDetails(server storage.Server) string {
-	details := fmt.Sprintf("%s %s · %s",
-		strings.ToUpper(server.Type), server.Version, server.Memory)
-
-	if uptime := supervisor.Uptime(server.Path); uptime != "" {
-		details += " · " + uptime
-	}
-	return details
+	return supervisor.Uptime(server.Path)
 }
 
 // isServerRunning reports whether a server directory has a live supervisor.

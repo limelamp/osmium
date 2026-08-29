@@ -373,9 +373,12 @@ func Hints(width int, hints ...Hint) string {
 	return bar
 }
 
-// errorColor is the one alarming colour in the app: it stays the same whatever
+// ErrorColor is the one alarming colour in the app: it stays the same whatever
 // theme is active, because a failure should not be mistakable for decoration.
-var errorColor = lipgloss.Color("#FF5555")
+var ErrorColor = lipgloss.Color("#FF5555")
+
+// errorColor is the unexported spelling used inside this package.
+var errorColor = ErrorColor
 
 // Error renders an error line in a consistently alarming colour.
 func Error(err error) string {
@@ -427,6 +430,9 @@ func ProgressBar(width int, done, total int64) string {
 
 	return bar.ViewAs(ratio) + figures
 }
+
+// FormatBytes renders a byte count the way a download is usually quoted.
+func FormatBytes(count int64) string { return formatBytes(count) }
 
 // formatBytes renders a byte count the way a download is usually quoted.
 func formatBytes(count int64) string {

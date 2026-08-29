@@ -56,8 +56,10 @@ type ProjectsModel struct {
 	kind  projectKind
 	state projectState
 
-	// installed is the slug list read from the server's osmium.json.
+	// installed is the slug list read from the server's osmium.json, and
+	// versions is what is installed for each of them.
 	installed []string
+	versions  map[string]string
 	selected  map[int]bool
 
 	query core.Field
@@ -75,6 +77,7 @@ func NewPluginManagementModel() ProjectsModel {
 
 func newProjectsModel(kind projectKind) ProjectsModel {
 	m := ProjectsModel{
+		base:     newBase(),
 		kind:     kind,
 		selected: make(map[int]bool),
 		query: core.NewField("Enter " + kind.noun + " id or slug...").
@@ -114,15 +117,16 @@ func (m ProjectsModel) reload() ProjectsModel {
 // mods leaves the other two on screen, freshly read, rather than bouncing back
 // to the menu.
 func (m ProjectsModel) refresh() ProjectsModel {
-	m.installed = nil
+	m.installed, m.versions = nil, map[string]string{}
 
 	if conf, err := config.ReadConfigIn(m.dir()); err == nil {
 		tracked := conf.Mods
 		if m.kind.folder == "plugins" {
 			tracked = conf.Plugins
 		}
-		for slug := range tracked {
+		for slug, project := range tracked {
 			m.installed = append(m.installed, slug)
+			m.versions[slug] = project.VersionNumber
 		}
 		sort.Strings(m.installed)
 	}
@@ -157,9 +161,19 @@ func (m ProjectsModel) itemCount() int {
 }
 
 func (m ProjectsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if updated, cmd, handled := m.base.common(msg); handled {
+		m.base = updated
+		return m, cmd
+	}
+
 	switch msg := msg.(type) {
+	case core.OperationDoneMsg:
+		// The operation has finished: say so, and re-read what is tracked.
+		updated, cmd := m.base.finished(msg)
+		m.base = updated
+		return m.refresh(), cmd
+
 	case core.RefreshMsg:
-		// An install or a removal has finished; what is tracked has changed.
 		return m.refresh(), nil
 
 	case tea.MouseMsg:
@@ -245,13 +259,13 @@ func (m ProjectsModel) activate() (tea.Model, tea.Cmd) {
 		case 1:
 			return m.gotoState(stateRemove), nil
 		case 2:
-			return m, m.run("Installing tracked "+m.kind.noun+"s...", func(sc scope.Scope) error {
+			return m.start(2, "Installing tracked "+m.kind.noun+"s…", func(sc scope.Scope) error {
 				return shared.InstallProjectsFromConfig(sc)
 			})
 		case 3:
 			return m.gotoState(stateUpdate), nil
 		case 4:
-			return m, m.run("Tracking untracked "+m.kind.noun+"s...", func(sc scope.Scope) error {
+			return m.start(4, "Identifying jars…", func(sc scope.Scope) error {
 				return shared.TrackProjects(sc)
 			})
 		}
@@ -262,7 +276,9 @@ func (m ProjectsModel) activate() (tea.Model, tea.Cmd) {
 			return m.reopenQuery()
 		}
 		m.query = m.query.SetValue("")
-		return m.gotoState(stateOperations), m.run("Adding "+query+"...", func(sc scope.Scope) error {
+		m = m.gotoState(stateOperations)
+
+		return m.start(0, "Adding "+query+"…", func(sc scope.Scope) error {
 			return shared.AddProjectByID(sc, query, folder)
 		})
 
@@ -271,24 +287,26 @@ func (m ProjectsModel) activate() (tea.Model, tea.Cmd) {
 		if len(slugs) == 0 {
 			return m, nil
 		}
-		return m, m.run("Removing "+m.kind.noun+"s...", func(sc scope.Scope) error {
-			for _, slug := range slugs {
-				if err := shared.RemoveProjectByID(sc, slug, folder); err != nil {
-					return err
+		return m.start(m.list.Cursor, "Removing "+plural(len(slugs), m.kind.noun)+"…",
+			func(sc scope.Scope) error {
+				for _, slug := range slugs {
+					if err := shared.RemoveProjectByID(sc, slug, folder); err != nil {
+						return err
+					}
+					sc.Logf("Removed %s", slug)
 				}
-				sc.Logf("Removed %s", slug)
-			}
-			return nil
-		})
+				return nil
+			})
 
 	case stateUpdate:
 		if m.list.Cursor == 0 {
-			return m, m.run("Updating all "+m.kind.noun+"s...", func(sc scope.Scope) error {
+			return m.start(0, "Updating every "+m.kind.noun+"…", func(sc scope.Scope) error {
 				return shared.UpdateAllProjects(sc, folder)
 			})
 		}
+
 		slug := m.installed[m.list.Cursor-1]
-		return m, m.run("Updating "+slug+"...", func(sc scope.Scope) error {
+		return m.start(m.list.Cursor, "Updating "+slug+"…", func(sc scope.Scope) error {
 			return shared.UpdateProject(sc, slug, folder)
 		})
 	}
@@ -305,6 +323,21 @@ func (m ProjectsModel) toggleAll() ProjectsModel {
 		m.selected[i] = marked < len(m.installed)
 	}
 	return m
+}
+
+// start runs an operation from a row, so the row can show that it is working.
+func (m ProjectsModel) start(row int, label string, op func(scope.Scope) error) (tea.Model, tea.Cmd) {
+	updated, cmd := m.base.begin(row, label, op)
+	m.base = updated
+	return m, cmd
+}
+
+// plural renders a count with its noun.
+func plural(count int, noun string) string {
+	if count == 1 {
+		return "1 " + noun
+	}
+	return fmt.Sprintf("%d %ss", count, noun)
 }
 
 // reopenQuery puts the keyboard back in the id field, which is where it belongs
@@ -352,23 +385,47 @@ func (m ProjectsModel) View() tea.View {
 			if m.selected[i] {
 				label = lipgloss.NewStyle().Foreground(theme.Accent).Render("✓ " + m.installed[i])
 			}
-			return m.row(i, label, "")
+			return m.row(i, m.base.rowMarker(i)+label, m.versions[m.installed[i]])
 		}, m.Hints()...)
 
 	case stateUpdate:
 		return m.listView(m.Title()+" · Update", func(i int) string {
 			if i == 0 {
-				return m.row(i, "All "+m.kind.noun+"s", "")
+				return m.row(i, m.base.rowMarker(0)+"All "+m.kind.noun+"s", "")
 			}
-			return m.row(i, m.installed[i-1], "")
+			slug := m.installed[i-1]
+			return m.row(i, m.base.rowMarker(i)+slug, m.versions[slug])
 		}, m.Hints()...)
 
 	default:
 		labels := m.operations()
-		return m.listView(m.Title(), func(i int) string {
-			return m.row(i, labels[i], "")
-		}, m.Hints()...)
+
+		operations := m.list.Render(func(i int) string {
+			return m.row(i, m.base.rowMarker(i)+labels[i], "")
+		})
+
+		return m.panelView(m.Title(),
+			lipgloss.JoinVertical(lipgloss.Left, operations, "", m.installedList()),
+			m.Hints()...)
 	}
+}
+
+// installedList names what the server has tracked, with the version of each.
+// Seeing it without opening anything is the point of the panel.
+func (m ProjectsModel) installedList() string {
+	muted := lipgloss.NewStyle().Foreground(theme.Inactive)
+
+	if len(m.installed) == 0 {
+		return muted.Render("INSTALLED (0)")
+	}
+
+	rows := []string{muted.Render("INSTALLED (" + fmt.Sprint(len(m.installed)) + ")")}
+	for _, slug := range m.installed {
+		rows = append(rows, styles.ListRow(m.layout.ContentWidth(), false,
+			"  "+slug, m.versions[slug]))
+	}
+
+	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
 
 // Hints are the keys this panel responds to, which depend on which of its

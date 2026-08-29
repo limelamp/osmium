@@ -182,10 +182,10 @@ func (m ManageServersModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		activity, cmd := m.activity.Update(core.LogMsg{Lines: msg.Lines})
 		m.activity = activity.(components.ActivityModel)
 
-		action, refreshCmd := m.activeAction.Update(core.RefreshMsg{})
+		action, actionCmd := m.activeAction.Update(msg)
 		m.activeAction = action.(core.Action)
 
-		return m, tea.Batch(cmd, refreshCmd)
+		return m, tea.Batch(cmd, actionCmd)
 
 	case core.SelectServerMsg:
 		// Panels reload from disk when they are handed a server, so only a real
