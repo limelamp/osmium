@@ -167,6 +167,21 @@ func (w wizard) progressTrack() string {
 	return "  " + filled + strings.Repeat("─", len(w.stages)-w.active-1)
 }
 
+// ContentAt is the wizard's panel: one box, so a drag anywhere in it selects
+// from the step being shown. The stage strip and the heading are pinned above
+// the step's body, which is the part that scrolls.
+func (w wizard) ContentAt(x, y int) (core.Pane, bool) {
+	if !w.layout.Hit(x, y) {
+		return core.Pane{}, false
+	}
+
+	return core.Pane{
+		Bounds: w.layout.Text(),
+		Fixed:  2 + headingRows,
+		Offset: w.current().Scroll().Offset,
+	}, true
+}
+
 // navHints are the movement hints every wizard shows, with the back key named
 // after whichever one works on the step in view.
 func (w wizard) navHints() []styles.Hint {

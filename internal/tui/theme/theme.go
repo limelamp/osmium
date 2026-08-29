@@ -3,6 +3,7 @@
 package theme
 
 import (
+	"fmt"
 	"image/color"
 
 	"charm.land/lipgloss/v2"
@@ -89,9 +90,16 @@ var ThemeNames = []string{
 // Mutable package-level styling hooks.
 // Because your rendering helpers retrieve these at runtime, modifying them changes the UI.
 var (
-	Primary      = Themes["Teal"].Primary
-	Inactive     = Themes["Teal"].Inactive
-	Accent       = Themes["Teal"].Accent
+	Primary  = Themes["Teal"].Primary
+	Inactive = Themes["Teal"].Inactive
+	Accent   = Themes["Teal"].Accent
+
+	// Selection is the wash a mouse selection is drawn on. It is the theme's
+	// own inactive tone taken down towards black: dark enough that the text it
+	// covers keeps its colours and stays readable, distinct enough to show
+	// what is selected without a block of accent colour shouting over it.
+	Selection = dim(Themes["Teal"].Inactive)
+
 	CurrentTheme = "Teal"
 )
 
@@ -104,5 +112,15 @@ func SetTheme(themeName string) {
 	Primary = theme.Primary
 	Inactive = theme.Inactive
 	Accent = theme.Accent
+	Selection = dim(theme.Inactive)
 	CurrentTheme = theme.Name
+}
+
+// dim takes a colour halfway to black, keeping its hue.
+func dim(c color.Color) color.Color {
+	const keep = 0.5
+
+	r, g, b, _ := c.RGBA()
+	return lipgloss.Color(fmt.Sprintf("#%02X%02X%02X",
+		uint8(float64(r>>8)*keep), uint8(float64(g>>8)*keep), uint8(float64(b>>8)*keep)))
 }

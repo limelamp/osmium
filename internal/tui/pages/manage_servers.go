@@ -493,6 +493,21 @@ func (m ManageServersModel) activityLayout() core.Layout {
 	}
 }
 
+// ContentAt is the pane a point falls in, which is what a drag selects text
+// from. Each pane answers for its own text, so a selection follows the content
+// when the pane scrolls under it.
+func (m ManageServersModel) ContentAt(x, y int) (core.Pane, bool) {
+	switch m.paneAt(x, y) {
+	case paneServers:
+		return m.servers.TextPane(), true
+	case paneAction:
+		return m.activeAction.TextPane(), true
+	case paneActivity:
+		return m.activity.TextPane(), true
+	}
+	return core.Pane{}, false
+}
+
 // Help describes the keys of whichever pane holds focus, so the modal lists
 // what works here and now rather than everything the page can do.
 func (m ManageServersModel) Help() []core.HelpSection {

@@ -402,6 +402,19 @@ func (m SettingsModel) hints() []styles.Hint {
 	}
 }
 
+// ContentAt is the container a point falls in. The section list always fits;
+// the detail pane scrolls, so it says how far.
+func (m SettingsModel) ContentAt(x, y int) (core.Pane, bool) {
+	if sections := m.sectionsLayout(); sections.Hit(x, y) {
+		return core.Pane{Bounds: sections.Text()}, true
+	}
+	if detail := m.detailLayout(); detail.Hit(x, y) {
+		_, scroll := m.detailBody()
+		return core.Pane{Bounds: detail.Text(), Offset: scroll.Offset}, true
+	}
+	return core.Pane{}, false
+}
+
 // Help lists the keys of the container that holds focus.
 func (m SettingsModel) Help() []core.HelpSection {
 	pane := "Sections"

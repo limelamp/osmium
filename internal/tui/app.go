@@ -37,6 +37,17 @@ type appModel struct {
 
 	// help modal overlay component
 	help components.HelpModel
+
+	// What the mouse has selected, and what the last copy had to say for
+	// itself.
+	selection core.Selection
+	copied    string
+
+	// drags counts the drags there have been, which names the current one so
+	// that the beats of an abandoned drag can be told apart from its own.
+	// scrolling says one of those beats is already on its way.
+	drags     int
+	scrolling bool
 }
 
 // NewAppModel returns the application, opened on its home page.
@@ -145,6 +156,25 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, helpCmd
 	}
 
+	// Selecting text with the mouse takes precedence over what a click would
+	// otherwise do, and a click only reaches the page once the button comes up
+	// where it went down.
+	if mouse, ok := msg.(tea.MouseMsg); ok {
+		updated, cmd, handled := m.handleMouse(mouse)
+		if handled {
+			return updated, tea.Batch(helpCmd, cmd)
+		}
+
+		if model, isApp := updated.(appModel); isApp {
+			m = model
+		}
+		if release, isRelease := msg.(tea.MouseReleaseMsg); isRelease {
+			// The press was held back so that a drag could claim it; now that
+			// it turned out to be a click, the page gets it.
+			msg = tea.MouseClickMsg(release)
+		}
+	}
+
 	// 3. Process normal system and application events
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -153,6 +183,9 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, helpCmd // handled locally, no need to forward to other pages
 
 	case tea.KeyPressMsg:
+		// Typing anything means the selection is done with.
+		m.selection = m.selection.Clear()
+
 		switch msg.String() {
 		case "ctrl+c":
 			return m, m.quit()
@@ -177,6 +210,18 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, cmd
 		}
+
+	case dragScrollMsg:
+		model, cmd := m.dragScroll(msg)
+		return model, cmd
+
+	case copiedMsg:
+		m.copied = copiedReport(msg)
+		return m, clearCopied()
+
+	case clearCopiedMsg:
+		m.copied = ""
+		return m, nil
 
 	case core.ChangePageMsg:
 		switch msg.Target {
@@ -228,6 +273,35 @@ func (m *appModel) retain(page Page) {
 	}
 }
 
+// baseFrame is the app as it stands, before the selection highlight and the
+// help modal are drawn over it.
+//
+// A page's View is a function of its model and nothing else, so this can be
+// asked for again when a selection needs to know what was on the screen —
+// View itself cannot keep a copy, having only a value receiver.
+func (m appModel) baseFrame() string {
+	// The confirmation is shown where the help indicator is, which every page
+	// draws for itself in its own bottom-right corner.
+	styles.Notice(m.copied)
+
+	content := m.activePage.View().Content
+
+	// A page without a title bar is drawn on its own. Joining it to an empty
+	// title would still spend a row on that title, putting every row of the
+	// page one lower than the layout its components hit-test clicks against —
+	// which is why the title bar's presence is decided by the same titleHeight
+	// the layout is derived from.
+	if m.titleHeight(m.activePage) > 0 {
+		content = lipgloss.JoinVertical(
+			0,
+			styles.Title(m.layout.Width, "Osmium", m.activePage.Title()),
+			content,
+		)
+	}
+
+	return content
+}
+
 func (m appModel) View() tea.View {
 	// Below the minimum there is no layout worth drawing: every pane would be
 	// smaller than its own borders.
@@ -237,20 +311,7 @@ func (m appModel) View() tea.View {
 		return view
 	}
 
-	baseContent := m.activePage.View().Content
-
-	// A page without a title bar is drawn on its own. Joining it to an empty
-	// title would still spend a row on that title, putting every row of the
-	// page one lower than the layout its components hit-test clicks against —
-	// which is why the title bar's presence is decided by the same titleHeight
-	// the layout is derived from.
-	if m.titleHeight(m.activePage) > 0 {
-		baseContent = lipgloss.JoinVertical(
-			0,
-			styles.Title(m.layout.Width, "Osmium", m.activePage.Title()),
-			baseContent,
-		)
-	}
+	baseContent := m.highlight(m.baseFrame())
 
 	// The page describes the keys that work where the user actually is, so the
 	// modal lists those rather than one fixed set for the whole app.

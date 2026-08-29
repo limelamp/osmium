@@ -211,6 +211,12 @@ func (b base) footer(hints ...styles.Hint) string {
 	return styles.Hints(b.layout.ContentWidth(), hints...)
 }
 
+// TextPane is the rectangle this panel's text occupies and how far its list
+// has scrolled, which is what a mouse selection copies from.
+func (b base) TextPane() core.Pane {
+	return core.Pane{Bounds: b.layout.Text(), Offset: b.list.Scroll.Offset}
+}
+
 // panelView draws an arbitrary body with the footer pinned to the bottom.
 func (b base) panelView(title, body string, hints ...styles.Hint) tea.View {
 	content := styles.Body(body, b.layout.ContentWidth(), b.layout.ContentHeight()-1)

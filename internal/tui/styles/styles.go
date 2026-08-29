@@ -147,7 +147,9 @@ func Container(o ContainerOpts) string {
 
 	bottomLabel := ""
 	if o.ShowHelp {
-		bottomLabel = lipgloss.NewStyle().Foreground(theme.Accent).Render(" [?] help ")
+		bottomLabel = lipgloss.NewStyle().Foreground(theme.Accent).
+			MaxWidth(max(o.Width-2, 0)).
+			Render(" " + corner() + " ")
 	}
 	bottomLineLen := max(o.Width-2-lipgloss.Width(bottomLabel), 0)
 	bottomLine := borderStyle.Render(b.BottomLeft+strings.Repeat(b.Bottom, bottomLineLen)) +
@@ -309,6 +311,40 @@ func TooSmall(width, height int) string {
 	return lipgloss.Place(max(width, 1), max(height, 1), lipgloss.Center, lipgloss.Center, body)
 }
 
+// Selected renders text as part of a mouse selection: the theme's accent
+// behind it, so it reads as picked out rather than as something wrong.
+func Selected(text string) string {
+	on := ansi.NewStyle().BackgroundColor(theme.Selection).String()
+
+	// The text keeps whatever colours it already had, so a log's source column
+	// and a list's cursor stay readable under the selection. Every reset the
+	// text carries would end the wash halfway along the line, so each one puts
+	// it straight back.
+	return on + strings.ReplaceAll(text, ansi.ResetStyle, ansi.ResetStyle+on) + ansi.ResetStyle
+}
+
+// notice is a line the app wants shown in the corner of the page for a moment
+// — "✓ copied 3 lines" — in place of the help indicator.
+//
+// It is package state for the same reason the theme is: it belongs to the
+// whole interface rather than to one page, and every container already draws
+// the corner it appears in. Threading it through every page and panel to reach
+// the single container that shows it would be more wiring than one transient
+// line is worth.
+var notice string
+
+// Notice puts a line in the page's corner, or clears it when given "".
+func Notice(text string) { notice = text }
+
+// corner is what the bottom-right of a page says: the notice while there is
+// one, and the help indicator the rest of the time.
+func corner() string {
+	if notice != "" {
+		return notice
+	}
+	return "[?] help"
+}
+
 // StepHeading renders a wizard step heading. The step number carries the
 // theme's accent, the title its primary colour, and the subtitle explains the
 // step in the muted tone.
@@ -366,6 +402,12 @@ func Hints(width int, hints ...Hint) string {
 	bar := ""
 	for _, h := range hints {
 		part := keyStyle.Render("["+h.Key+"]") + " " + descStyle.Render(h.Desc)
+
+		// The help hint is where a page with no panel to write on shows the
+		// notice, so that it is always the same corner of the screen.
+		if h.Key == "?" && notice != "" {
+			part = keyStyle.Render(notice)
+		}
 		candidate := part
 		if bar != "" {
 			candidate = bar + separator + part

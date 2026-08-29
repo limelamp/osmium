@@ -263,6 +263,12 @@ func (m PlayersModel) View() tea.View {
 		m.header()+"\n"+m.list.Render(m.playerRow), m.Hints()...)
 }
 
+// TextPane reports the column header as pinned, so a selection through a
+// scrolled table still reads the rows it is drawn over.
+func (m PlayersModel) TextPane() core.Pane {
+	return core.Pane{Bounds: m.layout.Text(), Fixed: 1, Offset: m.list.Scroll.Offset}
+}
+
 // title names the panel and how many players are on right now.
 func (m PlayersModel) title() string {
 	online := 0

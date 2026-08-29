@@ -568,10 +568,21 @@ func (m ActivityModel) View() tea.View {
 		Focused:       m.isFocus,
 		Title:         m.title(),
 		Content:       content,
+		ShowHelp:      true,
 		ScrollOffset:  m.viewport.YOffset(),
 		ScrollTotal:   m.wrapped,
 		ScrollVisible: m.viewport.Height(),
 	}))
+}
+
+// TextPane is the console's log, without the command line under it, and how
+// far the viewport has been scrolled back through it.
+func (m ActivityModel) TextPane() core.Pane {
+	// The rule and the command line at the bottom are not text worth copying.
+	return core.Pane{
+		Bounds: m.layout.Text().Inset(0, 0, 0, -2),
+		Offset: m.viewport.YOffset(),
+	}
 }
 
 // Hints are the keys this pane responds to.

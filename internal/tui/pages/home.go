@@ -37,6 +37,10 @@ type HomeModel struct {
 	servers []storage.Server
 	running []bool
 	status  core.Ticker
+
+	// Where the two boxes were drawn, so a click and a drag can be answered.
+	menuBox    core.Layout
+	serversBox core.Layout
 }
 
 // NewHomeModel returns the home page.
@@ -252,6 +256,20 @@ func plural(count int, noun string) string {
 	return lipgloss.NewStyle().Render(noun) + "s"
 }
 
+// ContentAt is the box a point falls in: the menu, or the running servers.
+// Neither scrolls, so each row of them is a line of its own.
+func (m HomeModel) ContentAt(x, y int) (core.Pane, bool) {
+	switch {
+	case m.menuBox.Hit(x, y):
+		return core.Pane{Bounds: m.menuBox.Text()}, true
+	case m.serversBox.Hit(x, y):
+		return core.Pane{Bounds: m.serversBox.Text()}, true
+	case m.layout.Hit(x, y):
+		return core.Pane{Bounds: m.layout}, true
+	}
+	return core.Pane{}, false
+}
+
 // Help lists the menu's keys, including the letter shortcuts that jump
 // straight to a page.
 func (m HomeModel) Help() []core.HelpSection {
@@ -282,13 +300,24 @@ func (m HomeModel) SetLayout(l core.Layout) tea.Model {
 	logo, width := styles.Logo(assets.Logo2)
 	top := max((l.Height-lipgloss.Height(m.content()))/2, 0)
 
-	menu := core.Layout{
+	m.menuBox = core.Layout{
 		X:      l.X + max(l.Width-width, 0)/2,
 		Y:      l.Y + top + lipgloss.Height(logo) + logoGap,
 		Width:  width,
 		Height: m.nav.Height() + 2,
 	}
 
-	m.nav = m.nav.SetLayout(menu.Inner().Inset(1, 0, -2, 0))
+	// The servers box sits directly under the menu, when there is one.
+	m.serversBox = core.Layout{
+		X:      m.menuBox.X,
+		Y:      m.menuBox.Y + m.menuBox.Height,
+		Width:  width,
+		Height: lipgloss.Height(m.serversPane(width)),
+	}
+	if m.serversBox.Height <= 1 {
+		m.serversBox = core.Layout{}
+	}
+
+	m.nav = m.nav.SetLayout(m.menuBox.Text())
 	return m
 }

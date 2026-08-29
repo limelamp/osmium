@@ -50,6 +50,14 @@ func (l Layout) Inner() Layout {
 	}
 }
 
+// Text is the rectangle a container's text occupies: inside the border and
+// inside the one column of padding on each side of it. It is what a selection
+// copies, so that a copied log line carries neither the frame nor the space
+// the frame is held off by.
+func (l Layout) Text() Layout {
+	return l.Inner().Inset(1, 0, -2, 0)
+}
+
 // ContentWidth is the number of columns available to a container's content,
 // after its border and horizontal padding.
 func (l Layout) ContentWidth() int {

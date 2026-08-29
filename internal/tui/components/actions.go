@@ -375,6 +375,11 @@ func (m ActionsModel) View() tea.View {
 	}))
 }
 
+// TextPane is where the menu's text sits and how far it has scrolled.
+func (m ActionsModel) TextPane() core.Pane {
+	return core.Pane{Bounds: m.layout.Text(), Offset: m.list.Scroll.Offset}
+}
+
 // Hints are the keys this panel responds to.
 func (m ActionsModel) Hints() []styles.Hint {
 	return []styles.Hint{

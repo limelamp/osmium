@@ -48,9 +48,19 @@ func rowOf(t *testing.T, rows []string, layout core.Layout, label string) int {
 	return -1
 }
 
-// click sends a left click at an absolute position.
+// click sends a left button press at an absolute position.
 func click(x, y int) tea.MouseClickMsg {
 	return tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft}
+}
+
+// release lets the left button up at an absolute position.
+func release(x, y int) tea.MouseReleaseMsg {
+	return tea.MouseReleaseMsg{X: x, Y: y, Button: tea.MouseLeft}
+}
+
+// drag moves the pointer with the left button held.
+func drag(x, y int) tea.MouseMotionMsg {
+	return tea.MouseMotionMsg{X: x, Y: y, Button: tea.MouseLeft}
 }
 
 func TestHomeMenuClickSelectsTheRowUnderThePointer(t *testing.T) {
@@ -211,7 +221,11 @@ func TestAppClickReachesTheRowUnderThePointer(t *testing.T) {
 	rows := screen(model.View().Content)
 	y := rowOf(t, rows, core.Layout{}, "Migrate server")
 
+	// A click is a press and a release in the same cell. The app holds the
+	// press back so that a drag can claim it instead, so both are sent.
 	model, _ = model.Update(click(40, y))
+	model, _ = model.Update(release(40, y))
+
 	if after := screen(model.View().Content); !containsRow(after, "➔ Migrate server") {
 		t.Errorf("clicking Migrate server on screen row %d did not select it:\n%s",
 			y, strings.Join(after, "\n"))

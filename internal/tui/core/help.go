@@ -16,6 +16,13 @@ type Helper interface {
 	Help() []HelpSection
 }
 
+// Selectable is a page that can say which pane a point falls in. A drag
+// selects text from one pane rather than from across the frame, and this is
+// how the app knows where that pane's text is and how far it has scrolled.
+type Selectable interface {
+	ContentAt(x, y int) (Pane, bool)
+}
+
 // GlobalHints are the keys that work anywhere in the app.
 var GlobalHints = []styles.Hint{
 	{Key: "tab", Desc: "switch pane"},

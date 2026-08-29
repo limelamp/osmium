@@ -354,6 +354,12 @@ func shortenPath(path string) string {
 	return "~" + strings.TrimPrefix(path, home)
 }
 
+// TextPane reports this panel's own scroll: the details are a block of rows
+// rather than a list, so the base's list offset would not describe them.
+func (m DetailsModel) TextPane() core.Pane {
+	return core.Pane{Bounds: m.layout.Text(), Offset: m.scroll.Offset}
+}
+
 // Hints are the keys this panel responds to.
 func (m DetailsModel) Hints() []styles.Hint {
 	return []styles.Hint{

@@ -34,6 +34,12 @@ type Action interface {
 	// field can use them itself.
 	Editing() bool
 
+	// TextPane is where the panel's text sits and how far it has scrolled, so
+	// a mouse can select from it. Every panel gets this from the shared base
+	// it is built on; a panel whose body scrolls on something other than that
+	// base's list says so by overriding it.
+	TextPane() Pane
+
 	// Hints are the keys the panel responds to in whatever state it is in.
 	// They are drawn in the panel's hint bar and listed in the help modal, so
 	// a panel states its keys exactly once.
