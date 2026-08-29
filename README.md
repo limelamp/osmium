@@ -23,15 +23,9 @@ Create servers, run them, install mods, watch their consoles - from one terminal
 
 ## What it is
 
-Osmium manages Minecraft servers from the terminal. It downloads the server software, keeps track of
-where each server lives and what it runs, installs mods and plugins from Modrinth, and gives every
-server a console you can type into.
+Osmium aids in the creation and the managing of Minecraft servers, all done from the terminal. It downloads the server software, keeps track of where each server lives and what/how it runs, installs mods and plugins from Modrinth automatically, and gives every server a console you can see and type into.
 
-Each server runs under a supervisor process of its own, so **quitting Osmium does not stop your
-servers** - reopen it tomorrow and the console is still there, still following, still able to send
-commands.
-
-Everything the interface does, a command does too. `osmium` opens the full-screen interface;
+Everything the interface does, a command does too. `osmium` opens the full-screen interface; 
 `osmium start -s survival` starts a server from a script.
 
 ## Screens
@@ -134,11 +128,11 @@ The create wizard walks through the choices, one at a time:
 
 ## Requirements
 
-- **Java** - whatever your server software needs (Java 21 for Minecraft 1.20.5 and newer).
-- A terminal with UTF-8 and 256 colours. Minimum size **60 × 18**; Osmium says so if it has less.
-- **Go 1.25+**, only if you are building it yourself.
+- **Java** - whatever your server software needs (Java 21 for Minecraft 1.20.5 and newer, lookup the rest yourself).
+- A terminal with UTF-8 and 256 colours. Minimum size is **60 × 18**.
+- If building, use **Go 1.25+**.
 
-## Install
+## Installing   
 
 ```bash
 go install github.com/limelamp/osmium@latest
@@ -156,7 +150,7 @@ make install         # into $(go env GOPATH)/bin
 Or take a binary from the [releases](https://github.com/limelamp/osmium/releases) - Linux, macOS and
 Windows, amd64 and arm64.
 
-Then set up tab completion, once:
+Then to set up tab completion, run the command below once:
 
 ```bash
 osmium completion install
@@ -190,7 +184,7 @@ server folder does the same.
 
 | Command | What it does |
 |---|---|
-| `osmium` | Open the interface. `-s <name>` opens it on one server |
+| `osmium` | Open the interface (tui). `-s <name>` opens it on one server |
 | `osmium create` | Create a server - a wizard, or fully specified by flags |
 | `osmium list` | Every registered server, what it runs, and whether it is up |
 | `osmium details` | One server in full: engine, disk, players, ops, bans, mods |
@@ -201,7 +195,7 @@ server folder does the same.
 | `osmium migrate [-l Paper] [-v 1.21.1]` | Move a server to another loader or version |
 | `osmium destroy` | Delete a server, after typing its name |
 
-**Mods and plugins** - the same six verbs for each:
+**Mods and plugins**
 
 | Command | What it does |
 |---|---|
@@ -216,36 +210,7 @@ server folder does the same.
 
 Every command takes `-s/--server`. `osmium <command> --help` has the details.
 
-## How servers keep running
-
-Starting a server spawns a **supervisor**: a detached `osmium serve` process that owns the server,
-and nothing else. It holds the server's stdin, writes everything the server says to
-`<server>/.osmium/server.log`, and listens on a control socket in the server's own folder.
-
-That is what makes the rest work:
-
-- Quitting Osmium leaves your servers running.
-- Reopening it reattaches - the console shows the last thousand lines and carries on following.
-- `osmium exec` reaches a server whoever started it, from any terminal.
-- Two servers never collide: one supervisor, one socket, one log, per folder.
-
-Stopping a server sends the console's own `stop`, so it saves its world; `--force` kills it.
-
-## Files
-
-| Path | What it is |
-|---|---|
-| `~/.config/osmium/config.json` | Theme, default server folder, default memory |
-| `~/.config/osmium/servers.json` | The registry: name, path, engine, version, memory |
-| `<server>/osmium.json` | The server's own manifest, and the truth about it |
-| `<server>/.osmium/server.log` | Everything that server has said, rotated at 4 MB |
-| `<server>/.osmium/control.sock` | Where its supervisor listens (a loopback port on Windows) |
-| `<server>/.osmium_process.lock` | The supervisor's PID, and how "running" is decided |
-
-A server is its folder. Delete the folder and Osmium drops it from the list next time it looks;
-point Osmium at a folder holding an `osmium.json` and it adopts it.
-
-## Keys
+## Controls
 
 | Key | Where | What |
 |---|---|---|
@@ -260,8 +225,7 @@ point Osmium at a folder holding an `osmium.json` and it adopts it.
 | `?` | anywhere | The keys that work right here |
 | `q` `ctrl+c` | home / anywhere | Quit |
 
-The mouse works too: click to focus a pane, click a row to select it, click again to open it, and
-the wheel scrolls whatever is under the pointer.
+The mouse works too: click to focus a pane, click a row to select it, click again to open it, and the wheel scrolls whatever is under the pointer.
 
 ## Development
 
@@ -293,7 +257,7 @@ internal/tui/       the interface
 
 Pull requests are welcome. `make lint test` should pass before you open one.
 
-## Licence
+## License
 
 Osmium is free software under the [GNU General Public License v3.0](LICENSE).
 
