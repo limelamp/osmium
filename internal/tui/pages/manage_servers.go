@@ -16,20 +16,22 @@ const (
 	paneCount
 )
 
-// Pane proportions. The focused pane is given more room: the servers list grows
-// sideways, the action and activity panes grow downwards.
+// Pane proportions. The focused pane is given more room: the left column grows
+// sideways if focused, the servers and action panes grow vertically depending on focus.
 //
 // The three sizes are always derived from one another so the panes tile the
-// page exactly - the left column is the full height, and the right column's two
+// page exactly - the right column is the full height, and the left column's two
 // heights add up to it - which is what keeps the reflow on focus from leaving
 // gaps or overlapping borders.
 const (
-	serversWidthRatio        = 0.32
-	serversFocusedWidthRatio = 0.42
 
-	actionHeightRatio        = 0.55
-	actionFocusedHeightRatio = 0.72
-	actionUnfocusedRatio     = 0.32
+	// Ratios of the 'sections'. Can be freely modified to achieve the best look.
+	leftWidthRatio        = 0.32
+	leftFocusedWidthRatio = 0.42
+
+	serversHeightRatio        = 0.32
+	serversFocusedHeightRatio = 0.64
+	serversUnfocusedRatio     = 0.32
 )
 
 // Smallest a pane may be squeezed to. Below these the reflow would produce
@@ -40,8 +42,8 @@ const (
 	minPaneHeight = 5
 )
 
-// ManageServersModel is the page servers are run from: the list on the left,
-// the actions and the console on the right.
+// ManageServersModel is the page servers are run from: the list and actions
+// on the left, and the console on the right.
 type ManageServersModel struct {
 	layout core.Layout
 	store  *storage.ServerStore
@@ -63,9 +65,8 @@ type ManageServersModel struct {
 	// selected is the server every panel on the page currently acts on.
 	selected *storage.Server
 
-	// collapsed hides the servers pane, giving the whole width to the action
-	// and activity panes. The selected server is still named in their titles,
-	// so nothing is lost but the list.
+	// collapsed hides the servers pane, giving the whole height of the left
+	// column to the action pane.
 	collapsed bool
 
 	focus int
@@ -410,46 +411,47 @@ func (m ManageServersModel) View() tea.View {
 		return tea.NewView("loading...")
 	}
 
-	right := lipgloss.JoinVertical(
-		lipgloss.Left,
-		m.activeAction.View().Content,
-		m.activity.View().Content,
-	)
-
+	var left string
 	if m.collapsed {
-		return tea.NewView(right)
+		left = m.activeAction.View().Content
+	} else {
+		left = lipgloss.JoinVertical(
+			lipgloss.Left,
+			m.servers.View().Content,
+			m.activeAction.View().Content,
+		)
 	}
 
 	return tea.NewView(lipgloss.JoinHorizontal(
 		lipgloss.Top,
-		m.servers.View().Content,
-		right,
+		left,
+		m.activity.View().Content,
 	))
 }
 
 // Pane rectangles, derived from the page layout and the focused pane.
-func (m ManageServersModel) serversWidth() int {
-	if m.collapsed {
-		return 0
-	}
-
-	ratio := serversWidthRatio
-	if m.focus == paneServers {
-		ratio = serversFocusedWidthRatio
+func (m ManageServersModel) leftWidth() int {
+	ratio := leftWidthRatio
+	if m.focus == paneServers || m.focus == paneAction {
+		ratio = leftFocusedWidthRatio
 	}
 
 	return fitPane(int(float64(m.layout.Width)*ratio), m.layout.Width, minPaneWidth)
 }
 
-// actionHeight is how tall the action pane is: taller when it has focus,
-// shorter when the activity pane below it does.
-func (m ManageServersModel) actionHeight() int {
-	ratio := actionHeightRatio
+// serversHeight is how tall the servers pane is: taller when it has focus,
+// shorter when the action pane below it does.
+func (m ManageServersModel) serversHeight() int {
+	if m.collapsed {
+		return 0
+	}
+
+	ratio := serversHeightRatio
 	switch m.focus {
+	case paneServers:
+		ratio = serversFocusedHeightRatio
 	case paneAction:
-		ratio = actionFocusedHeightRatio
-	case paneActivity:
-		ratio = actionUnfocusedRatio
+		ratio = serversUnfocusedRatio
 	}
 
 	return fitPane(int(float64(m.layout.Height)*ratio), m.layout.Height, minPaneHeight)
@@ -469,27 +471,28 @@ func (m ManageServersModel) serversLayout() core.Layout {
 	return core.Layout{
 		X:      m.layout.X,
 		Y:      m.layout.Y,
-		Width:  m.serversWidth(),
-		Height: m.layout.Height,
+		Width:  m.leftWidth(),
+		Height: m.serversHeight(),
 	}
 }
 
 func (m ManageServersModel) actionLayout() core.Layout {
+	serversH := m.serversHeight()
 	return core.Layout{
-		X:      m.layout.X + m.serversWidth(),
-		Y:      m.layout.Y,
-		Width:  m.layout.Width - m.serversWidth(),
-		Height: m.actionHeight(),
+		X:      m.layout.X,
+		Y:      m.layout.Y + serversH,
+		Width:  m.leftWidth(),
+		Height: m.layout.Height - serversH,
 	}
 }
 
 func (m ManageServersModel) activityLayout() core.Layout {
-	action := m.actionLayout()
+	leftW := m.leftWidth()
 	return core.Layout{
-		X:      action.X,
-		Y:      action.Y + action.Height,
-		Width:  action.Width,
-		Height: m.layout.Height - action.Height,
+		X:      m.layout.X + leftW,
+		Y:      m.layout.Y,
+		Width:  m.layout.Width - leftW,
+		Height: m.layout.Height,
 	}
 }
 
