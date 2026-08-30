@@ -163,8 +163,8 @@ func Build(cfg *Config, store *storage.ServerStore, sc scope.Scope) (*storage.Se
 		Loader:       cfg.Software,
 		Version:      cfg.Version,
 		AllocatedRAM: cfg.RAM,
-		Mods:         make(map[string]config.Project),
-		Plugins:      make(map[string]config.Project),
+		Mods:         config.Wants{},
+		Plugins:      config.Wants{},
 	}
 	if err := config.WriteConfigIn(target, &osmiumConf); err != nil {
 		return nil, err

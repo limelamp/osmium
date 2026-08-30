@@ -10,6 +10,7 @@ import (
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/limelamp/osmium/internal/commands"
 	"github.com/limelamp/osmium/internal/supervisor"
 	"github.com/limelamp/osmium/internal/tui/core"
 	"github.com/limelamp/osmium/internal/tui/storage"
@@ -57,6 +58,13 @@ type console struct {
 	// selection changes.
 	offset int
 	follow bool
+
+	// history is what has been typed into this server, newest last, and at is
+	// where the up arrow has walked back to. It is per server rather than
+	// shared: the commands that make sense on one server are often nonsense on
+	// another, and a history full of somebody else's server is not a history.
+	history []string
+	at      int
 }
 
 // append adds lines to a console, trimming the oldest once it is full.
@@ -244,7 +252,16 @@ func (m ActivityModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.rememberScroll()
 			return m, nil
 
-		case "pgup", "pgdown", "up", "down":
+		case "up":
+			return m.recall(-1), nil
+
+		case "down":
+			return m.recall(1), nil
+
+		case "tab":
+			return m.complete(), nil
+
+		case "pgup", "pgdown":
 			var cmd tea.Cmd
 			m.viewport, cmd = m.viewport.Update(msg)
 			m.rememberScroll()
@@ -383,6 +400,10 @@ func (m ActivityModel) submit() (tea.Model, tea.Cmd) {
 	m.textInput.Reset()
 
 	current := m.visible()
+	if current != nil {
+		current.remember(command)
+	}
+
 	switch {
 	case current == nil || current.dir == "":
 		return m.say(supervisor.TagOsmium, "select a server to send it commands"), nil
@@ -397,6 +418,49 @@ func (m ActivityModel) submit() (tea.Model, tea.Cmd) {
 		return m.say(supervisor.TagError, err.Error()), nil
 	}
 	return m, nil
+}
+
+// recall walks the command history, which is what the up arrow does in every
+// other place a command is typed.
+func (m ActivityModel) recall(delta int) ActivityModel {
+	current := m.visible()
+	if current == nil || len(current.history) == 0 {
+		return m
+	}
+
+	current.at = min(max(current.at+delta, 0), len(current.history))
+
+	if current.at == len(current.history) {
+		m.textInput.SetValue("")
+		return m
+	}
+
+	m.textInput.SetValue(current.history[current.at])
+	m.textInput.CursorEnd()
+
+	return m
+}
+
+// complete finishes a saved command's name into the command itself.
+//
+// Typing "near" and pressing tab puts the whole of the nearby command on the
+// line, blanks and all, so a long selector can be kept once and used from the
+// console rather than only from the panel that saved it.
+func (m ActivityModel) complete() ActivityModel {
+	typed := strings.TrimSpace(m.textInput.Value())
+	if typed == "" {
+		return m
+	}
+
+	found := commands.Load().Matching(typed)
+	if len(found) == 0 {
+		return m
+	}
+
+	m.textInput.SetValue(found[0].Line)
+	m.textInput.CursorEnd()
+
+	return m
 }
 
 // control starts, stops or restarts the server the request names, which is not
@@ -603,14 +667,16 @@ func (m ActivityModel) Hints() []styles.Hint {
 		{Key: "type", Desc: "server command"},
 		{Key: "enter", Desc: "send"},
 		{Key: "esc", Desc: "clear line"},
-		{Key: "↑/↓", Desc: "scroll"},
+		{Key: "↑/↓", Desc: "history"},
+		{Key: "tab", Desc: "saved command"},
+		{Key: "pgup/pgdn", Desc: "scroll"},
 	}
 
 	if current := m.visible(); current != nil && !current.follow {
 		hints = append(hints, styles.Hint{Key: "end", Desc: "resume following"})
 	}
 
-	return append(hints, styles.Hint{Key: "tab", Desc: "switch pane"})
+	return hints
 }
 
 // emptyMessage explains an empty console.
@@ -688,4 +754,17 @@ func (m ActivityModel) Running() bool {
 		}
 	}
 	return false
+}
+
+// remember records a command in this console's history.
+//
+// The same command typed twice in a row is kept once: a history is what was
+// meant, not what was pressed.
+func (c *console) remember(command string) {
+	if len(c.history) == 0 || c.history[len(c.history)-1] != command {
+		c.history = append(c.history, command)
+	}
+
+	// Walking back starts from the end again after something is sent.
+	c.at = len(c.history)
 }

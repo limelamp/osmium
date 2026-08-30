@@ -62,6 +62,11 @@ linters:
         # copy, which is what makes the update loop safe. Passing them by
         # pointer would fight the framework, not improve it.
         - hugeParam
+        # The same argument for the loops over them. A locked package or a
+        # planned change is a couple of hundred bytes, the loops are cold, and
+        # ranging by index to save a copy would make every one of them harder
+        # to read for no measurable gain.
+        - rangeValCopy
 
     gosec:
       excludes:
@@ -70,6 +75,8 @@ linters:
         - G204 # subprocess launched with a variable
         - G304 # file path from a variable
         - G306 # 0644 is the right mode for a config file
+        - G302 # 0640 is the right mode for a jar the server has to read
+        - G505 # Modrinth indexes files by SHA-1, so SHA-1 is what verifies them
 
     govet:
       # Everything but the shadow check, which cannot tell an idiomatic

@@ -1,11 +1,14 @@
 package pages
 
 import (
+	"sort"
+	"strings"
+
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 	"github.com/limelamp/osmium/internal/tui/components"
 	"github.com/limelamp/osmium/internal/tui/core"
 	"github.com/limelamp/osmium/internal/tui/storage"
+	"github.com/limelamp/osmium/internal/tui/styles"
 )
 
 // Pane identifies which of the page's three panels holds keyboard focus.
@@ -65,23 +68,31 @@ type ManageServersModel struct {
 	// selected is the server every panel on the page currently acts on.
 	selected *storage.Server
 
-	// collapsed hides the servers pane, giving the whole height of the left
-	// column to the action pane.
-	collapsed bool
+	// arrangement is which of the three layouts the page is drawn in, and
+	// hidden says which panes have been put away. Both are remembered between
+	// runs.
+	arrangement Arrangement
+	hidden      [paneCount]bool
 
 	focus int
 }
 
 // NewManageServersModel accepts the ServerStore and passes it down to the child components
 func NewManageServersModel(store *storage.ServerStore) ManageServersModel {
-	return ManageServersModel{
-		store:        store,
+	page := ManageServersModel{
+		store: store,
+
+		// The console beside a column of servers and actions is what Osmium
+		// has always drawn; the other two are there to be chosen.
+		arrangement:  ConsoleRight,
 		servers:      components.NewServersModel(store).SetFocus(true),
 		activeAction: components.NewActionsModel(store).SetFocus(false), // Set it to default action "dashboard"'s model
 		activity:     components.NewActivityModel().SetFocus(false),
 		actions:      make(map[string]core.Action),
 		menus:        make(map[string]components.ActionsModel),
 	}
+
+	return page.restore()
 }
 
 func (m ManageServersModel) Init() tea.Cmd {
@@ -96,24 +107,14 @@ func (m ManageServersModel) Init() tea.Cmd {
 // focusNext moves focus by one pane, stepping over the servers pane while it is
 // collapsed - focus must never land on something that is not on screen.
 func (m ManageServersModel) focusNext(delta int) ManageServersModel {
-	pane := (m.focus + delta + paneCount) % paneCount
-	if m.collapsed && pane == paneServers {
+	pane := m.focus
+	for range paneCount {
 		pane = (pane + delta + paneCount) % paneCount
+		if m.visible(pane) {
+			break
+		}
 	}
 	return m.setFocus(pane)
-}
-
-// toggleServers shows or hides the servers pane.
-func (m ManageServersModel) toggleServers() ManageServersModel {
-	m.collapsed = !m.collapsed
-
-	// Focus cannot stay on a pane that just went away.
-	if m.collapsed && m.focus == paneServers {
-		return m.setFocus(paneAction)
-	}
-
-	// Re-flow: the remaining panes have a different width now.
-	return m.setFocus(m.focus)
 }
 
 // setFocus moves keyboard focus to a pane and tells every child about it.
@@ -257,12 +258,31 @@ func (m ManageServersModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.forwardToPane(msg, m.focus)
 		}
 
+		// Enter on a server is how you get to work on it: it opens the
+		// actions for it, bringing that pane back if it was put away, and
+		// leaves the keyboard there. Backspace at the top of the actions
+		// walks back to the list, so the pair is symmetrical.
+		if msg.String() == "enter" && m.focus == paneServers {
+			return m.reveal(paneAction).setFocus(paneAction), nil
+		}
+
 		switch msg.String() {
 		case "esc":
 			return m, core.RouteTo("Home")
 
-		case "ctrl+b":
-			return m.toggleServers(), nil
+		// The panes are numbered by where they sit in the current layout, and
+		// each key both hides its pane and brings it back.
+		case "alt+1":
+			return m.toggle(paneServers), nil
+
+		case "alt+2":
+			return m.toggle(paneAction), nil
+
+		case "alt+3":
+			return m.toggle(paneActivity), nil
+
+		case "ctrl+l":
+			return m.rearrange(), nil
 
 		case "tab":
 			return m.focusNext(1), nil
@@ -299,6 +319,8 @@ func (m ManageServersModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // mid-edit.
 func (m ManageServersModel) editingPane() bool {
 	switch m.focus {
+	case paneServers:
+		return m.servers.Editing()
 	case paneAction:
 		return m.activeAction.Editing()
 	case paneActivity:
@@ -411,89 +433,75 @@ func (m ManageServersModel) View() tea.View {
 		return tea.NewView("loading...")
 	}
 
-	var left string
-	if m.collapsed {
-		left = m.activeAction.View().Content
-	} else {
-		left = lipgloss.JoinVertical(
-			lipgloss.Left,
-			m.servers.View().Content,
-			m.activeAction.View().Content,
-		)
+	rects := m.rects()
+
+	// Each pane is drawn where the arrangement put it, and the page is
+	// assembled by joining whatever shares an edge. Working from the same
+	// rectangles the clicks are tested against is what keeps the two in step.
+	panes := map[int]string{}
+	if m.visible(paneServers) {
+		panes[paneServers] = m.servers.View().Content
+	}
+	if m.visible(paneAction) {
+		panes[paneAction] = m.activeAction.View().Content
+	}
+	if m.visible(paneActivity) {
+		panes[paneActivity] = m.activity.View().Content
 	}
 
-	return tea.NewView(lipgloss.JoinHorizontal(
-		lipgloss.Top,
-		left,
-		m.activity.View().Content,
-	))
+	return tea.NewView(assemble(m.layout, rects, panes))
 }
 
-// Pane rectangles, derived from the page layout and the focused pane.
-func (m ManageServersModel) leftWidth() int {
-	ratio := leftWidthRatio
-	if m.focus == paneServers || m.focus == paneAction {
-		ratio = leftFocusedWidthRatio
+// assemble puts the drawn panes where their rectangles say, row by row.
+//
+// The panes tile the page exactly, so the frame can be built a screen row at a
+// time from whichever panes cover that row, ordered by where they start. That
+// is arrangement-agnostic: a layout with a column beside a stack assembles the
+// same way as one with a row above another, and adding a fourth would need no
+// change here.
+func assemble(page core.Layout, rects [paneCount]core.Layout, panes map[int]string) string {
+	drawn := make(map[int][]string, len(panes))
+	for pane, content := range panes {
+		drawn[pane] = strings.Split(content, "\n")
 	}
 
-	return fitPane(int(float64(m.layout.Width)*ratio), m.layout.Width, minPaneWidth)
-}
+	rows := make([]string, 0, page.Height)
 
-// serversHeight is how tall the servers pane is: taller when it has focus,
-// shorter when the action pane below it does.
-func (m ManageServersModel) serversHeight() int {
-	if m.collapsed {
-		return 0
+	for y := page.Y; y < page.Y+page.Height; y++ {
+		type piece struct {
+			x    int
+			text string
+		}
+
+		var pieces []piece
+		for pane := range paneCount {
+			rect := rects[pane]
+			if rect.Width == 0 || y < rect.Y || y >= rect.Y+rect.Height {
+				continue
+			}
+
+			line := ""
+			if row := y - rect.Y; row < len(drawn[pane]) {
+				line = drawn[pane][row]
+			}
+
+			pieces = append(pieces, piece{x: rect.X, text: line})
+		}
+
+		if len(pieces) == 0 {
+			continue
+		}
+
+		sort.Slice(pieces, func(a, b int) bool { return pieces[a].x < pieces[b].x })
+
+		var row strings.Builder
+		for _, part := range pieces {
+			row.WriteString(part.text)
+		}
+		rows = append(rows, row.String())
 	}
 
-	ratio := serversHeightRatio
-	switch m.focus {
-	case paneServers:
-		ratio = serversFocusedHeightRatio
-	case paneAction:
-		ratio = serversUnfocusedRatio
-	}
-
-	return fitPane(int(float64(m.layout.Height)*ratio), m.layout.Height, minPaneHeight)
-}
-
-// fitPane keeps a pane's size inside the page while leaving its neighbour at
-// least the minimum, falling back to an even split when the page cannot hold
-// two panes of that minimum at all.
-func fitPane(size, total, minimum int) int {
-	if total < minimum*2 {
-		return total / 2
-	}
-	return min(max(size, minimum), total-minimum)
-}
-
-func (m ManageServersModel) serversLayout() core.Layout {
-	return core.Layout{
-		X:      m.layout.X,
-		Y:      m.layout.Y,
-		Width:  m.leftWidth(),
-		Height: m.serversHeight(),
-	}
-}
-
-func (m ManageServersModel) actionLayout() core.Layout {
-	serversH := m.serversHeight()
-	return core.Layout{
-		X:      m.layout.X,
-		Y:      m.layout.Y + serversH,
-		Width:  m.leftWidth(),
-		Height: m.layout.Height - serversH,
-	}
-}
-
-func (m ManageServersModel) activityLayout() core.Layout {
-	leftW := m.leftWidth()
-	return core.Layout{
-		X:      m.layout.X + leftW,
-		Y:      m.layout.Y,
-		Width:  m.layout.Width - leftW,
-		Height: m.layout.Height,
-	}
+	return strings.Join(rows, "\n")
 }
 
 // ContentAt is the pane a point falls in, which is what a drag selects text
@@ -526,7 +534,18 @@ func (m ManageServersModel) Help() []core.HelpSection {
 		section = core.HelpSection{Title: "Manage Servers - Activity", Hints: m.activity.Hints()}
 	}
 
-	return []core.HelpSection{section}
+	// The page's own keys are listed beside the focused pane's, because they
+	// work wherever focus happens to be.
+	page := core.HelpSection{Title: "Manage Servers - the page", Hints: []styles.Hint{
+		{Key: "tab", Desc: "next pane"},
+		{Key: "alt+1", Desc: "servers on or off"},
+		{Key: "alt+2", Desc: "actions on or off"},
+		{Key: "alt+3", Desc: "console on or off"},
+		{Key: "ctrl+l", Desc: "next layout (" + m.arrangement.Name() + ")"},
+		{Key: "esc", Desc: "home"},
+	}}
+
+	return []core.HelpSection{section, page}
 }
 
 func (m ManageServersModel) Title() string {

@@ -216,3 +216,24 @@ func SaveServersCmd(store *storage.ServerStore, servers []storage.Server) tea.Cm
 		return SavedServersMsg{Err: err}
 	}
 }
+
+// SendCommand gives a running server a line to run, without waiting for it.
+//
+// The reply, like everything else the server says, arrives in its log and is
+// picked up by the console pane. Panels that act on a server therefore say
+// what they sent rather than what came back — which is honest about what a
+// console is: a stream, not a conversation.
+func SendCommand(dir, command string) tea.Cmd {
+	if dir == "" || command == "" {
+		return nil
+	}
+
+	return func() tea.Msg {
+		if err := supervisor.Exec(dir, command); err != nil {
+			return LogMsg{Lines: []supervisor.Line{
+				{Tag: supervisor.TagError, Text: err.Error()},
+			}}
+		}
+		return nil
+	}
+}

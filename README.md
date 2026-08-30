@@ -23,7 +23,9 @@ Create servers, run them, install mods, watch their consoles - from one terminal
 
 ## What it is
 
-Osmium aids in the creation and the managing of Minecraft servers, all done from the terminal. It downloads the server software, keeps track of where each server lives and what/how it runs, installs mods and plugins from Modrinth automatically, and gives every server a console you can see and type into.
+Osmium aids in the creation and the managing of Minecraft servers, all done from the terminal. It downloads the server software, keeps track of where each server lives and what/how it runs, and gives every server a console you can see and type into.
+
+Mods and plugins are managed the way a package manager manages packages: dependencies are resolved, the whole change is shown before it happens, downloads are verified and shared between servers, and a manifest and lock file describe a server exactly enough to rebuild it somewhere else.
 
 Everything the interface does, a command does too. `osmium` opens the full-screen interface; 
 `osmium start -s survival` starts a server from a script.
@@ -89,8 +91,11 @@ osmium create --name survival --engine Paper --version 1.21.1 --ram 4G --eula
 osmium start   -s survival               # start it; it keeps running when you close Osmium
 osmium logs    -s survival -f            # watch it
 osmium exec    -s survival say hello     # talk to it
-osmium mod add sodium -s survival        # install a mod from Modrinth
+osmium mod add sodium -s survival        # install a mod, and whatever it needs
 osmium stop    -s survival               # ask it to shut down and save
+
+osmium install ./skyblock/osmium.json    # build a whole server from a recipe
+osmium install cobblemon.mrpack          # or from a Modrinth modpack
 ```
 
 `--server`/`-s` names a registered server. Leave it out and the command acts on the folder you are
@@ -115,19 +120,54 @@ server folder does the same.
 | `osmium edit --name … --ram …` | Change what Osmium keeps: the name and the memory |
 | `osmium migrate [-l Paper] [-v 1.21.1]` | Move a server to another loader or version |
 | `osmium destroy` | Delete a server, after typing its name |
+| `osmium install [recipe]` | Build a whole server from a manifest, a lock or a `.mrpack` |
+| `osmium doctor` | Check Java, memory, the port, the licence and the files |
+| `osmium backup [label]` / `osmium restore` | Copy the world and settings, and put them back |
+| `osmium expose [--check] [--open]` | Say how to reach a server; have the router open its port |
 
 **Mods and plugins**
 
+Osmium manages these the way a package manager does. Every command works the
+whole change out first — including anything a mod needs — shows it, and applies
+it in one go. Nothing is written until every file has arrived and been checked
+against the hash Modrinth publishes, so a failure halfway leaves the server as
+it was. Files are kept in a shared cache by their content, so the same mod
+wanted twice is downloaded once.
+
 | Command | What it does |
 |---|---|
-| `osmium mod add <slug…>` | Install from Modrinth and track it |
-| `osmium mod remove <slug…>` | Delete it and stop tracking it |
-| `osmium mod list` | What is tracked, and which build |
-| `osmium mod install` | Install everything `osmium.json` lists |
-| `osmium mod update [slug…]` | Update to the newest compatible builds |
+| `osmium mod add <name…>` | Install it and whatever it needs. `name@build` holds it at one build |
+| `osmium mod remove <name…>` | Remove it, and anything left that nothing needs |
+| `osmium mod list` | What is installed, which build, and why it is there |
+| `osmium mod install` | Install exactly what the manifest and lock describe |
+| `osmium mod update [name…]` | Move to the newest builds, leaving pinned ones alone |
+| `osmium mod pin <name>` / `unpin` | Hold a mod where it is, or let it move again |
+| `osmium mod versions <name>` | The builds this server could install |
+| `osmium mod search <words>` | Find mods that fit this server |
 | `osmium mod track` | Adopt jars already sitting in `mods/` |
+| `osmium cache` / `osmium cache clean` | Where the downloads are kept, and how much room they take |
 
 `osmium plugin …` is the same, for `plugins/`.
+
+**Two files describe a server**
+
+`osmium.json` is what you asked for — the mods you named, and any you pinned.
+`osmium.lock` is what that resolved to: exact builds, hashes and which mod
+pulled in which. Hand someone both and `osmium install` gives them the same
+server, file for file. Hand them just the manifest and it resolves afresh.
+
+```json
+osmium.json                          osmium.lock
+{                                    spectrum    1.10.5   asked for
+ "mods": {                           fabric-api  0.102.0  needed by spectrum
+  "spectrum": "*",                   owo-lib     0.12.6   needed by spectrum
+  "sodium": "0.5.8"                  sodium      0.5.8    pinned
+ }
+}
+```
+
+Jars Osmium did not install are never touched. Every plan names them, and
+`osmium mod track` adopts them when you want them managed.
 
 Every command takes `-s/--server`. `osmium <command> --help` has the details.
 
@@ -139,8 +179,13 @@ Every command takes `-s/--server`. `osmium <command> --help` has the details.
 | `enter` | anywhere | Choose, or open a field for typing |
 | `esc` | anywhere | Cancel what you are typing, else go back |
 | `tab` | Manage Servers, Settings | Move between panes |
-| `ctrl+b` | Manage Servers | Hide and show the servers pane |
+| `alt+1` `alt+2` `alt+3` | Manage Servers | Hide and show the servers, actions and console |
+| `ctrl+l` | Manage Servers | The next of the three layouts |
+| `enter` | Servers pane | Open that server's actions |
+| `/` | any list | Filter it; `esc` clears |
 | `ctrl+u` | any field | Clear it |
+| `↑ ↓` | Activity | Walk back through what you have typed |
+| `tab` | Activity | Complete a saved command's name into the command |
 | `end` | Activity | Jump to the newest line and resume following |
 | `space` `ctrl+a` | file and mod lists | Mark one, mark all |
 | `?` | anywhere | The keys that work right here |

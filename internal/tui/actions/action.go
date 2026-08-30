@@ -318,3 +318,17 @@ func (b base) emptyView(title, message string, hints ...styles.Hint) tea.View {
 		hints...,
 	)
 }
+
+// working marks a row as busy for work the panel handles itself, rather than
+// for an operation whose output goes to the log. Resolving a plan is the case
+// it exists for: it takes a moment, it must show that it is happening, and its
+// result is a plan rather than a line of console output.
+func (b base) working(row int, label string) (base, tea.Cmd) {
+	b.busyRow, b.busyLabel = row, label
+	b.result, b.failed = "", false
+
+	ticker, tick := b.spinner.Restart()
+	b.spinner = ticker
+
+	return b, tick
+}

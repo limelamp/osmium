@@ -612,6 +612,12 @@ func DownloadJarInto(sc scope.Scope, jarType, jarVersion string) error {
 	installerFilename := ""
 	isInstaller := false
 
+	// The engine is named by whoever wrote it down: a wizard writes "Fabric",
+	// a modpack's index says "fabric-loader", and a manifest edited by hand
+	// says whatever its author typed. Matching on the canonical spelling means
+	// none of those has to be right.
+	jarType = CanonicalLoader(jarType)
+
 	switch jarType {
 	case "Vanilla":
 		url, err = getVanillaServerURL(jarVersion)
@@ -703,7 +709,7 @@ func DownloadJarInto(sc scope.Scope, jarType, jarVersion string) error {
 func RunModLoaderInstaller(sc scope.Scope, loaderType, installerFile string, mcVersion ...string) error {
 	var cmd *exec.Cmd
 
-	switch loaderType {
+	switch CanonicalLoader(loaderType) {
 	case "NeoForge":
 		// java -jar neoforge-installer.jar --installServer
 		cmd = exec.Command("java", "-jar", installerFile, "--installServer")
@@ -763,7 +769,7 @@ func appendToFile(path, line string) error {
 // jar type. dir is the server directory; it is where the loader-specific JVM
 // argument file is written.
 func GetServerRunCommand(dir, jarType, ram string) (command string, args []string) {
-	switch jarType {
+	switch CanonicalLoader(jarType) {
 	case "NeoForge", "Forge":
 		// Since NeoForge & Forge both accept arguments only through writing to a specific text file, here it is.
 		// A heap size the loader cannot be told any other way. If the file
@@ -790,4 +796,25 @@ func GetServerRunCommand(dir, jarType, ram string) (command string, args []strin
 		// Standard server.jar execution
 		return "java", []string{"-jar", "-Xms" + ram, "-Xmx" + ram, "server.jar", "nogui"}
 	}
+}
+
+// Loaders are the engines Osmium can install, spelled the way this package
+// matches them.
+var Loaders = []string{"Vanilla", "Paper", "Purpur", "Fabric", "Quilt", "Forge", "NeoForge", "Youer"}
+
+// CanonicalLoader is an engine's name as this package spells it, whatever case
+// it was given in.
+//
+// The name travels through a wizard, a manifest, a modpack's index and a
+// command-line flag before it gets here, and each of those has its own idea of
+// capitalisation. Matching a switch against one spelling and silently doing
+// nothing for the others is how "unsupported protocol scheme" ends up in front
+// of somebody who typed --loader fabric.
+func CanonicalLoader(name string) string {
+	for _, known := range Loaders {
+		if strings.EqualFold(known, strings.TrimSpace(name)) {
+			return known
+		}
+	}
+	return strings.TrimSpace(name)
 }

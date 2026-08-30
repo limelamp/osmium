@@ -1,234 +1,355 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
-	"sort"
 	"text/tabwriter"
 
+	"charm.land/lipgloss/v2"
 	"github.com/limelamp/osmium/internal/config"
-	"github.com/limelamp/osmium/internal/shared"
+	"github.com/limelamp/osmium/internal/pack"
+	"github.com/limelamp/osmium/internal/tui/theme"
 	"github.com/spf13/cobra"
 )
 
-// The two kinds of project, and the folder each lives in. Everything below is
-// written once and registered twice: a mod and a plugin differ by the folder
-// they go in and the word used for them, and by nothing else.
-var projectKinds = []struct {
-	noun   string
-	folder string
-}{
-	{"mod", "mods"},
-	{"plugin", "plugins"},
-}
+// The two kinds of project. Everything below is written once and registered
+// twice: a mod and a plugin differ by the folder they go in and the word used
+// for them, and by nothing else.
+var projectKinds = []string{"mod", "plugin"}
 
 // newProjectCommand builds the "osmium mod …" or "osmium plugin …" group.
-//
-// These replace the old top-level add/remove/install/update/track commands and
-// their --mod/--plugin flags: the group already says which kind is meant, so
-// the flag had nothing left to say.
-func newProjectCommand(noun, folder string) *cobra.Command {
+func newProjectCommand(noun string) *cobra.Command {
+	kind := kindOf(noun)
+
 	group := &cobra.Command{
 		Use:   noun,
 		Short: "Manage the " + noun + "s of a server.",
-		Long: fmt.Sprintf(`Adds, removes and updates the %ss of a server.
+		Long: fmt.Sprintf(`Adds, removes, updates and pins the %ss of a server.
+
+Every subcommand works out the whole change first — including anything a
+%s needs — shows it, and applies it in one go. Nothing is written until
+every file has arrived and been checked, so a failure leaves the server as
+it was. What is asked for is recorded in %s; what that resolved to is
+recorded in %s.
 
 Every subcommand acts on the current folder, or on the server named with
 --server.
 
 Examples:
   osmium %s add sodium
-  osmium %s list --server survival
-  osmium %s update`, noun, noun, noun, noun),
+  osmium %s add sodium@0.5.8      # a particular build, held there
+  osmium %s update                # everything that is not pinned
+  osmium %s versions sodium       # what this server could install`,
+			noun, noun, config.OsmiumFileName, config.LockFileName, noun, noun, noun, noun),
 	}
 
 	add := &cobra.Command{
-		Use:               "add [project-id ...]",
-		Short:             "Add one or more Modrinth projects.",
+		Use:               "add <project>[@build] ...",
+		Short:             "Add " + noun + "s, with whatever they need.",
 		Args:              cobra.MinimumNArgs(1),
 		ValidArgsFunction: completeModrinth,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			sc, progress, err := resolveScope()
+			resolve, progress, err := resolver()
 			if err != nil {
 				return err
 			}
-			defer progress.Close()
 
-			for _, id := range args {
-				done := progress.busy("Resolving " + id + "…")
-				err := shared.AddProjectByID(sc, id, folder)
-				done()
+			done := progress.busy("resolving")
+			plan, err := resolve.Add(context.Background(), kind, args)
+			done()
 
-				if err != nil {
-					fmt.Println(err)
-				}
-			}
-			return nil
+			return carryOut(resolve, progress, plan, err)
 		},
 	}
 
 	remove := &cobra.Command{
-		Use:               "remove [project-id ...]",
-		Short:             "Remove one or more tracked projects.",
+		Use:               "remove <project> ...",
+		Short:             "Remove " + noun + "s, and anything left needed by nothing.",
 		Args:              cobra.MinimumNArgs(1),
-		ValidArgsFunction: completeInstalledIn(folder),
+		ValidArgsFunction: completeInstalledIn(kind),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			sc, progress, err := resolveScope()
+			resolve, progress, err := resolver()
 			if err != nil {
 				return err
 			}
-			defer progress.Close()
 
-			for _, id := range args {
-				if err := shared.RemoveProjectByID(sc, id, folder); err != nil {
-					fmt.Println(err)
-				}
-			}
-			return nil
+			done := progress.busy("resolving")
+			plan, err := resolve.Remove(context.Background(), kind, args)
+			done()
+
+			return carryOut(resolve, progress, plan, err)
 		},
 	}
 
 	list := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
-		Short:   "List the tracked " + noun + "s.",
+		Short:   "List the installed " + noun + "s.",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir, err := requireServerDir()
 			if err != nil {
 				return err
 			}
-			return listProjects(dir, noun, folder)
+			return listProjects(dir, noun, kind)
 		},
 	}
 
 	install := &cobra.Command{
 		Use:   "install",
-		Short: "Install everything tracked in osmium.json.",
+		Short: "Install exactly what the manifest and lock describe.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			sc, progress, err := resolveScope()
+			resolve, progress, err := resolver()
 			if err != nil {
 				return err
 			}
-			defer progress.Close()
 
-			done := progress.busy("Installing tracked " + noun + "s…")
-			defer done()
+			done := progress.busy("resolving")
+			plan, err := resolve.Sync(context.Background(), kind)
+			done()
 
-			return shared.InstallProjectsFromConfig(sc)
+			return carryOut(resolve, progress, plan, err)
 		},
 	}
 
 	update := &cobra.Command{
-		Use:               "update [project-id ...]",
-		Short:             "Update tracked " + noun + "s to their newest builds.",
-		ValidArgsFunction: completeInstalledIn(folder),
+		Use:               "update [project ...]",
+		Short:             "Move " + noun + "s to their newest builds, leaving pins alone.",
+		ValidArgsFunction: completeInstalledIn(kind),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			sc, progress, err := resolveScope()
+			resolve, progress, err := resolver()
 			if err != nil {
 				return err
 			}
-			defer progress.Close()
 
-			if len(args) == 0 {
-				done := progress.busy("Updating every " + noun + "…")
-				defer done()
+			done := progress.busy("looking for newer builds")
+			plan, err := resolve.Update(context.Background(), kind, args)
+			done()
 
-				return shared.UpdateAllProjects(sc, folder)
-			}
-
-			for _, id := range args {
-				done := progress.busy("Updating " + id + "…")
-				err := shared.UpdateProject(sc, id, folder)
-				done()
-
-				if err != nil {
-					fmt.Println(err)
-				}
-			}
-			return nil
+			return carryOut(resolve, progress, plan, err)
 		},
 	}
 
 	track := &cobra.Command{
 		Use:   "track",
-		Short: "Adopt jars already in the folder into osmium.json.",
+		Short: "Adopt jars already in the folder.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			sc, progress, err := resolveScope()
+			resolve, progress, err := resolver()
 			if err != nil {
 				return err
 			}
 			defer progress.Close()
 
-			done := progress.busy("Identifying jars…")
-			defer done()
+			done := progress.busy("identifying jars")
+			adopted, err := resolve.Track(context.Background(), kind)
+			done()
 
-			return shared.TrackProjects(sc)
+			if err != nil {
+				return err
+			}
+			if len(adopted) == 0 {
+				fmt.Println(muted("Every jar in the folder is already accounted for."))
+				return nil
+			}
+
+			for _, file := range adopted {
+				fmt.Println("  " + file.Line())
+			}
+			return nil
 		},
 	}
 
-	group.AddCommand(add, remove, list, install, update, track)
+	pin := &cobra.Command{
+		Use:               "pin <project>[@build]",
+		Short:             "Hold a " + noun + " at one build.",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeInstalledIn(kind),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			resolve, progress, err := resolver()
+			if err != nil {
+				return err
+			}
 
-	// The flag is on every subcommand rather than on the group, so that
-	// "osmium mod add sodium -s survival" reads the way the others do.
+			slug, build := pack.SplitRef(args[0])
+
+			done := progress.busy("resolving")
+			plan, err := resolve.Pin(context.Background(), kind, slug, build)
+			done()
+
+			return carryOut(resolve, progress, plan, err)
+		},
+	}
+
+	unpin := &cobra.Command{
+		Use:               "unpin <project>",
+		Short:             "Let a " + noun + " move with the rest again.",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeInstalledIn(kind),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			resolve, progress, err := resolver()
+			if err != nil {
+				return err
+			}
+
+			done := progress.busy("resolving")
+			plan, err := resolve.Unpin(context.Background(), kind, args[0])
+			done()
+
+			return carryOut(resolve, progress, plan, err)
+		},
+	}
+
+	versions := &cobra.Command{
+		Use:               "versions <project>",
+		Short:             "List the builds this server could install.",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeModrinth,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			resolve, progress, err := resolver()
+			if err != nil {
+				return err
+			}
+			defer progress.Close()
+
+			done := progress.busy("asking Modrinth")
+			choices, err := resolve.Versions(context.Background(), kind, args[0])
+			done()
+
+			if err != nil {
+				return err
+			}
+			return listVersions(choices)
+		},
+	}
+
+	search := &cobra.Command{
+		Use:   "search <words>",
+		Short: "Find " + noun + "s that fit this server.",
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			resolve, progress, err := resolver()
+			if err != nil {
+				return err
+			}
+			defer progress.Close()
+
+			done := progress.busy("searching")
+			found, err := resolve.Search(context.Background(), joinArgs(args), 15)
+			done()
+
+			if err != nil {
+				return err
+			}
+
+			table := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+			fmt.Fprintln(table, "NAME\tSLUG")
+			for _, project := range found {
+				fmt.Fprintf(table, "%s\t%s\n", project.Title, project.Slug)
+			}
+			return table.Flush()
+		},
+	}
+
+	group.AddCommand(add, remove, list, install, update, track, pin, unpin, versions, search)
+
 	for _, cmd := range group.Commands() {
 		registerServerFlag(cmd)
 	}
+	for _, cmd := range []*cobra.Command{add, remove, install, update, pin, unpin} {
+		registerPackFlags(cmd, cmd != remove)
+	}
+
 	return group
 }
 
-// listProjects prints what a server has tracked, with the version installed.
-func listProjects(dir, noun, folder string) error {
-	conf, err := config.ReadConfigIn(dir)
+// listProjects prints what a server has, with where each came from.
+func listProjects(dir, noun string, kind config.Kind) error {
+	server, err := pack.Open(dir)
 	if err != nil {
 		return err
 	}
 
-	tracked := conf.Mods
-	if folder == "plugins" {
-		tracked = conf.Plugins
-	}
-
-	if len(tracked) == 0 {
-		fmt.Printf("No %ss tracked in %s.\n", noun, config.OsmiumFileName)
+	installed := server.List(kind)
+	if len(installed) == 0 {
+		fmt.Printf("No %ss installed.\n", noun)
 		return nil
 	}
 
-	slugs := make([]string, 0, len(tracked))
-	for slug := range tracked {
-		slugs = append(slugs, slug)
+	table := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(table, "NAME\tBUILD\tWHY\tFILE")
+
+	for _, entry := range installed {
+		why := "asked for"
+		switch {
+		case entry.Pinned:
+			why = "pinned"
+		case !entry.Explicit && len(entry.RequiredBy) > 0:
+			why = "needed by " + entry.RequiredBy[0]
+		case !entry.Explicit:
+			why = "needed"
+		}
+
+		name := entry.Slug
+		if !entry.Present {
+			name += " (missing)"
+		}
+
+		fmt.Fprintf(table, "%s\t%s\t%s\t%s\n", name, entry.VersionNumber, why, entry.FileName)
 	}
-	sort.Strings(slugs)
+
+	if err := table.Flush(); err != nil {
+		return err
+	}
+
+	if loose := server.Untracked(kind); len(loose) > 0 {
+		fmt.Println()
+		fmt.Println(muted(fmt.Sprintf("%d file(s) not managed by Osmium: %s", len(loose), joinArgs(loose))))
+		fmt.Println(muted("adopt them with: osmium " + noun + " track"))
+	}
+
+	return nil
+}
+
+// listVersions prints the builds a project has for this server.
+func listVersions(choices []pack.VersionChoice) error {
+	if len(choices) == 0 {
+		fmt.Println("No builds for this server's loader and Minecraft version.")
+		return nil
+	}
 
 	table := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintf(table, "%s\tVERSION\tFILE\n", "NAME")
+	fmt.Fprintln(table, "BUILD\tCHANNEL\tSIZE\t")
 
-	for _, slug := range slugs {
-		project := tracked[slug]
-		fmt.Fprintf(table, "%s\t%s\t%s\n", slug, project.VersionNumber, project.FileName)
+	for i, choice := range choices {
+		mark := ""
+		switch {
+		case choice.Installed:
+			mark = "installed"
+		case i == 0:
+			mark = "newest"
+		}
+
+		fmt.Fprintf(table, "%s\t%s\t%s\t%s\n",
+			choice.VersionNumber, choice.Channel, pack.FormatBytes(choice.Size), mark)
 	}
 
 	return table.Flush()
 }
 
-// completeInstalledIn completes the slugs tracked for one kind of project.
-func completeInstalledIn(folder string) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+// completeInstalledIn completes the projects a server has.
+func completeInstalledIn(kind config.Kind) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
 	return func(cmd *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
 		dir, err := resolveDir()
 		if err != nil {
 			return nil, cobra.ShellCompDirectiveError
 		}
 
-		conf, err := config.ReadConfigIn(dir)
+		server, err := pack.Open(dir)
 		if err != nil {
 			return nil, cobra.ShellCompDirectiveNoFileComp
-		}
-
-		tracked := conf.Mods
-		if folder == "plugins" {
-			tracked = conf.Plugins
 		}
 
 		chosen := make(map[string]bool, len(args))
@@ -236,18 +357,35 @@ func completeInstalledIn(folder string) func(*cobra.Command, []string, string) (
 			chosen[arg] = true
 		}
 
-		slugs := make([]string, 0, len(tracked))
-		for slug, project := range tracked {
-			if !chosen[slug] {
-				slugs = append(slugs, slug+"\t"+project.VersionNumber)
+		slugs := make([]string, 0, len(server.Lock.Of(kind)))
+		for _, entry := range server.Lock.Of(kind) {
+			if !chosen[entry.Slug] {
+				slugs = append(slugs, entry.Slug+"\t"+entry.VersionNumber)
 			}
 		}
 		return slugs, cobra.ShellCompDirectiveNoFileComp
 	}
 }
 
+// muted renders a line that is not the point of the output.
+func muted(text string) string {
+	return lipgloss.NewStyle().Foreground(theme.Inactive).Render(text)
+}
+
+// joinArgs is a comma-separated list, for a sentence.
+func joinArgs(values []string) string {
+	out := ""
+	for i, value := range values {
+		if i > 0 {
+			out += ", "
+		}
+		out += value
+	}
+	return out
+}
+
 func init() {
-	for _, kind := range projectKinds {
-		rootCmd.AddCommand(newProjectCommand(kind.noun, kind.folder))
+	for _, noun := range projectKinds {
+		rootCmd.AddCommand(newProjectCommand(noun))
 	}
 }

@@ -26,6 +26,15 @@ type AppConfig struct {
 
 	// DefaultRAM preselects the memory step of the Create Server wizard.
 	DefaultRAM string `json:"default_ram"`
+
+	// ManageLayout is which of the Manage Servers arrangements to open in, and
+	// HiddenPanes are the panes that were put away. They are remembered
+	// because a layout is a working preference, not a per-session whim: a
+	// person who runs one server from the console wants the console every
+	// time, and having to say so at every start is what makes a layout feature
+	// useless.
+	ManageLayout string   `json:"manage_layout,omitempty"`
+	HiddenPanes  []string `json:"hidden_panes,omitempty"`
 }
 
 // DefaultConfig returns the fallback configuration.

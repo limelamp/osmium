@@ -61,7 +61,7 @@ func Players(dir string) ([]Player, error) {
 	}
 	for _, entry := range cached {
 		player := playerIn(players, entry.Name, entry.UUID)
-		player.LastSeen = parseCacheTime(entry.ExpiresOn)
+		player.LastSeen = lastSeenFrom(entry.ExpiresOn)
 	}
 
 	var ops []struct {
@@ -174,6 +174,17 @@ func readPlayerFile(dir, name string, into any) error {
 
 // parseCacheTime reads the timestamp the user cache uses, which is neither RFC
 // 3339 nor quite anything else.
+func lastSeenFrom(expiresOn string) time.Time {
+	expires := parseCacheTime(expiresOn)
+	if expires.IsZero() {
+		return expires
+	}
+
+	// A server writes the entry a month ahead of the moment it saw the player,
+	// so that is the month to take back off to get the moment itself.
+	return expires.AddDate(0, -1, 0)
+}
+
 func parseCacheTime(value string) time.Time {
 	parsed, err := time.Parse("2006-01-02 15:04:05 -0700", value)
 	if err != nil {

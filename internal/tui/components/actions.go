@@ -5,12 +5,12 @@ package components
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/limelamp/osmium/internal/config"
-	"github.com/limelamp/osmium/internal/scope"
 	"github.com/limelamp/osmium/internal/shared"
 	"github.com/limelamp/osmium/internal/supervisor"
 	"github.com/limelamp/osmium/internal/tui/actions"
@@ -77,17 +77,42 @@ var actionGroups = []actionGroup{
 			label: "Plugins", badge: func(m ActionsModel) string { return m.count(m.plugins) },
 			activate: func(*ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewPluginManagementModel()) },
 		},
+		// These three open the panel their work belongs to and start it there,
+		// so that a whole-server operation is agreed to on the same plan screen
+		// as one asked for from inside the panel. Two routes to the same work
+		// must not mean two different amounts of warning.
 		{label: "Install everything tracked", activate: func(m *ActionsModel) tea.Cmd {
-			return m.run("Installing tracked mods and plugins...", shared.InstallProjectsFromConfig)
+			return core.SwitchAction(m.projectPanel().Start(actions.Sync))
 		}},
 		{label: "Track installed files", activate: func(m *ActionsModel) tea.Cmd {
-			return m.run("Tracking untracked mods and plugins...", shared.TrackProjects)
+			return core.SwitchAction(m.projectPanel().Start(actions.Adopt))
 		}},
 		{label: "Update everything", activate: func(m *ActionsModel) tea.Cmd {
-			return m.run("Updating everything installed...", func(sc scope.Scope) error {
-				return shared.UpdateAllProjects(sc, "all")
-			})
+			return core.SwitchAction(m.projectPanel().Start(actions.UpdateAll))
 		}},
+	}},
+
+	{"WORLD", []actionEntry{
+		{
+			label:    "Saved commands",
+			activate: func(*ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewCommandsModel()) },
+		},
+		{
+			label:    "Backups",
+			activate: func(*ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewBackupsModel()) },
+		},
+		{
+			label:    "Expose server",
+			activate: func(*ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewNetworkModel()) },
+		},
+		{
+			label:    "Gameplay settings",
+			activate: func(*ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewGameplayModel()) },
+		},
+		{
+			label:    "Check this server",
+			activate: func(*ActionsModel) tea.Cmd { return core.SwitchAction(actions.NewDoctorModel()) },
+		},
 	}},
 
 	{"CONFIG", []actionEntry{
@@ -262,19 +287,6 @@ func (m ActionsModel) moveFor(key string, direction int) ActionsModel {
 }
 
 // run executes a whole-server operation, reporting into the Activity pane and
-// marking the row it was started from as working.
-func (m *ActionsModel) run(label string, op func(scope.Scope) error) tea.Cmd {
-	if m.server == nil {
-		return nil
-	}
-
-	m.busyRow = m.list.Cursor
-
-	ticker, tick := m.spinner.Restart()
-	m.spinner = ticker
-
-	return tea.Batch(actions.Run(m.server.Path, label, op), tick, core.OperationStarted())
-}
 
 // refreshDetails re-reads what the indicators show.
 func (m ActionsModel) refreshDetails() ActionsModel {
@@ -375,6 +387,15 @@ func (m ActionsModel) View() tea.View {
 	}))
 }
 
+// projectPanel is the panel for whichever kind of project this server takes:
+// plugins for a plugin server, mods for everything else.
+func (m ActionsModel) projectPanel() actions.ProjectsModel {
+	if config.KindFor(strings.Fields(m.engine + " ")[0]) == config.Plugins {
+		return actions.NewPluginManagementModel()
+	}
+	return actions.NewModManagementModel()
+}
+
 // TextPane is where the menu's text sits and how far it has scrolled.
 func (m ActionsModel) TextPane() core.Pane {
 	return core.Pane{Bounds: m.layout.Text(), Offset: m.list.Scroll.Offset}
@@ -385,7 +406,8 @@ func (m ActionsModel) Hints() []styles.Hint {
 	return []styles.Hint{
 		{Key: "↑/↓", Desc: "move"},
 		{Key: "enter", Desc: "run"},
-		{Key: "ctrl+b", Desc: "hide servers"},
+		{Key: "alt+1/2/3", Desc: "panes"},
+		{Key: "ctrl+l", Desc: "layout"},
 		{Key: "tab", Desc: "switch pane"},
 	}
 }

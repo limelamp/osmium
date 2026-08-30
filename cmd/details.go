@@ -47,17 +47,18 @@ Examples:
 
 		maxPlayers := shared.MaxPlayers(dir)
 
-		// Asking who is online means asking the server, whose reply lands in
-		// the log a moment later; with it stopped there is nobody to ask.
+		// Who is online is asked of the server's status port, the way the
+		// game's own server list asks: nothing is typed into the console, so
+		// running this command leaves no trace in the log.
+		var live shared.Live
 		if supervisor.Running(dir) {
-			_ = supervisor.Exec(dir, "list")
-		}
-		if supervisor.Running(dir) {
-			if names, _, limit, ok := onlineFromLog(dir); ok {
-				players = shared.MarkOnline(players, names)
-				if limit > 0 {
-					maxPlayers = limit
-				}
+			live = shared.Ask(dir)
+
+			if live.Named() {
+				players = shared.MarkOnline(players, live.Names)
+			}
+			if live.Max > 0 {
+				maxPlayers = live.Max
 			}
 		}
 
@@ -68,6 +69,13 @@ Examples:
 		fmt.Fprintf(table, "  memory\t%s\n", conf.AllocatedRAM)
 		fmt.Fprintf(table, "  engine\t%s %s\n", conf.Loader, conf.Version)
 		fmt.Fprintf(table, "  folder\t%s\n", dir)
+
+		if live.Up {
+			fmt.Fprintf(table, "  running\t%s (%d ms)\n", live.Version, live.Latency.Milliseconds())
+			if live.MOTD != "" {
+				fmt.Fprintf(table, "  motd\t%s\n", live.MOTD)
+			}
+		}
 		fmt.Fprintf(table, "  size on disk\t%s\n", styles.FormatBytes(shared.FolderSize(dir)))
 		fmt.Fprintf(table, "  mods\t%d\n", len(conf.Mods))
 		fmt.Fprintf(table, "  plugins\t%d\n", len(conf.Plugins))
@@ -122,22 +130,6 @@ func playerList(names []string) string {
 		return "-"
 	}
 	return strings.Join(names, ", ")
-}
-
-// onlineFromLog reads the newest answer to "list" out of a server's log.
-func onlineFromLog(dir string) (names []string, online, limit int, ok bool) {
-	lines, err := supervisor.ReadLast(supervisor.LogPath(dir), 200)
-	if err != nil {
-		return nil, 0, 0, false
-	}
-
-	var text strings.Builder
-	for _, line := range lines {
-		text.WriteString(line.Text)
-		text.WriteByte('\n')
-	}
-
-	return shared.OnlineFromLog(text.String())
 }
 
 func init() {

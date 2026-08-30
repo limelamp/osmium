@@ -34,6 +34,9 @@ type ServersModel struct {
 	// list loads asynchronously, so a selection made before that arrives would
 	// be overwritten the moment it does.
 	pending string
+
+	// filter narrows the list to what is being looked for.
+	filter core.Filter
 }
 
 // statusInterval is how often the running indicators are re-checked.
@@ -44,6 +47,7 @@ func NewServersModel(store *storage.ServerStore) ServersModel {
 	return ServersModel{
 		store:  store,
 		status: core.NewTicker("servers.status", statusInterval),
+		filter: core.NewFilter(),
 	}
 }
 
@@ -70,14 +74,35 @@ func (m ServersModel) rows() int {
 	return max(0, m.layout.ContentHeight()-2)
 }
 
-// Selected returns the server under the cursor, or nil when the list is empty.
+// visible is the list as the filter leaves it.
+func (m ServersModel) visible() []storage.Server {
+	if !m.filter.Active() {
+		return m.servers
+	}
+
+	kept := make([]storage.Server, 0, len(m.servers))
+	for _, server := range m.servers {
+		if m.filter.Matches(server.Name, server.Path, server.Version, server.Type) {
+			kept = append(kept, server)
+		}
+	}
+	return kept
+}
+
+// Selected returns the server under the cursor, or nil when nothing is shown.
 func (m ServersModel) Selected() *storage.Server {
-	if len(m.servers) == 0 {
+	visible := m.visible()
+	if len(visible) == 0 || m.list.Cursor >= len(visible) {
 		return nil
 	}
-	server := m.servers[m.list.Cursor]
+
+	server := visible[m.list.Cursor]
 	return &server
 }
+
+// Editing reports whether the filter has the keyboard, so the page leaves esc
+// and backspace to it.
+func (m ServersModel) Editing() bool { return m.filter.IsOpen() }
 
 func (m ServersModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -91,13 +116,34 @@ func (m ServersModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyPressMsg:
+		if m.filter.IsOpen() {
+			filter, cmd := m.filter.HandleKey(msg)
+			m.filter = filter
+			m.list = m.list.Resize(len(m.visible()), m.rows())
+
+			return m, tea.Batch(cmd, m.selectCmd())
+		}
+
 		if list, handled := m.list.HandleKey(msg.String()); handled {
 			m.list = list
 			return m, m.selectCmd()
 		}
 
-		if msg.String() == "r" {
+		switch msg.String() {
+		case "r":
 			return m, core.LoadServersCmd(m.store)
+
+		case "/":
+			filter, cmd := m.filter.Open()
+			m.filter = filter
+			return m, cmd
+
+		case "esc":
+			if m.filter.Active() {
+				m.filter = m.filter.Clear()
+				m.list = m.list.Resize(len(m.visible()), m.rows())
+				return m, m.selectCmd()
+			}
 		}
 
 	case core.WakeMsg:
@@ -125,7 +171,7 @@ func (m ServersModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.err = nil
 		m.servers = msg.Servers
-		m.list = m.list.Resize(len(m.servers), m.rows())
+		m.list = m.list.Resize(len(m.visible()), m.rows())
 		m = m.applyPending()
 
 		// In order: the selection first, so the notice about what was pruned
@@ -161,7 +207,7 @@ func (m ServersModel) applyPending() ServersModel {
 		return m
 	}
 
-	for i, server := range m.servers {
+	for i, server := range m.visible() {
 		if server.Path == m.pending {
 			m.list = m.list.MoveTo(i)
 			break
@@ -208,8 +254,16 @@ func (m ServersModel) View() tea.View {
 		body = lipgloss.NewStyle().Foreground(theme.Inactive).
 			Render("No servers yet.\n\nCreate one from the home page to see it here.")
 
+	case len(m.visible()) == 0:
+		body = lipgloss.NewStyle().Foreground(theme.Inactive).
+			Render("Nothing matches " + m.filter.Value() + ".")
+
 	default:
 		body = m.list.Render(m.serverRow)
+	}
+
+	if line := m.filter.View(); line != "" {
+		body = line + "\n" + body
 	}
 
 	body = styles.Body(body, m.layout.ContentWidth(), m.layout.ContentHeight()-1)
@@ -238,8 +292,10 @@ func (m ServersModel) TextPane() core.Pane {
 func (m ServersModel) Hints() []styles.Hint {
 	return []styles.Hint{
 		{Key: "↑/↓", Desc: "select"},
+		{Key: "enter", Desc: "actions"},
+		{Key: "/", Desc: "filter"},
 		{Key: "r", Desc: "refresh"},
-		{Key: "ctrl+b", Desc: "hide pane"},
+		{Key: "alt+1", Desc: "hide pane"},
 		{Key: "tab", Desc: "switch pane"},
 	}
 }
@@ -247,11 +303,27 @@ func (m ServersModel) Hints() []styles.Hint {
 // serverRow renders one server: its name with a running indicator, and what it
 // runs on the right.
 func (m ServersModel) serverRow(i int) string {
-	running := i < len(m.running) && m.running[i]
+	visible := m.visible()
+	if i >= len(visible) {
+		return ""
+	}
+
+	server := visible[i]
+
+	// The running states are read on a timer against the whole list, so they
+	// are matched by path rather than by position: a filtered list is a
+	// different set of rows from the one that was probed.
+	running := false
+	for index, candidate := range m.servers {
+		if candidate.Path == server.Path {
+			running = index < len(m.running) && m.running[index]
+			break
+		}
+	}
 
 	return styles.ListRow(m.layout.ContentWidth(), i == m.list.Cursor,
-		ServerName(m.servers[i], running),
-		ServerDetails(m.servers[i]),
+		ServerName(server, running),
+		ServerDetails(server),
 	)
 }
 
@@ -283,7 +355,7 @@ func (m ServersModel) Title() string {
 
 func (m ServersModel) SetLayout(l core.Layout) ServersModel {
 	m.layout = l
-	m.list = m.list.Resize(len(m.servers), m.rows())
+	m.list = m.list.Resize(len(m.visible()), m.rows())
 	return m
 }
 

@@ -1,49 +1,51 @@
 package actions
 
 import (
+	"context"
 	"fmt"
-	"sort"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/limelamp/osmium/internal/cache"
 	"github.com/limelamp/osmium/internal/config"
+	"github.com/limelamp/osmium/internal/modrinth"
+	"github.com/limelamp/osmium/internal/pack"
 	"github.com/limelamp/osmium/internal/scope"
-	"github.com/limelamp/osmium/internal/shared"
 	"github.com/limelamp/osmium/internal/tui/core"
 	"github.com/limelamp/osmium/internal/tui/storage"
 	"github.com/limelamp/osmium/internal/tui/styles"
 	"github.com/limelamp/osmium/internal/tui/theme"
 )
 
-// projectKind is what separates the mod panel from the plugin panel: the folder
-// Modrinth downloads land in, and the words shown to the user. Everything else
-// about managing mods and plugins is identical, so both panels are the same
-// model with a different kind.
+// projectKind is what separates the mod panel from the plugin panel: the words
+// shown and the folder installed files land in. Everything else about managing
+// mods and plugins is identical, so both panels are the same model.
 type projectKind struct {
-	title  string
-	folder string
-	noun   string
+	title string
+	kind  config.Kind
+	noun  string
 }
 
 var (
-	modKind    = projectKind{title: "Mod Management", folder: "mods", noun: "mod"}
-	pluginKind = projectKind{title: "Plugin Management", folder: "plugins", noun: "plugin"}
+	modKind    = projectKind{title: "Mod Management", kind: config.Mods, noun: "mod"}
+	pluginKind = projectKind{title: "Plugin Management", kind: config.Plugins, noun: "plugin"}
 )
 
 // projectState is which of the panel's nested screens is showing.
 type projectState int
 
 const (
-	stateOperations projectState = iota
+	stateList projectState = iota
 	stateAdd
 	stateRemove
-	stateUpdate
 	stateProject
+	stateVersions
+	statePlan
 )
 
 // The root screen's rows: the operations, then a blank and a heading, then one
-// row per installed project. The cursor walks the whole way down, which is what
-// lets a long list of mods be reached at all.
+// row per installed project.
 var (
 	installedBlank   = len(projectOperations)
 	installedHeading = installedBlank + 1
@@ -54,99 +56,180 @@ var (
 var projectOperations = []string{
 	"Add a new %s",
 	"Remove installed %ss",
-	"Install all tracked %ss",
+	"Install what the manifest describes",
 	"Update installed %ss",
-	"Track untracked %ss",
+	"Adopt untracked %ss",
 }
 
-// ProjectsModel manages the Modrinth mods or plugins of the selected server.
+// projectActions are what can be done to one installed project.
+var projectActions = []string{"Update %s", "Choose a build of %s", "Pin %s", "Remove %s"}
+
+// Operation is a piece of work the panel can be told to start as it opens,
+// which is how the Actions menu's whole-server entries end up on the same plan
+// screen as the ones asked for inside the panel.
+type Operation int
+
+// The operations the panel can be started on.
+const (
+	None Operation = iota
+	Sync
+	UpdateAll
+	Adopt
+)
+
+// startMsg is the panel being told to get on with what it was opened for.
+type startMsg struct{ op Operation }
+
+// plannedMsg carries a resolution back to the panel that asked for one.
+type plannedMsg struct {
+	plan pack.Plan
+	err  error
+}
+
+// versionsMsg carries the builds a project has for this server.
+type versionsMsg struct {
+	choices []pack.VersionChoice
+	err     error
+}
+
+// ProjectsModel manages the mods or plugins of the selected server.
+//
+// Nothing it offers happens straight away: every operation resolves first and
+// shows what it would do, and only what is agreed to is carried out. That is
+// the whole difference between this and a list of buttons that download files.
 type ProjectsModel struct {
 	base
 
 	kind  projectKind
 	state projectState
 
-	// chosen is the installed project the per-project screen is about.
-	chosen string
-
-	// installed is the slug list read from the server's osmium.json, and
-	// versions is what is installed for each of them.
-	installed []string
-	versions  map[string]string
+	// installed is what the lock says the server has.
+	installed []pack.Installed
 	selected  map[int]bool
 
-	query core.Field
+	// chosen is the project the per-project screens are about.
+	chosen  string
+	choices []pack.VersionChoice
+
+	// plan is what is waiting to be agreed to, and resolver is the server it
+	// was worked out against — the two travel together so that applying a plan
+	// writes exactly what was shown.
+	plan     pack.Plan
+	resolver *pack.Resolver
+
+	query  core.Field
+	filter core.Field
+
+	// pending is what the panel was opened to do, if anything.
+	pending Operation
+}
+
+// Start opens the panel on a piece of work rather than on its menu.
+func (m ProjectsModel) Start(op Operation) ProjectsModel {
+	m.pending = op
+	return m
 }
 
 // NewModManagementModel returns the mods variant of the projects panel.
-func NewModManagementModel() ProjectsModel {
-	return newProjectsModel(modKind)
-}
+func NewModManagementModel() ProjectsModel { return newProjectsModel(modKind) }
 
 // NewPluginManagementModel returns the plugins variant of the projects panel.
-func NewPluginManagementModel() ProjectsModel {
-	return newProjectsModel(pluginKind)
-}
+func NewPluginManagementModel() ProjectsModel { return newProjectsModel(pluginKind) }
 
 func newProjectsModel(kind projectKind) ProjectsModel {
 	m := ProjectsModel{
 		base:     newBase(),
 		kind:     kind,
 		selected: make(map[int]bool),
-		query: core.NewField("Enter " + kind.noun + " id or slug...").
+		query: core.NewField("name, or name@build...").
 			WithPrompt("» ").WithLimit(60).SetWidth(40),
+		filter: core.NewField("filter...").WithPrompt("/ ").WithLimit(40).SetWidth(30),
 	}
+
 	m.base = m.setCount(len(projectOperations))
 	return m
 }
 
-// Editing reports whether the id/slug field is open.
-func (m ProjectsModel) Editing() bool { return m.query.IsOpen() }
+// Editing reports whether a text field has the keyboard.
+func (m ProjectsModel) Editing() bool { return m.query.IsOpen() || m.filter.IsOpen() }
 
 func (m ProjectsModel) Init() tea.Cmd {
-	return nil
-}
-
-// operations renders the root list labels for this panel's kind.
-func (m ProjectsModel) operations() []string {
-	labels := make([]string, len(projectOperations))
-	for i, format := range projectOperations {
-		labels[i] = fmt.Sprintf(format, m.kind.noun)
+	if m.pending == None {
+		return nil
 	}
-	return labels
+
+	op := m.pending
+	return func() tea.Msg { return startMsg{op: op} }
 }
 
-// reload rereads what is tracked and returns to the panel's root screen. It is
-// what a fresh selection gets: a different server is a different panel.
-func (m ProjectsModel) reload() ProjectsModel {
-	return m.refresh().gotoState(stateOperations)
+// packFor opens the selected server through the package manager.
+func packFor(dir string) (*pack.Resolver, error) {
+	server, err := pack.Open(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	store, err := cache.Open()
+	if err != nil {
+		store = cache.Off()
+	}
+
+	return &pack.Resolver{
+		Client: modrinth.New(store),
+		Server: server,
+		Cache:  store,
+	}, nil
 }
 
-// refresh rereads which projects the selected server has tracked, leaving the
-// screen the user is on exactly where it is.
-//
-// An operation finishing is a reason to re-read the list, not a reason to throw
-// the user out of the screen they are working in - so removing one of three
-// mods leaves the other two on screen, freshly read, rather than bouncing back
-// to the menu.
+// resolve runs a resolution in the background and brings the plan back.
+func (m ProjectsModel) resolve(label string, plan func(*pack.Resolver) (pack.Plan, error)) (tea.Model, tea.Cmd) {
+	resolver, err := packFor(m.dir())
+	if err != nil {
+		m.err = err
+		return m, nil
+	}
+
+	m.resolver = resolver
+
+	updated, tick := m.working(m.list.Cursor, label)
+	m.base = updated
+
+	return m, tea.Batch(tick, func() tea.Msg {
+		result, err := plan(resolver)
+		return plannedMsg{plan: result, err: err}
+	})
+}
+
+// apply carries out the plan the user has agreed to.
+func (m ProjectsModel) apply() (tea.Model, tea.Cmd) {
+	resolver, plan := m.resolver, m.plan
+
+	updated, cmd := m.begin(m.list.Cursor, plan.Summary(), func(sc scope.Scope) error {
+		return resolver.Server.Apply(context.Background(), plan, pack.Options{
+			Cache: resolver.Cache, Scope: sc,
+		})
+	})
+
+	m.base = updated
+	return m.gotoState(stateList), cmd
+}
+
+// refresh rereads what the server has, leaving the screen where it is.
 func (m ProjectsModel) refresh() ProjectsModel {
-	m.installed, m.versions = nil, map[string]string{}
+	m.installed = nil
 
-	if conf, err := config.ReadConfigIn(m.dir()); err == nil {
-		tracked := conf.Mods
-		if m.kind.folder == "plugins" {
-			tracked = conf.Plugins
-		}
-		for slug, project := range tracked {
-			m.installed = append(m.installed, slug)
-			m.versions[slug] = project.VersionNumber
-		}
-		sort.Strings(m.installed)
+	if server, err := pack.Open(m.dir()); err == nil {
+		m.installed = server.List(m.kind.kind)
 	}
 
-	m.selected = make(map[int]bool)
 	m.base = m.setCount(m.itemCount())
 	return m
+}
+
+// reload is what a freshly selected server gets: a different server is a
+// different panel.
+func (m ProjectsModel) reload() ProjectsModel {
+	return m.refresh().gotoState(stateList)
 }
 
 // gotoState switches nested screens and resizes the list to the new contents.
@@ -155,44 +238,63 @@ func (m ProjectsModel) gotoState(state projectState) ProjectsModel {
 	m.selected = make(map[int]bool)
 	m.list = core.List{}
 	m.query = m.query.Close()
+
+	if state != stateList {
+		m.filter = m.filter.Close()
+	}
+
 	m.base = m.setCount(m.itemCount())
 	return m
+}
+
+// visible is the installed list as the filter leaves it.
+func (m ProjectsModel) visible() []pack.Installed {
+	needle := strings.ToLower(strings.TrimSpace(m.filter.Value()))
+	if needle == "" {
+		return m.installed
+	}
+
+	kept := make([]pack.Installed, 0, len(m.installed))
+	for _, entry := range m.installed {
+		if strings.Contains(strings.ToLower(entry.Slug), needle) {
+			kept = append(kept, entry)
+		}
+	}
+	return kept
 }
 
 // itemCount is how many rows the current screen lists.
 func (m ProjectsModel) itemCount() int {
 	switch m.state {
 	case stateRemove:
-		return len(m.installed)
-	case stateUpdate:
-		return len(m.installed) + 1 // plus the "update everything" row
-	case stateAdd:
-		return 0
+		return len(m.visible())
 	case stateProject:
 		return len(projectActions)
+	case stateVersions:
+		return len(m.choices)
+	case stateAdd, statePlan:
+		return 0
 	default:
-		return installedFirst + len(m.installed)
+		return installedFirst + len(m.visible())
 	}
 }
 
 // selectableRow reports whether the cursor may rest on a row of the root
-// screen: everything but the blank and the heading above the installed list.
+// screen: everything but the blank and the heading.
 func (m ProjectsModel) selectableRow(index int) bool {
 	return index != installedBlank && index != installedHeading
 }
 
-// chosenProject is the installed project the cursor is on, or an empty string
-// when it is on one of the operations.
+// chosenProject is the installed project the cursor is on, if any.
 func (m ProjectsModel) chosenProject() string {
 	index := m.list.Cursor - installedFirst
-	if m.state != stateOperations || index < 0 || index >= len(m.installed) {
+	visible := m.visible()
+
+	if m.state != stateList || index < 0 || index >= len(visible) {
 		return ""
 	}
-	return m.installed[index]
+	return visible[index].Slug
 }
-
-// projectActions are what can be done to one installed project.
-var projectActions = []string{"Update %s", "Remove %s"}
 
 func (m ProjectsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if updated, cmd, handled := m.common(msg); handled {
@@ -201,8 +303,41 @@ func (m ProjectsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	switch msg := msg.(type) {
+	case startMsg:
+		m.pending = None
+		return m.runOperation(msg.op)
+
+	case plannedMsg:
+		m.busyRow, m.busyLabel = -1, ""
+
+		if msg.err != nil {
+			updated, cmd := m.report(msg.err.Error(), true)
+			m.base = updated
+			return m, cmd
+		}
+
+		m.plan = msg.plan
+		if msg.plan.Empty() && !msg.plan.Blocked() {
+			updated, cmd := m.report("nothing to do", false)
+			m.base = updated
+			return m.refresh(), cmd
+		}
+
+		return m.gotoState(statePlan), nil
+
+	case versionsMsg:
+		m.busyRow, m.busyLabel = -1, ""
+
+		if msg.err != nil {
+			updated, cmd := m.report(msg.err.Error(), true)
+			m.base = updated
+			return m, cmd
+		}
+
+		m.choices = msg.choices
+		return m.gotoState(stateVersions), nil
+
 	case core.OperationDoneMsg:
-		// The operation has finished: say so, and re-read what is tracked.
 		updated, cmd := m.finished(msg)
 		m.base = updated
 		return m.refresh(), cmd
@@ -219,69 +354,140 @@ func (m ProjectsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyPressMsg:
-		if m.state == stateAdd {
-			// Backspace on an empty query leaves the screen; otherwise it is
-			// the field's own deletion.
-			if msg.String() == "backspace" && m.query.Value() == "" {
-				return m.gotoState(stateOperations), nil
-			}
-
-			field, result, cmd := m.query.HandleKey(msg)
-			m.query = field
-
-			switch result {
-			case core.FieldCommitted:
-				return m.activate()
-
-			case core.FieldCancelled:
-				// The first esc clears what was typed; with nothing left to
-				// clear, the second leaves the screen.
-				if m.query.Value() == "" {
-					return m.gotoState(stateOperations), nil
-				}
-				return m.reopenQuery()
-			}
-
-			return m, cmd
-		}
-
-		if list, handled := m.list.HandleKey(msg.String()); handled {
-			m.list = list
-
-			if m.state == stateOperations {
-				direction := 1
-				if key := msg.String(); key == "up" || key == "k" || key == "pgup" {
-					direction = -1
-				}
-				m.list = core.Settle(m.list, direction, m.selectableRow)
-			}
-			return m, nil
-		}
-
-		switch msg.String() {
-		case "backspace":
-			// Nested navigation: back out of the sub-screen first.
-			if m.state != stateOperations {
-				return m.gotoState(stateOperations), nil
-			}
-			return m, core.CloseAction()
-
-		case "space":
-			if m.state == stateRemove && len(m.installed) > 0 {
-				m.selected[m.list.Cursor] = !m.selected[m.list.Cursor]
-			}
-
-		case "ctrl+a":
-			if m.state == stateRemove {
-				return m.toggleAll(), nil
-			}
-
-		case "enter":
-			return m.activate()
-		}
+		return m.key(msg)
 	}
 
 	return m, nil
+}
+
+// key handles a keypress for whichever screen is showing.
+func (m ProjectsModel) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if m.query.IsOpen() {
+		return m.typing(msg)
+	}
+
+	if m.filter.IsOpen() {
+		field, result, cmd := m.filter.HandleKey(msg)
+		m.filter = field
+
+		switch result {
+		case core.FieldCancelled:
+			m.filter = m.filter.Reset()
+		}
+
+		m.base = m.setCount(m.itemCount())
+		return m, cmd
+	}
+
+	if m.state == statePlan {
+		switch msg.String() {
+		case "enter":
+			if m.plan.Blocked() {
+				return m.gotoState(stateList), nil
+			}
+			return m.apply()
+		case "esc", "backspace":
+			return m.gotoState(stateList), nil
+		}
+		return m, nil
+	}
+
+	if list, handled := m.list.HandleKey(msg.String()); handled {
+		m.list = list
+
+		if m.state == stateList {
+			direction := 1
+			if key := msg.String(); key == "up" || key == "k" || key == "pgup" {
+				direction = -1
+			}
+			m.list = core.Settle(m.list, direction, m.selectableRow)
+		}
+		return m, nil
+	}
+
+	switch msg.String() {
+	case "/":
+		if m.state == stateList || m.state == stateRemove {
+			field, cmd := m.filter.Open(m.filter.Value())
+			m.filter = field
+			return m, cmd
+		}
+
+	case "backspace":
+		if m.state != stateList {
+			return m.gotoState(stateList), nil
+		}
+		if m.filter.Value() != "" {
+			m.filter = m.filter.Reset()
+			m.base = m.setCount(m.itemCount())
+			return m, nil
+		}
+		return m, core.CloseAction()
+
+	case "space":
+		if m.state == stateRemove && len(m.visible()) > 0 {
+			m.selected[m.list.Cursor] = !m.selected[m.list.Cursor]
+		}
+
+	case "ctrl+a":
+		if m.state == stateRemove {
+			return m.toggleAll(), nil
+		}
+
+	case "enter":
+		return m.activate()
+	}
+
+	return m, nil
+}
+
+// typing handles the add screen's field.
+func (m ProjectsModel) typing(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if msg.String() == "backspace" && m.query.Value() == "" {
+		return m.gotoState(stateList), nil
+	}
+
+	field, result, cmd := m.query.HandleKey(msg)
+	m.query = field
+
+	switch result {
+	case core.FieldCommitted:
+		return m.activate()
+
+	case core.FieldCancelled:
+		// The first esc clears what was typed; with nothing left to clear, the
+		// second leaves the screen.
+		if m.query.Value() == "" {
+			return m.gotoState(stateList), nil
+		}
+		return m.reopenQuery()
+	}
+
+	return m, cmd
+}
+
+// reopenQuery puts the keyboard back in the field after a cancel that only
+// cleared it.
+func (m ProjectsModel) reopenQuery() (tea.Model, tea.Cmd) {
+	field, cmd := m.query.Open("")
+	m.query = field
+	return m, cmd
+}
+
+// toggleAll marks or clears every row of the remove screen.
+func (m ProjectsModel) toggleAll() ProjectsModel {
+	all := true
+	for i := range m.visible() {
+		if !m.selected[i] {
+			all = false
+			break
+		}
+	}
+
+	for i := range m.visible() {
+		m.selected[i] = !all
+	}
+	return m
 }
 
 // activate runs whatever the current screen's enter key means.
@@ -290,131 +496,202 @@ func (m ProjectsModel) activate() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	folder := m.kind.folder
+	kind := m.kind.kind
+	ctx := context.Background()
 
 	switch m.state {
+	case statePlan:
+		if m.plan.Blocked() {
+			return m.gotoState(stateList), nil
+		}
+		return m.apply()
+
 	case stateProject:
 		slug := m.chosen
-		if m.list.Cursor == 0 {
-			return m.start(0, "Updating "+slug+"…", func(sc scope.Scope) error {
-				return shared.UpdateProject(sc, slug, folder)
-			})
-		}
-
-		return m.start(1, "Removing "+slug+"…", func(sc scope.Scope) error {
-			return shared.RemoveProjectByID(sc, slug, folder)
-		})
-
-	case stateOperations:
-		// A row below the operations is an installed project: open what can be
-		// done to that one.
-		if slug := m.chosenProject(); slug != "" {
-			m.chosen = slug
-			return m.gotoState(stateProject), nil
-		}
 
 		switch m.list.Cursor {
 		case 0:
-			m = m.gotoState(stateAdd)
-			return m.reopenQuery()
+			return m.resolve("resolving "+slug, func(r *pack.Resolver) (pack.Plan, error) {
+				return r.Update(ctx, kind, []string{slug})
+			})
+
 		case 1:
-			return m.gotoState(stateRemove), nil
+			return m.listVersions(slug)
+
 		case 2:
-			return m.start(2, "Installing tracked "+m.kind.noun+"s…",
-				shared.InstallProjectsFromConfig)
-		case 3:
-			return m.gotoState(stateUpdate), nil
-		case 4:
-			return m.start(4, "Identifying jars…", shared.TrackProjects)
+			entry, _ := m.find(slug)
+			if entry.Pinned {
+				return m.resolve("unpinning "+slug, func(r *pack.Resolver) (pack.Plan, error) {
+					return r.Unpin(ctx, kind, slug)
+				})
+			}
+			return m.resolve("pinning "+slug, func(r *pack.Resolver) (pack.Plan, error) {
+				return r.Pin(ctx, kind, slug, "")
+			})
+
+		default:
+			return m.resolve("resolving "+slug, func(r *pack.Resolver) (pack.Plan, error) {
+				return r.Remove(ctx, kind, []string{slug})
+			})
 		}
 
-	case stateAdd:
-		query := m.query.Value()
-		if query == "" {
-			return m.reopenQuery()
+	case stateVersions:
+		if m.list.Cursor >= len(m.choices) {
+			return m, nil
 		}
-		m.query = m.query.SetValue("")
-		m = m.gotoState(stateOperations)
 
-		return m.start(0, "Adding "+query+"…", func(sc scope.Scope) error {
-			return shared.AddProjectByID(sc, query, folder)
+		build := m.choices[m.list.Cursor].VersionNumber
+		slug := m.chosen
+
+		return m.resolve("resolving "+slug+"@"+build, func(r *pack.Resolver) (pack.Plan, error) {
+			return r.Add(ctx, kind, []string{slug + "@" + build})
 		})
 
 	case stateRemove:
-		slugs := m.markedSlugs()
+		var slugs []string
+		for index, marked := range m.selected {
+			if marked && index < len(m.visible()) {
+				slugs = append(slugs, m.visible()[index].Slug)
+			}
+		}
+
 		if len(slugs) == 0 {
 			return m, nil
 		}
-		return m.start(m.list.Cursor, "Removing "+plural(len(slugs), m.kind.noun)+"…",
-			func(sc scope.Scope) error {
-				for _, slug := range slugs {
-					if err := shared.RemoveProjectByID(sc, slug, folder); err != nil {
-						return err
-					}
-					sc.Logf("Removed %s", slug)
-				}
-				return nil
-			})
 
-	case stateUpdate:
-		if m.list.Cursor == 0 {
-			return m.start(0, "Updating every "+m.kind.noun+"…", func(sc scope.Scope) error {
-				return shared.UpdateAllProjects(sc, folder)
-			})
+		return m.resolve("resolving", func(r *pack.Resolver) (pack.Plan, error) {
+			return r.Remove(ctx, kind, slugs)
+		})
+
+	case stateAdd:
+		query := strings.TrimSpace(m.query.Value())
+		if query == "" {
+			field, cmd := m.query.Open("")
+			m.query = field
+			return m, cmd
 		}
 
-		slug := m.installed[m.list.Cursor-1]
-		return m.start(m.list.Cursor, "Updating "+slug+"…", func(sc scope.Scope) error {
-			return shared.UpdateProject(sc, slug, folder)
+		return m.resolve("resolving "+query, func(r *pack.Resolver) (pack.Plan, error) {
+			return r.Add(ctx, kind, []string{query})
 		})
+	}
+
+	// The root screen: an operation, or a project.
+	if slug := m.chosenProject(); slug != "" {
+		m.chosen = slug
+		return m.gotoState(stateProject), nil
+	}
+
+	switch m.list.Cursor {
+	case 0:
+		next := m.gotoState(stateAdd)
+
+		field, cmd := next.query.Open("")
+		next.query = field
+		return next, cmd
+
+	case 1:
+		if len(m.installed) == 0 {
+			return m, nil
+		}
+		return m.gotoState(stateRemove), nil
+
+	case 2:
+		return m.resolve("resolving", func(r *pack.Resolver) (pack.Plan, error) {
+			return r.Sync(ctx, kind)
+		})
+
+	case 3:
+		return m.resolve("looking for newer builds", func(r *pack.Resolver) (pack.Plan, error) {
+			return r.Update(ctx, kind, nil)
+		})
+
+	case 4:
+		return m.adopt()
 	}
 
 	return m, nil
 }
 
-// toggleAll marks every installed project, or clears them all when they
-// already are.
-func (m ProjectsModel) toggleAll() ProjectsModel {
-	marked := len(m.markedSlugs())
+// runOperation runs the work the panel was opened for.
+func (m ProjectsModel) runOperation(op Operation) (tea.Model, tea.Cmd) {
+	kind := m.kind.kind
+	ctx := context.Background()
 
-	for i := range m.installed {
-		m.selected[i] = marked < len(m.installed)
+	switch op {
+	case Sync:
+		return m.resolve("resolving", func(r *pack.Resolver) (pack.Plan, error) {
+			return r.Sync(ctx, kind)
+		})
+
+	case UpdateAll:
+		return m.resolve("looking for newer builds", func(r *pack.Resolver) (pack.Plan, error) {
+			return r.Update(ctx, kind, nil)
+		})
+
+	case Adopt:
+		return m.adopt()
 	}
-	return m
+
+	return m, nil
 }
 
-// start runs an operation from a row, so the row can show that it is working.
-func (m ProjectsModel) start(row int, label string, op func(scope.Scope) error) (tea.Model, tea.Cmd) {
-	updated, cmd := m.begin(row, label, op)
+// adopt identifies the jars nobody has recorded and takes them into the lock.
+func (m ProjectsModel) adopt() (tea.Model, tea.Cmd) {
+	kind := m.kind.kind
+
+	updated, cmd := m.begin(m.list.Cursor, "identifying jars", func(sc scope.Scope) error {
+		resolver, err := packFor(sc.Dir)
+		if err != nil {
+			return err
+		}
+
+		adopted, err := resolver.Track(context.Background(), kind)
+		if err != nil {
+			return err
+		}
+
+		if len(adopted) == 0 {
+			sc.Logf("every jar is already accounted for")
+			return nil
+		}
+		for _, file := range adopted {
+			sc.Logf("%s", file.Line())
+		}
+		return nil
+	})
+
 	m.base = updated
 	return m, cmd
 }
 
-// plural renders a count with its noun.
-func plural(count int, noun string) string {
-	if count == 1 {
-		return "1 " + noun
+// listVersions asks what builds a project has for this server.
+func (m ProjectsModel) listVersions(slug string) (tea.Model, tea.Cmd) {
+	resolver, err := packFor(m.dir())
+	if err != nil {
+		m.err = err
+		return m, nil
 	}
-	return fmt.Sprintf("%d %ss", count, noun)
+
+	m.resolver, m.chosen = resolver, slug
+
+	updated, tick := m.working(m.list.Cursor, "asking Modrinth")
+	m.base = updated
+
+	return m, tea.Batch(tick, func() tea.Msg {
+		choices, err := resolver.Versions(context.Background(), m.kind.kind, slug)
+		return versionsMsg{choices: choices, err: err}
+	})
 }
 
-// reopenQuery puts the keyboard back in the id field, which is where it belongs
-// for as long as the add screen is showing.
-func (m ProjectsModel) reopenQuery() (tea.Model, tea.Cmd) {
-	field, cmd := m.query.Open(m.query.Value())
-	m.query = field
-	return m, cmd
-}
-
-// markedSlugs collects the projects the user ticked on the remove screen.
-func (m ProjectsModel) markedSlugs() []string {
-	var slugs []string
-	for i, marked := range m.selected {
-		if marked && i >= 0 && i < len(m.installed) {
-			slugs = append(slugs, m.installed[i])
+// find returns what the panel knows about one installed project.
+func (m ProjectsModel) find(slug string) (pack.Installed, bool) {
+	for _, entry := range m.installed {
+		if entry.Slug == slug {
+			return entry, true
 		}
 	}
-	return slugs
+	return pack.Installed{}, false
 }
 
 func (m ProjectsModel) View() tea.View {
@@ -423,123 +700,205 @@ func (m ProjectsModel) View() tea.View {
 	}
 
 	switch m.state {
+	case statePlan:
+		return m.planView()
+
 	case stateAdd:
 		body := lipgloss.JoinVertical(
 			lipgloss.Left,
 			lipgloss.NewStyle().Foreground(theme.Inactive).
-				Render("Modrinth id or slug of the "+m.kind.noun+" to install:"),
+				Render("Which "+m.kind.noun+"? A Modrinth name, optionally @ a build:"),
 			"",
 			m.query.View(),
 		)
 		return m.panelView(m.Title()+" · Add", body, m.Hints()...)
 
 	case stateRemove:
-		if len(m.installed) == 0 {
-			return m.emptyView(m.Title()+" · Remove", "No tracked "+m.kind.noun+"s to remove.",
+		if len(m.visible()) == 0 {
+			return m.emptyView(m.Title()+" · Remove", "Nothing to remove.",
 				styles.Hint{Key: "backspace", Desc: "back"})
 		}
-		return m.listView(m.Title()+" · Remove", func(i int) string {
-			label := "  " + m.installed[i]
-			if m.selected[i] {
-				label = lipgloss.NewStyle().Foreground(theme.Accent).Render("✓ " + m.installed[i])
-			}
-			return m.row(i, m.rowMarker(i)+label, m.versions[m.installed[i]])
-		}, m.Hints()...)
 
-	case stateUpdate:
-		return m.listView(m.Title()+" · Update", func(i int) string {
-			if i == 0 {
-				return m.row(i, m.rowMarker(0)+"All "+m.kind.noun+"s", "")
+		return m.panelView(m.Title()+" · Remove", m.filterLine()+m.list.Render(func(i int) string {
+			entry := m.visible()[i]
+
+			label := "  " + entry.Slug
+			if m.selected[i] {
+				label = lipgloss.NewStyle().Foreground(theme.Accent).Render("✓ " + entry.Slug)
 			}
-			slug := m.installed[i-1]
-			return m.row(i, m.rowMarker(i)+slug, m.versions[slug])
-		}, m.Hints()...)
+			return m.row(i, m.rowMarker(i)+label, entry.VersionNumber)
+		}), m.Hints()...)
 
 	case stateProject:
 		return m.listView(m.Title()+" · "+m.chosen, func(i int) string {
-			return m.row(i, m.rowMarker(i)+fmt.Sprintf(projectActions[i], m.chosen),
-				m.versions[m.chosen])
+			label := fmt.Sprintf(projectActions[i], m.chosen)
+
+			if i == 2 {
+				if entry, ok := m.find(m.chosen); ok && entry.Pinned {
+					label = "Unpin " + m.chosen
+				}
+			}
+			return m.row(i, m.rowMarker(i)+label, "")
 		}, m.Hints()...)
 
-	default:
-		return m.listView(m.Title(), m.rootRow, m.Hints()...)
+	case stateVersions:
+		return m.listView(m.Title()+" · "+m.chosen+" builds", func(i int) string {
+			choice := m.choices[i]
+
+			mark := choice.Channel
+			switch {
+			case choice.Installed:
+				mark = "installed"
+			case i == 0:
+				mark = "newest · " + choice.Channel
+			}
+
+			return m.row(i, m.rowMarker(i)+choice.VersionNumber, mark)
+		}, m.Hints()...)
 	}
+
+	return m.rootView()
 }
 
-// rootRow draws one row of the root screen: the operations, then the installed
-// projects under their heading. It is one list so that the cursor can walk from
-// the operations into the projects, and so a long list scrolls.
-func (m ProjectsModel) rootRow(index int) string {
+// rootView is the panel's own screen: what can be done, and what is installed.
+func (m ProjectsModel) rootView() tea.View {
+	visible := m.visible()
+
+	return m.panelView(m.Title(), m.list.Render(func(i int) string {
+		switch {
+		case i < len(projectOperations):
+			return m.row(i, m.rowMarker(i)+fmt.Sprintf(projectOperations[i], m.kind.noun), "")
+
+		case i == installedBlank:
+			return ""
+
+		case i == installedHeading:
+			heading := fmt.Sprintf("INSTALLED (%d)", len(m.installed))
+			if m.filter.Value() != "" || m.filter.IsOpen() {
+				heading = fmt.Sprintf("INSTALLED (%d of %d)", len(visible), len(m.installed))
+			}
+
+			line := lipgloss.NewStyle().Foreground(theme.Inactive).Render(heading)
+			if m.filter.IsOpen() {
+				return line + "  " + m.filter.View()
+			}
+			if m.filter.Value() != "" {
+				return line + "  " + lipgloss.NewStyle().Foreground(theme.Accent).Render("/"+m.filter.Value())
+			}
+			return line
+
+		default:
+			entry := visible[i-installedFirst]
+
+			name := entry.Slug
+			switch {
+			case entry.Pinned:
+				name += " ·pinned"
+			case !entry.Explicit:
+				name += " ·needed"
+			}
+			if !entry.Present {
+				name += " ·missing"
+			}
+
+			return m.row(i, m.rowMarker(i)+name, entry.VersionNumber)
+		}
+	}), m.Hints()...)
+}
+
+// planView is what a plan looks like before it is agreed to.
+func (m ProjectsModel) planView() tea.View {
 	muted := lipgloss.NewStyle().Foreground(theme.Inactive)
 
-	switch {
-	case index < len(projectOperations):
-		return m.row(index, m.rowMarker(index)+m.operations()[index], "")
+	rows := []string{lipgloss.NewStyle().Foreground(theme.Accent).Render(m.plan.Summary()), ""}
 
-	case index == installedBlank:
-		return ""
-
-	case index == installedHeading:
-		return muted.Render(fmt.Sprintf("INSTALLED (%d)", len(m.installed)))
+	if m.plan.Blocked() {
+		rows = []string{styles.Error(fmt.Errorf("this cannot be applied")), ""}
+		for _, conflict := range m.plan.Conflicts {
+			rows = append(rows, "  "+conflict)
+		}
 	}
 
-	slug := m.installed[index-installedFirst]
-	return m.row(index, m.rowMarker(index)+slug, m.versions[slug])
+	for _, change := range m.plan.Changes {
+		rows = append(rows, "  "+change.Line())
+	}
+
+	if len(m.plan.Optional) > 0 {
+		rows = append(rows, "", muted.Render("optional, not installed:"))
+		for _, suggestion := range m.plan.Optional {
+			rows = append(rows, muted.Render("  "+suggestion.Name()+"  (suggested by "+suggestion.Wanted+")"))
+		}
+	}
+
+	for _, note := range m.plan.Notes {
+		rows = append(rows, muted.Render("  "+note))
+	}
+
+	if len(m.plan.Untracked) > 0 {
+		rows = append(rows, "", muted.Render("not managed by Osmium: "+strings.Join(m.plan.Untracked, ", ")))
+	}
+
+	return m.panelView(m.Title()+" · Plan",
+		lipgloss.JoinVertical(lipgloss.Left, rows...), m.Hints()...)
 }
 
-// Hints are the keys this panel responds to, which depend on which of its
-// nested screens is showing.
+// filterLine draws the filter above a list that has one.
+func (m ProjectsModel) filterLine() string {
+	switch {
+	case m.filter.IsOpen():
+		return m.filter.View() + "\n"
+	case m.filter.Value() != "":
+		return lipgloss.NewStyle().Foreground(theme.Accent).Render("/"+m.filter.Value()) + "\n"
+	default:
+		return ""
+	}
+}
+
+// Hints are the keys this panel responds to in the state it is in.
 func (m ProjectsModel) Hints() []styles.Hint {
 	switch m.state {
+	case statePlan:
+		return []styles.Hint{
+			{Key: "enter", Desc: "apply"},
+			{Key: "esc", Desc: "cancel"},
+		}
+
 	case stateAdd:
 		return []styles.Hint{
-			{Key: "enter", Desc: "install"},
-			{Key: "esc", Desc: "clear / back"},
+			{Key: "enter", Desc: "resolve"},
+			{Key: "esc", Desc: "clear"},
+			{Key: "backspace", Desc: "back"},
 		}
 
 	case stateRemove:
 		return []styles.Hint{
 			{Key: "space", Desc: "mark"},
-			{Key: "ctrl+a", Desc: "mark all"},
-			{Key: "enter", Desc: "remove marked"},
+			{Key: "ctrl+a", Desc: "all"},
+			{Key: "/", Desc: "filter"},
+			{Key: "enter", Desc: "plan"},
 			{Key: "backspace", Desc: "back"},
 		}
 
-	case stateUpdate:
+	case stateProject, stateVersions:
 		return []styles.Hint{
 			{Key: "↑/↓", Desc: "move"},
-			{Key: "enter", Desc: "update"},
-			{Key: "backspace", Desc: "back"},
-		}
-
-	case stateProject:
-		return []styles.Hint{
-			{Key: "↑/↓", Desc: "move"},
-			{Key: "enter", Desc: "run"},
-			{Key: "backspace", Desc: "back"},
-		}
-
-	default:
-		what := "select"
-		if m.chosenProject() != "" {
-			what = "update or remove this " + m.kind.noun
-		}
-
-		return []styles.Hint{
-			{Key: "↑/↓", Desc: "move"},
-			{Key: "enter", Desc: what},
+			{Key: "enter", Desc: "plan"},
 			{Key: "backspace", Desc: "back"},
 		}
 	}
+
+	return []styles.Hint{
+		{Key: "↑/↓", Desc: "move"},
+		{Key: "enter", Desc: "open"},
+		{Key: "/", Desc: "filter"},
+		{Key: "backspace", Desc: "back"},
+	}
 }
 
-func (m ProjectsModel) Title() string {
-	return m.kind.title
-}
+func (m ProjectsModel) Title() string { return m.kind.title }
 
 func (m ProjectsModel) SetLayout(l core.Layout) core.Action {
 	m.layout = l
-	m.query = m.query.SetWidth(l.ContentWidth() - 4)
 	m.base = m.setCount(m.itemCount())
 	return m
 }

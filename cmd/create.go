@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -9,7 +10,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/limelamp/osmium/internal/config"
-	"github.com/limelamp/osmium/internal/shared"
+	"github.com/limelamp/osmium/internal/modrinth"
+	"github.com/limelamp/osmium/internal/pack"
 	"github.com/limelamp/osmium/internal/supervisor"
 	"github.com/limelamp/osmium/internal/tui/components/steps"
 	"github.com/limelamp/osmium/internal/tui/core"
@@ -178,7 +180,30 @@ func restoreProjects(manifest *config.OsmiumConfig, target string) error {
 	progress := newReporter()
 	defer progress.Close()
 
-	return shared.InstallProjectsFromConfig(progress.Scope(target))
+	server, err := pack.Open(target)
+	if err != nil {
+		return err
+	}
+
+	store := downloadCache()
+	resolve := &pack.Resolver{Client: modrinth.New(store), Server: server, Cache: store}
+
+	for _, kind := range []config.Kind{config.Mods, config.Plugins} {
+		plan, err := resolve.Sync(context.Background(), kind)
+		if err != nil {
+			return err
+		}
+
+		show(plan)
+
+		if err := server.Apply(context.Background(), plan, pack.Options{
+			Cache: store, Scope: progress.Scope(target),
+		}); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // pendingSteps is the wizard reduced to the questions the flags left open.

@@ -1,9 +1,10 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 
-	"github.com/limelamp/osmium/internal/shared"
+	"github.com/limelamp/osmium/internal/pack"
 	"github.com/limelamp/osmium/internal/supervisor"
 	"github.com/limelamp/osmium/internal/tui/components/steps"
 	"github.com/spf13/cobra"
@@ -68,7 +69,9 @@ Examples:
 		progress := newReporter()
 		defer progress.Close()
 
-		return shared.MigrateServer(progress.Scope(dir), wizardConfig.Software, wizardConfig.Version)
+		return pack.MigrateInPlace(context.Background(), dir,
+			wizardConfig.Software, wizardConfig.Version,
+			progress.Scope(dir), downloadCache())
 	},
 }
 

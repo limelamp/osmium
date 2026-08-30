@@ -1,14 +1,16 @@
 package steps
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/limelamp/osmium/internal/cache"
+	"github.com/limelamp/osmium/internal/pack"
 	"github.com/limelamp/osmium/internal/scope"
-	"github.com/limelamp/osmium/internal/shared"
 	"github.com/limelamp/osmium/internal/supervisor"
 	"github.com/limelamp/osmium/internal/tui/core"
 	"github.com/limelamp/osmium/internal/tui/styles"
@@ -92,7 +94,12 @@ func (s *MigrateStep) migrate() {
 		},
 	}
 
-	err := shared.MigrateServer(sc, s.config.Software, s.config.Version)
+	store, err := cache.Open()
+	if err != nil {
+		store = cache.Off()
+	}
+
+	err = pack.MigrateInPlace(context.Background(), s.config.Dir, s.config.Software, s.config.Version, sc, store)
 	s.events <- buildEvent{done: true, err: err}
 }
 

@@ -3,12 +3,15 @@ package actions
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/limelamp/osmium/internal/config"
+	"github.com/limelamp/osmium/internal/expose"
+	"github.com/limelamp/osmium/internal/properties"
 	"github.com/limelamp/osmium/internal/shared"
 	"github.com/limelamp/osmium/internal/supervisor"
 	"github.com/limelamp/osmium/internal/tui/core"
@@ -40,6 +43,17 @@ type DetailsModel struct {
 	sized     bool
 	measuring bool
 
+	// live is what the server says about itself on its status port, and props
+	// is what its own settings file says. Between them they answer nearly
+	// everything this panel shows without a word being typed into the console.
+	live  shared.Live
+	props *properties.Properties
+
+	// usage and previous are two samples of the process, which is what a
+	// percentage of a processor is made from.
+	usage    shared.Usage
+	previous shared.Usage
+
 	ticker core.Ticker
 	scroll core.Scroll
 }
@@ -54,9 +68,7 @@ func NewDetailsModel() DetailsModel {
 }
 
 func (m DetailsModel) Init() tea.Cmd {
-	// The panel is opened, so it starts counting and asks the server who is on
-	// it; the answer arrives in the log a moment later.
-	return tea.Batch(core.Wake(), m.askWhoIsOnline(), m.measure())
+	return tea.Batch(core.Wake(), m.askServer(), m.measure())
 }
 
 // Editing reports that the panel takes no typed input.
@@ -78,15 +90,25 @@ func (m DetailsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		armed, cmd := ticker.Arm()
 		m.ticker = armed
 
+		if pid := supervisor.PID(m.dir()); pid > 0 {
+			m.previous, m.usage = m.usage, shared.Sample(pid)
+		}
+
 		// Coming back to a panel that was already open does not run Init
 		// again, so the measurement is started here instead - otherwise
 		// switching servers leaves it saying "measuring…" for good.
 		if !m.sized && !m.measuring {
 			m.measuring = true
-			return m.reload(), tea.Batch(cmd, m.measure())
+			return m.reload(), tea.Batch(cmd, m.measure(), m.askServer())
 		}
 
-		return m.reload(), cmd
+		return m.reload(), tea.Batch(cmd, m.askServer())
+
+	case liveMsg:
+		if msg.dir == m.dir() {
+			m.live = msg.live
+		}
+		return m, nil
 
 	case sizeReadyMsg:
 		m.measuring = false
@@ -119,7 +141,7 @@ func (m DetailsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "pgdown":
 			m.scroll = m.scroll.By(m.scroll.Visible)
 		case "r":
-			return m.reload(), tea.Batch(m.askWhoIsOnline(), m.measure())
+			return m.reload(), tea.Batch(m.askServer(), m.measure())
 		}
 	}
 
@@ -135,18 +157,19 @@ func (m DetailsModel) reload() DetailsModel {
 	m.conf, _ = config.ReadConfigIn(m.dir())
 	m.max = shared.MaxPlayers(m.dir())
 
+	m.props, _ = properties.Read(m.dir())
+
 	players, err := shared.Players(m.dir())
 	if err == nil {
-		// A stopped server has nobody on it, whatever its log last said.
-		if supervisor.Running(m.dir()) {
-			if names, limit, ok := onlineNow(m.dir()); ok {
-				players = shared.MarkOnline(players, names)
-				if limit > 0 {
-					m.max = limit
-				}
-			}
+		// A stopped server has nobody on it, whatever was last heard.
+		if supervisor.Running(m.dir()) && m.live.Named() {
+			players = shared.MarkOnline(players, m.live.Names)
 		}
 		m.players = players
+	}
+
+	if m.live.Max > 0 {
+		m.max = m.live.Max
 	}
 
 	return m.measured()
@@ -162,18 +185,19 @@ func (m DetailsModel) measured() DetailsModel {
 	return m
 }
 
-// askWhoIsOnline sends "list" to a running server. Its reply goes to the log
-// like everything else, which is where the panel reads it back from.
-func (m DetailsModel) askWhoIsOnline() tea.Cmd {
+// askServer reads the server's live state off its status port.
+//
+// This used to send "list" into the console and read the answer back out of
+// the log, which meant a panel being open filled the log with Osmium's own
+// questions. The port every Minecraft client uses to show a server in its list
+// answers the same thing and leaves the console alone.
+func (m DetailsModel) askServer() tea.Cmd {
 	dir := m.dir()
 	if !supervisor.Running(dir) {
 		return nil
 	}
 
-	return func() tea.Msg {
-		_ = supervisor.Exec(dir, "list")
-		return nil
-	}
+	return func() tea.Msg { return liveMsg{dir: dir, live: shared.Ask(dir)} }
 }
 
 // measure adds up the server folder in the background.
@@ -186,23 +210,6 @@ func (m DetailsModel) measure() tea.Cmd {
 	return func() tea.Msg {
 		return sizeReadyMsg{dir: dir, size: shared.FolderSize(dir)}
 	}
-}
-
-// onlineNow reads the newest answer to "list" out of the server's log.
-func onlineNow(dir string) (names []string, limit int, ok bool) {
-	lines, err := supervisor.ReadLast(supervisor.LogPath(dir), 200)
-	if err != nil {
-		return nil, 0, false
-	}
-
-	var text strings.Builder
-	for _, line := range lines {
-		text.WriteString(line.Text)
-		text.WriteByte('\n')
-	}
-
-	names, _, limit, ok = shared.OnlineFromLog(text.String())
-	return names, limit, ok
 }
 
 func (m DetailsModel) View() tea.View {
@@ -223,9 +230,20 @@ func (m DetailsModel) rows() []string {
 	var rows []string
 
 	rows = append(rows, m.block("STATUS", m.statusRows())...)
+
+	if usage := m.usageRows(); len(usage) > 0 {
+		rows = append(rows, m.block("RESOURCES", usage)...)
+	}
+
 	rows = append(rows, m.block("SERVER", m.serverRows())...)
+
+	if world := m.worldRows(); len(world) > 0 {
+		rows = append(rows, m.block("WORLD", world)...)
+	}
+
 	rows = append(rows, m.block("PLAYERS", m.playerRows())...)
 	rows = append(rows, m.block("CONTENT", m.contentRows())...)
+	rows = append(rows, m.block("CONNECT", m.connectRows())...)
 
 	return rows[:len(rows)-1] // no trailing blank
 }
@@ -245,10 +263,107 @@ func (m DetailsModel) statusRows() []string {
 		uptime = fmt.Sprintf("%s · pid %d", supervisor.Uptime(m.dir()), supervisor.PID(m.dir()))
 	}
 
-	return []string{
+	rows := []string{
 		m.detail("state", state, uptime),
-		m.detail("memory", m.setting(func(c *config.OsmiumConfig) string { return c.AllocatedRAM }), ""),
+		m.detail("allocated", m.setting(func(c *config.OsmiumConfig) string { return c.AllocatedRAM }), ""),
 	}
+
+	// What the server itself says, which is the only account of it that comes
+	// from the running thing rather than from files beside it.
+	if m.live.Up {
+		rows = append(rows,
+			m.detail("running", m.live.Version, fmt.Sprintf("answered in %d ms", m.live.Latency.Milliseconds())))
+
+		if m.live.MOTD != "" {
+			rows = append(rows, m.detail("motd", m.live.MOTD, ""))
+		}
+	}
+
+	return rows
+}
+
+// usageRows are what the process is actually using, as opposed to what it was
+// promised.
+func (m DetailsModel) usageRows() []string {
+	if !m.usage.Known {
+		return nil
+	}
+
+	rows := []string{m.detail("memory in use", styles.FormatBytes(m.usage.Memory), m.memoryBar())}
+
+	if percent := m.usage.Percent(m.previous); percent > 0 {
+		rows = append(rows, m.detail("processor", fmt.Sprintf("%.0f%%", percent), ""))
+	}
+
+	return rows
+}
+
+// memoryBar draws what is in use against what was allocated, when the
+// allocation is known.
+func (m DetailsModel) memoryBar() string {
+	if m.conf == nil || m.conf.AllocatedRAM == "" {
+		return ""
+	}
+
+	allocated := allocatedBytes(m.conf.AllocatedRAM)
+	if allocated <= 0 {
+		return ""
+	}
+
+	return fmt.Sprintf("of %s", styles.FormatBytes(allocated))
+}
+
+// worldRows are the server's own settings, as its settings file has them.
+func (m DetailsModel) worldRows() []string {
+	summary := m.props.Summary()
+	if len(summary) == 0 {
+		return nil
+	}
+
+	rows := make([]string, 0, len(summary))
+	for _, row := range summary {
+		rows = append(rows, m.detail(row[0], row[1], ""))
+	}
+	return rows
+}
+
+// connectRows are the addresses that reach this server.
+func (m DetailsModel) connectRows() []string {
+	port := 25565
+	if m.props != nil {
+		port = m.props.Port()
+	}
+
+	rows := []string{m.detail("this machine", fmt.Sprintf("localhost:%d", port), "")}
+
+	if lan := expose.LocalAddress(); lan != "" {
+		rows = append(rows, m.detail("same network", fmt.Sprintf("%s:%d", lan, port), ""))
+	}
+
+	rows = append(rows, m.detail("", lipgloss.NewStyle().Foreground(theme.Inactive).
+		Render("osmium expose --open forwards the port"), ""))
+
+	return rows
+}
+
+// allocatedBytes reads "4G" or "3072M" as a number of bytes.
+func allocatedBytes(allocated string) int64 {
+	value := strings.ToUpper(strings.TrimSpace(allocated))
+	if value == "" {
+		return 0
+	}
+
+	unit := value[len(value)-1]
+
+	number, err := strconv.ParseInt(strings.TrimRight(value, "GM"), 10, 64)
+	if err != nil {
+		return 0
+	}
+
+	if unit == 'G' {
+		return number * 1024 * 1024 * 1024
+	}
+	return number * 1024 * 1024
 }
 
 func (m DetailsModel) serverRows() []string {

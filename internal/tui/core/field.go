@@ -178,3 +178,18 @@ func (f Field) View() string {
 	f.input.SetStyles(FieldStyles())
 	return f.input.View()
 }
+
+// Reset empties a field and closes it, which is what clearing a filter means:
+// the text is gone and the list it was narrowing is whole again.
+func (f Field) Reset() Field {
+	f.input.SetValue("")
+	f.saved = ""
+	return f.Close()
+}
+
+// WithValue sets what a field holds without opening it.
+func (f Field) WithValue(value string) Field {
+	f.input.SetValue(value)
+	f.saved = value
+	return f
+}
