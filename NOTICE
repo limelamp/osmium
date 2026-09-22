@@ -1,0 +1,76 @@
+Osmium — third-party notices
+============================
+
+Osmium itself is free software under the GNU General Public License v3.0; see
+LICENSE. This file records the third-party names, marks and work it relies on.
+
+
+Minecraft
+---------
+
+Minecraft is a trademark of Mojang Synergies AB. Osmium is not an official
+Minecraft product, and is not approved by or associated with Mojang or
+Microsoft. The name is used only to say what Osmium manages.
+
+Osmium neither bundles nor redistributes any Minecraft file. It downloads the
+server software you ask for, when you ask for it, from the publisher's own
+endpoint. The Minecraft EULA (https://aka.ms/MinecraftEULA) is an agreement
+between you and Mojang: Osmium writes `eula.txt` only after you accept it, with
+`--eula` or the wizard's Agreements step, and never on your behalf otherwise.
+
+
+Server software and services
+----------------------------
+
+Paper and Folia are marks of the PaperMC project; Purpur, of PurpurMC; Spigot
+and Bukkit, of SpigotMC; Fabric, of the Fabric project; Forge, of Forge
+Development LLC; NeoForge, of the NeoForged project; Quilt, of the Quilt
+project; Modrinth, of Rinth, Inc. Each is used nominatively, to name the
+software Osmium can install or the service it fetches from. Osmium is not
+affiliated with, endorsed by or connected to any of them.
+
+Mods and plugins are downloaded from Modrinth under the terms of the Modrinth
+API (https://modrinth.com/legal/terms), and each project remains under the
+licence its own author publishes.
+
+
+Themes
+------
+
+Teal is Osmium's own palette. The other themes take their colours and their
+names from the community colour schemes they are named after, so that someone
+who already uses one recognises it here. Osmium is not affiliated with,
+endorsed by or connected to any of these projects, and each name belongs to the
+project that made it.
+
+  Dracula      by Zeno Rocha and contributors, MIT licensed.
+               DRACULA is a registered trademark of Zeno Rocha
+               (US Reg. No. 6306339) for colour-scheme software. Used here to
+               name that project's palette, not as a mark of Osmium's own.
+  Nord         by Sven Greb (Arctic Ice Studio) and contributors, MIT licensed.
+  Catppuccin   by the Catppuccin organisation and contributors, MIT licensed.
+  Solarized    by Ethan Schoonover, MIT licensed.
+  Tokyo Night  after the Visual Studio Code theme by enkia.
+  Gruvbox      after the colour scheme by Pavel Pertsev (morhetz).
+  Rosé Pine    after the colour scheme by the Rosé Pine maintainers.
+  Everforest   after the colour scheme by sainnhe.
+  Kanagawa     after the colour scheme by rebelot.
+
+Each theme in Osmium is three colours — a primary, an inactive tone and an
+accent — taken from the published palette of the scheme it names.
+
+
+Libraries
+---------
+
+Osmium is built with Bubble Tea, Bubbles and Lip Gloss (Charm, MIT), Cobra
+(Apache License 2.0), and the golang.org/x packages (BSD 3-Clause). Their
+licences are reproduced in the module cache and in the source of each
+dependency; all are compatible with the GPL-3.0 this project is released under.
+
+
+Code of Conduct
+---------------
+
+CODE_OF_CONDUCT.md is adapted from the Contributor Covenant, version 2.1,
+used under CC BY 4.0. https://www.contributor-covenant.org

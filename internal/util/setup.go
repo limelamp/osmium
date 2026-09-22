@@ -326,12 +326,6 @@ func getNeoForgeServerURL(mcVersion string) (url, installer string, err error) {
 	return url, neoforgeVersion, nil
 }
 
-// getYouerServerURL returns the direct download URL for Youer (NeoForge + Paper hybrid)
-func getYouerServerURL(mcVersion string) string {
-	// Youer API: https://mohistmc.com/api/v2/projects/youer/versions/{version}/builds/latest/download
-	return fmt.Sprintf("https://mohistmc.com/api/v2/projects/youer/versions/%s/builds/latest/download", mcVersion)
-}
-
 func getForgeVersionMap() map[string]string {
 	resp, err := getWithStatus("https://maven.minecraftforge.net/net/minecraftforge/forge/maven-metadata.xml")
 	if err != nil {
@@ -660,8 +654,6 @@ func DownloadJarInto(sc scope.Scope, jarType, jarVersion string) error {
 		}
 		installerFilename = fmt.Sprintf("quilt-installer-%s.jar", quiltInstallerVer)
 		isInstaller = true
-	case "Youer":
-		url = getYouerServerURL(jarVersion)
 	}
 
 	// Determine output filename
@@ -800,7 +792,7 @@ func GetServerRunCommand(dir, jarType, ram string) (command string, args []strin
 
 // Loaders are the engines Osmium can install, spelled the way this package
 // matches them.
-var Loaders = []string{"Vanilla", "Paper", "Purpur", "Fabric", "Quilt", "Forge", "NeoForge", "Youer"}
+var Loaders = []string{"Vanilla", "Paper", "Purpur", "Fabric", "Quilt", "Forge", "NeoForge"}
 
 // CanonicalLoader is an engine's name as this package spells it, whatever case
 // it was given in.

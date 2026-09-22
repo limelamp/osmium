@@ -228,3 +228,18 @@ Pull requests are welcome. `make lint test` should pass before you open one.
 Osmium is free software under the [GNU General Public License v3.0](LICENSE).
 
 Copyright © 2026 **Limelamp**.
+
+Third-party names, marks and work are credited in [NOTICE](NOTICE) — the server
+software Osmium installs, the Modrinth API it fetches from, the themes it is
+named after, and the libraries it is built with.
+
+## Not an official Minecraft product
+
+Osmium is not an official Minecraft product. It is not approved by or
+associated with Mojang or Microsoft. Minecraft is a trademark of Mojang
+Synergies AB.
+
+Osmium bundles no Minecraft file: it downloads the server software you ask for
+from the publisher's own endpoint, and writes `eula.txt` only once you have
+accepted [Mojang's EULA](https://aka.ms/MinecraftEULA) yourself, with `--eula`
+or the wizard's Agreements step.

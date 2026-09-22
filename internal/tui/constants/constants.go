@@ -7,7 +7,6 @@ var CategoryOptions = map[string][]string{
 	"Vanilla/Simple": {"Vanilla"},
 	"Plugin-Based":   {"Paper", "Purpur"},
 	"Mod Loaders":    {"Fabric", "NeoForge", "Forge", "Quilt"},
-	"Hybrid":         {"Youer"},
 }
 
 // MOD_LOADERS are the loader names Modrinth uses for mods.

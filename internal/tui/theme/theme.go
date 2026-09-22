@@ -1,5 +1,11 @@
 // Package theme is the palette the interface draws with, and the set of themes
 // a user can choose between.
+//
+// Teal is Osmium's own. Every other theme is named after a community colour
+// scheme and takes three colours from that scheme's published palette, so that
+// someone who already uses it recognises it here. Osmium is not affiliated
+// with, endorsed by or connected to any of those projects, and each name
+// belongs to the project that made it; NOTICE credits them one by one.
 package theme
 
 import (
