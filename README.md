@@ -12,10 +12,13 @@
 
 Create servers, run them, install mods, watch their consoles - from one terminal, or from a script.
 
+**[Documentation and guides -> osmiummc.com](https://osmiummc.com)**
+
 [![Go](https://img.shields.io/badge/go-1.25%2B-00ADD8?logo=go&logoColor=white)](https://go.dev)
 [![Licence](https://img.shields.io/badge/licence-GPL--3.0-blue)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/limelamp/osmium?display_name=tag&sort=semver)](https://github.com/limelamp/osmium/releases)
 [![Go report](https://goreportcard.com/badge/github.com/limelamp/osmium)](https://goreportcard.com/report/github.com/limelamp/osmium)
+[![Docs](https://img.shields.io/badge/docs-osmiummc.com-31C48D)](https://osmiummc.com)
 
 </div>
 
@@ -170,6 +173,9 @@ Jars Osmium did not install are never touched. Every plan names them, and
 `osmium mod track` adopts them when you want them managed.
 
 Every command takes `-s/--server`. `osmium <command> --help` has the details.
+
+The full reference, with a worked example for every command, is at
+[osmiummc.com/docs/cli/reference](https://osmiummc.com/docs/cli/reference).
 
 ## Controls
 
