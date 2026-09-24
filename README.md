@@ -51,7 +51,23 @@ The create wizard walks through the choices, one at a time:
 - A terminal with UTF-8 and 256 colours. Minimum size is **60 × 18**.
 - If building, use **Go 1.25+**.
 
-## Installing   
+## Installing
+
+Linux and macOS:
+
+```bash
+curl -fsSL https://osmiummc.com/install.sh | sh
+```
+
+Windows (PowerShell):
+
+```powershell
+irm https://osmiummc.com/install.ps1 | iex
+```
+
+The scripts download the latest release, verify its checksum and install it into your user directory, no `sudo` needed. [`install.sh`](install.sh) and [`install.ps1`](install.ps1) are in this repo if you want to read them first.
+
+Or with Go 1.25+:
 
 ```bash
 go install github.com/limelamp/osmium@latest

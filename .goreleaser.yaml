@@ -78,6 +78,10 @@ changelog:
 release:
   draft: false
   prerelease: auto
+  # Served at osmiummc.com/install.sh and /install.ps1 via a redirect to the latest release.
+  extra_files:
+    - glob: ./install.sh
+    - glob: ./install.ps1
   footer: |
     ---
     Osmium is free software under the GNU General Public License v3.0.
