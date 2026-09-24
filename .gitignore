@@ -47,3 +47,4 @@ whitelist.json
 
 # keep the config in internal/
 !internal/config
+!internal/cache
