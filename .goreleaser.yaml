@@ -59,6 +59,7 @@ snapshot:
 changelog:
   sort: asc
   use: github
+  format: "{{ .SHA }}: {{ .Message }}{{ with .AuthorUsername }} (@{{ . }}){{ end }}"
   groups:
     - title: Features
       regexp: '^feat'

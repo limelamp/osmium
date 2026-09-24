@@ -1,14 +1,6 @@
 <div align="center">
 
-```
- ██████  ███████ ███    ███ ██ ██    ██ ███    ███
-██    ██ ██      ████  ████ ██ ██    ██ ████  ████
-██    ██ ███████ ██ ████ ██ ██ ██    ██ ██ ████ ██
-██    ██      ██ ██  ██  ██ ██ ██    ██ ██  ██  ██
- ██████  ███████ ██      ██ ██  ██████  ██      ██
-```
-
-**A terminal Minecraft server manager.**
+<img src=".github/assets/banner.png" alt="Osmium - a terminal Minecraft server manager" width="100%">
 
 Create servers, run them, install mods, watch their consoles - from one terminal, or from a script.
 
@@ -17,8 +9,9 @@ Create servers, run them, install mods, watch their consoles - from one terminal
 [![Go](https://img.shields.io/badge/go-1.25%2B-00ADD8?logo=go&logoColor=white)](https://go.dev)
 [![Licence](https://img.shields.io/badge/licence-GPL--3.0-blue)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/limelamp/osmium?display_name=tag&sort=semver)](https://github.com/limelamp/osmium/releases)
-[![Go report](https://goreportcard.com/badge/github.com/limelamp/osmium)](https://goreportcard.com/report/github.com/limelamp/osmium)
 [![Docs](https://img.shields.io/badge/docs-osmiummc.com-31C48D)](https://osmiummc.com)
+
+<img src=".github/assets/demo.gif" alt="Osmium managing servers and installing a mod" width="100%">
 
 </div>
 

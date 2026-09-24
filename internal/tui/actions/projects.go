@@ -767,7 +767,7 @@ func (m ProjectsModel) rootView() tea.View {
 	return m.panelView(m.Title(), m.list.Render(func(i int) string {
 		switch {
 		case i < len(projectOperations):
-			return m.row(i, m.rowMarker(i)+fmt.Sprintf(projectOperations[i], m.kind.noun), "")
+			return m.row(i, m.rowMarker(i)+strings.ReplaceAll(projectOperations[i], "%s", m.kind.noun), "")
 
 		case i == installedBlank:
 			return ""
