@@ -32,7 +32,7 @@ builds:
       - -s -w
       - -X github.com/limelamp/osmium/internal/build.Version={{ .Version }}
       - -X github.com/limelamp/osmium/internal/build.Commit={{ .ShortCommit }}
-      - -X github.com/limelamp/osmium/internal/build.Date={{ .CommitDate }}
+      - -X github.com/limelamp/osmium/internal/build.Date={{ slice .CommitDate 0 10 }}
     mod_timestamp: "{{ .CommitTimestamp }}"
 
 archives:
@@ -46,6 +46,7 @@ archives:
     files:
       - README.md
       - LICENSE
+      - NOTICE
       - src: completions/*
         dst: completions
 

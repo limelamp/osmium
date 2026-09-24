@@ -63,7 +63,7 @@ func moduleVersion() string {
 	if strings.HasPrefix(info.Main.Version, "v0.0.0-") || strings.Contains(info.Main.Version, "+dirty") {
 		return ""
 	}
-	return info.Main.Version
+	return strings.TrimPrefix(info.Main.Version, "v")
 }
 
 // vcs reads what the go tool recorded about the checkout, which is how an
